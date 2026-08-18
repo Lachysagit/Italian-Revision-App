@@ -1,0 +1,10 @@
+# CMake build output
+build/
+**/_deps/
+CMakeUserPresets.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/

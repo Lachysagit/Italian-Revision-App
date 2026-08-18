@@ -19,4 +19,6 @@ struct Config {
     std::uint16_t port = 8080;
 };
 
+    Config load_config();   
+
 }  // namespace sim
