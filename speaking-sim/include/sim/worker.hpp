@@ -24,7 +24,7 @@ private:
     std::vector<std::thread> threads_;
     std::queue<Job> jobs_;
     std::mutex mutex_;
-    std::condition_variable cv_;
+    std::condition_variable conditionalv_;
     bool stop_ = false;
 };
 
