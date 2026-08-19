@@ -25,7 +25,17 @@ public:
 private:
     Config config_;
     crow::SimpleApp app_;
+    crow::response serve_index();
+    
+    std::string load_system_prompt();
+    std::string system_prompt_;
+
     WorkerPool pool_;
+    
+    std::mutex sessions_mutex_;
+    std::unordered_map<crow::websocket::connection*, std::shared_ptr<Session>> sessions_;
+
+    std::shared_ptr<Session> find_session(crow::websocket::connection* conn);
 
     std::unique_ptr<InterfaceSTT> stt_;
     std::unique_ptr<InterfaceExaminer> examiner_;
