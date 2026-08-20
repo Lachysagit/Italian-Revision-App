@@ -104,7 +104,7 @@ FetchContent_MakeAvailable(httplib)
 
 set(SIM_THIRD_PARTY "${CMAKE_CURRENT_SOURCE_DIR}/third_party")
 set(SIM_NATIVE_LIBS "")
-set(SIM_PIPER_TARGET "")
+set(SIM_PIPER_EXECUTABLE "")
 
 # whisper.cpp exposes a `whisper` library target.
 if(EXISTS "${SIM_THIRD_PARTY}/whisper.cpp/CMakeLists.txt")
@@ -123,23 +123,27 @@ else()
         "Run: git submodule update --init --recursive")
 endif()
 
-# piper has renamed its library target across releases, so probe the names it
-# has used, skipping the `piper` command line executable if that is what it is.
+# piper's ExternalProject_Add calls warn without this. It has to be the
+# CMAKE_POLICY_DEFAULT_ variable rather than cmake_policy(SET): piper's own
+# cmake_minimum_required(VERSION 3.13) resets policies inside its scope, so a
+# plain cmake_policy() here never reaches it. NEW timestamps extracted archives
+# at extraction time, which is what makes a changed download URL rebuild.
+set(CMAKE_POLICY_DEFAULT_CMP0135 NEW)
+
+# piper exposes no library: upstream defines only add_executable(piper ...), so
+# there is nothing to link against and the TTS backend has to drive the binary
+# as a subprocess. It is kept EXCLUDE_FROM_ALL because building it pulls
+# onnxruntime, fmt and spdlog through ExternalProject, which is a long download
+# that an ordinary build of this server does not need.
+# Build it on demand with: cmake --build build --target piper
 if(EXISTS "${SIM_THIRD_PARTY}/piper/CMakeLists.txt")
     add_subdirectory("${SIM_THIRD_PARTY}/piper" EXCLUDE_FROM_ALL)
-    foreach(candidate IN ITEMS piper piper_lib libpiper piper_phonemize)
-        if(TARGET ${candidate})
-            get_target_property(candidate_type ${candidate} TYPE)
-            if(NOT candidate_type STREQUAL "EXECUTABLE")
-                set(SIM_PIPER_TARGET ${candidate})
-                break()
-            endif()
-        endif()
-    endforeach()
-    if(SIM_PIPER_TARGET)
-        list(APPEND SIM_NATIVE_LIBS ${SIM_PIPER_TARGET})
+    if(TARGET piper)
+        set(SIM_PIPER_EXECUTABLE "$<TARGET_FILE:piper>")
     else()
-        message(FATAL_ERROR "third_party/piper defined no linkable library target.")
+        message(WARNING
+            "third_party/piper defined no piper target - the TTS backend will "
+            "have no binary to call.")
     endif()
 else()
     message(STATUS
@@ -186,13 +190,31 @@ target_link_libraries(speaking-sim
 if(TARGET whisper)
     target_compile_definitions(speaking-sim PRIVATE SIM_HAVE_WHISPER=1)
 endif()
-if(SIM_PIPER_TARGET)
-    target_compile_definitions(speaking-sim PRIVATE SIM_HAVE_PIPER=1)
+if(SIM_PIPER_EXECUTABLE)
+    # The path is a generator expression, so it resolves per build configuration.
+    target_compile_definitions(speaking-sim PRIVATE
+        SIM_HAVE_PIPER=1
+        SIM_PIPER_EXECUTABLE="${SIM_PIPER_EXECUTABLE}")
 endif()
 
 # Asio warns and guesses a Windows 7 target if this is unset. Windows 10 = 0x0A00.
 if(WIN32)
     target_compile_definitions(speaking-sim PRIVATE _WIN32_WINNT=0x0A00)
+endif()
+
+# whisper.cpp emits whisper.dll and the ggml DLLs into its own bin/ directory.
+# Windows has no rpath and only searches the directory of the executable, so
+# without this the server fails to start the moment src/stt/whisper_stt.cpp
+# actually calls into whisper. It starts today only because the stub never
+# references a whisper symbol, so the linker drops the unused import.
+if(WIN32 AND SIM_NATIVE_LIBS AND CMAKE_VERSION VERSION_GREATER_EQUAL 3.21)
+    add_custom_command(TARGET speaking-sim POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "$<TARGET_RUNTIME_DLLS:speaking-sim>"
+                "$<TARGET_FILE_DIR:speaking-sim>"
+        COMMAND_EXPAND_LISTS
+        VERBATIM
+    )
 endif()
 
 # web/index.html and prompts/examiner_system.txt are opened by relative path, so

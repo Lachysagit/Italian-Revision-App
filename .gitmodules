@@ -1,0 +1,6 @@
+[submodule "speaking-sim/third_party/whisper.cpp"]
+	path = speaking-sim/third_party/whisper.cpp
+	url = https://github.com/ggml-org/whisper.cpp
+[submodule "speaking-sim/third_party/piper"]
+	path = speaking-sim/third_party/piper
+	url = https://github.com/rhasspy/piper
