@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -15,6 +16,8 @@ public:
     void record_answer(std::string answer);
     void record_question(std::string question);
 
+    const std::vector<Turn>& get_history() const;
+
     void append_audio(const std::vector<std::int16_t>& chunk);
     std::vector<std::int16_t> take_audio();
 
@@ -22,6 +25,8 @@ private:
     std::string system_prompt_;
     std::string last_question_;
     std::string last_answer_;
+
+    std::vector<Turn> history_;
 
     std::vector<std::int16_t> audio_buffer_;
 

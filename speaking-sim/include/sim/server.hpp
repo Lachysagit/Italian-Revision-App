@@ -1,6 +1,11 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
+#include <mutex>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 #include "crow.h"
 
@@ -39,6 +44,9 @@ private:
     void handle_control(crow::websocket::connection& conn,
                         const std::shared_ptr<Session>& session,
                         const std::string& data);
+    void enqueue_pipeline_job(crow::websocket::connection* conn_ptr,
+                              const std::shared_ptr<Session>& session,
+                              std::vector<std::int16_t> utterance_audio);
     void send_examiner_result(crow::websocket::connection* conn_ptr,
                               const std::string& reply,
                               const std::vector<std::int16_t>& speech);

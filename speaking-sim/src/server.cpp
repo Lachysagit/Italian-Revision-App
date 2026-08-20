@@ -1,9 +1,13 @@
 #include "sim/server.hpp"
 
+#include <cstdint>
+#include <fstream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "sim/protocol.hpp"
 #include "sim/session.hpp"

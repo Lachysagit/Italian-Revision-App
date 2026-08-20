@@ -1,0 +1,49 @@
+# Build output
+build/
+build-*/
+cmake-build-*/
+out/
+_deps/
+
+# CMake artefacts, in case a configure ever runs outside a build directory
+CMakeCache.txt
+CMakeFiles/
+CMakeUserPresets.json
+cmake_install.cmake
+install_manifest.txt
+CTestTestfile.cmake
+CPackConfig.cmake
+CPackSourceConfig.cmake
+compile_commands.json
+
+# Compiled objects and libraries
+*.o
+*.obj
+*.a
+*.lib
+*.exp
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.pdb
+*.ilk
+
+# Local secrets. .env.example is the tracked template.
+.env
+!.env.example
+
+# Model weights are large and fetched separately. Keep the directory marker.
+models/*
+!models/.gitkeep
+
+# Editor and tooling
+.vscode/
+.idea/
+.cache/
+*.swp
+.DS_Store
+
+# Local notes, not tracked
+README.md

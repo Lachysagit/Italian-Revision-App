@@ -45,4 +45,41 @@ void WorkerPool::worker_loop() {
 
         currentjob();
     }
-}}
+}
+
+void WorkerPool::enqueue(Job job) {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (stop_) {
+            return;
+        //refuse new work once shutdown has started, otherwise the job would
+        //sit in the queue forever
+        }
+        jobs_.push(std::move(job));
+    } //lock releases before the notify so the woken thread is not blocked on it
+
+    conditionalv_.notify_one();
+    //wake exactly one sleeping worker - only one job was added
+}
+
+WorkerPool::~WorkerPool() {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        stop_ = true;
+        //set under the lock so no worker can miss it between its predicate
+        //check and going to sleep
+    }
+
+    conditionalv_.notify_all();
+    //wake every worker so they re-check the predicate and drain the queue
+
+    for (std::thread& thread : threads_) {
+        if (thread.joinable()) {
+            thread.join();
+        }
+        //a std::thread that is still joinable when destroyed calls
+        //std::terminate, so every thread must be joined here
+    }
+}
+
+}  // namespace sim
