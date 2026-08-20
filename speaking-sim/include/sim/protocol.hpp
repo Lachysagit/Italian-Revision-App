@@ -18,6 +18,9 @@ enum class MessageType {
 struct Message {
     MessageType type;
     std::string payload;
+    int sample_rate = 0;
+    //sample rate of the binary audio frame that follows this message.
+    //only written to the JSON when non-zero, so control messages are unchanged
 };
 
 crow::json::wvalue to_json(const Message& message);

@@ -14,4 +14,10 @@ std::vector<std::int16_t> PiperTTS::synthesize(const std::string& text) {
     //empty audio - nothing to play back
 }
 
+int PiperTTS::sample_rate() const {
+    return 22050;
+    //piper's own default. Once the model is loaded this should come from the
+    //voice's config rather than being hard coded here
+}
+
 }  // namespace sim

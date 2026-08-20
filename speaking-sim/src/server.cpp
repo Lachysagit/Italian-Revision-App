@@ -1,6 +1,7 @@
 #include "sim/server.hpp"
 
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <memory>
 #include <sstream>
@@ -36,6 +37,13 @@ void Server::run()
     ([this] {
         return serve_index();
     });
+
+    CROW_ROUTE(app_, "/client.js") //HTTP ROUTE -----------------------------------
+    ([this] {
+        return serve_client_script();
+    });
+    //index.html pulls this in with <script src="client.js">. Without a route
+    //for it the page renders and the browser client never runs at all
 
     CROW_WEBSOCKET_ROUTE(app_, "/ws") //WEBSOCKET ROUTE ----------------------------------
         .onopen([this](crow::websocket::connection& conn) 
@@ -119,6 +127,25 @@ crow::response Server::serve_index()
     return response;
 }
 
+crow::response Server::serve_client_script() 
+
+    {
+    std::ifstream file("web/client.js");
+    if (!file) {
+        return crow::response(404, "client.js not found");
+    }
+    //open the browser client script
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    //stream the entire script into a string
+    crow::response response(buffer.str());
+    //build http response
+    response.set_header("Content-Type", "application/javascript");
+    //set header so the browser executes it rather than displaying it
+    return response;
+}
+
 std::string Server::load_system_prompt() 
     
     {
@@ -157,21 +184,27 @@ void Server::handle_audio(const std::shared_ptr<Session>& session,
                           
     { 
     //passed in session and std::string of PCM bytes
-    const char* bytes = data.data(); 
-    //data.data() returns a const char* to byte 0 of the audio data
-    const auto* samples = reinterpret_cast<const std::int16_t*>(bytes);
-    //reinterpret byte 0 as const 16 bit integer
-    //therefore the data is read 2 at a time as 16-bit integers.
+    std::string bytes = session->take_partial_byte();
+    bytes += data;
+    //a websocket frame is free to split a 16-bit sample across two frames.
+    //the odd byte left over last time is put back on the front here, otherwise
+    //it is dropped and every following sample is shifted by one byte
 
-    const std::size_t count = data.size() / sizeof(std::int16_t);
+    const std::size_t count = bytes.size() / sizeof(std::int16_t);
     //count is the amount of samples in the audio data
     //number of samples = total bytes / bytes per sample OR
     //number of samples = audio data (bytes) / size of 16bit int (2bytes)
 
-    std::vector<std::int16_t> pcm(samples, samples + count);
-    //vector takes a range: start and 1 past the end
-    //samples points to the start of data while count is number of samples
-    //therefore samples [0] + number of samples is beyond 
+    std::vector<std::int16_t> pcm(count);
+    std::memcpy(pcm.data(), bytes.data(), count * sizeof(std::int16_t));
+    //memcpy rather than reinterpret_cast: bytes.data() is a char* with no
+    //guarantee of 2-byte alignment, and reading it as std::int16_t* is
+    //undefined behaviour on targets that care
+
+    if (bytes.size() % sizeof(std::int16_t) != 0) {
+        session->stash_partial_byte(bytes.substr(count * sizeof(std::int16_t)));
+        //hold the trailing half sample back for the next frame
+    }
 
     session->append_audio(pcm);
     //pcm now has its own heap allocated memory which is a vector of 16 bit int
@@ -193,6 +226,14 @@ void Server::handle_control(crow::websocket::connection& conn,
     const Message message = from_json(parsed); //runs function in protocol.cpp
     //convert the readable JSON into a Message object
 
+    if (message.type == MessageType::Start) {
+        enqueue_pipeline_job(&conn, session, {}, false);
+        //the opening turn: no audio has been spoken yet, so there is nothing to
+        //transcribe. The examiner runs on the system prompt alone and asks the
+        //first question, instead of the student having to talk into silence
+        return;
+    }
+
     if (message.type != MessageType::Stop) {
         return;
     } // only for handing stop
@@ -205,25 +246,30 @@ void Server::handle_control(crow::websocket::connection& conn,
     //store a local variable reference to the connection
     //Because this variable is then used on a Worker Thread after handle_contorl returns
 
-    enqueue_pipeline_job(conn_ptr, session, std::move(utterance_audio));
+    enqueue_pipeline_job(conn_ptr, session, std::move(utterance_audio), true);
     //hand the audio and connection to the pipeline job builder
 }
 
 void Server::enqueue_pipeline_job(crow::websocket::connection* conn_ptr,
                                   const std::shared_ptr<Session>& session,
-                                  std::vector<std::int16_t> utterance_audio) 
+                                  std::vector<std::int16_t> utterance_audio,
+                                  bool transcribe_first) 
                                   {
-    pool_.enqueue([this, session, conn_ptr,
+    pool_.enqueue([this, session, conn_ptr, transcribe_first,
         job_audio = std::move(utterance_audio)]
 
     //this captures the server Object to access member functions
     //session paramater is shared ptr to Session object to utilise its functions
     //create a new variable called audio which has the utterance_audio moved into it
     //therefore the audio is moved not duplicated which is expensive
+    //transcribe_first is false for the opening turn, where the student has not
+    //spoken yet and there is no audio to run through STT
 
     {
-        const std::string transcript = stt_->transcribe(job_audio);
-        session->record_answer(transcript);
+        if (transcribe_first) {
+            const std::string transcript = stt_->transcribe(job_audio);
+            session->record_answer(transcript);
+        }
 
         const std::string reply = examiner_->respond(session->get_history());
         session->record_question(reply);
@@ -242,6 +288,9 @@ void Server::send_examiner_result(crow::websocket::connection* conn_ptr,
     Message message; //create Message Object
     message.type = MessageType::ExaminerText; //Set Message.type to Examiner Text
     message.payload = reply; //set payload to examiners reply
+    message.sample_rate = tts_->sample_rate();
+    //tell the browser what rate the PCM frame that follows was produced at,
+    //otherwise it plays it back at the AudioContext rate and the pitch shifts
     const std::string json = to_json(message).dump();
     //build the examiner text as a CROW::JSON object
 

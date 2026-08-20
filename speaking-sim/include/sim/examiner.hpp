@@ -6,6 +6,7 @@
 namespace sim {
 
 enum class Role {
+    System,
     Examiner,
     Student,
 };
