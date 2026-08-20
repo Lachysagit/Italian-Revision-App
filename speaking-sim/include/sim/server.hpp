@@ -39,6 +39,9 @@ private:
     void handle_control(crow::websocket::connection& conn,
                         const std::shared_ptr<Session>& session,
                         const std::string& data);
+    void send_examiner_result(crow::websocket::connection* conn_ptr,
+                              const std::string& reply,
+                              const std::vector<std::int16_t>& speech);
 
     std::mutex sessions_mutex_;
     std::unordered_map<crow::websocket::connection*, std::shared_ptr<Session>> sessions_;

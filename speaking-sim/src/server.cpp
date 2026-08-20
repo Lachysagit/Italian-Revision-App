@@ -175,8 +175,8 @@ void Server::handle_audio(const std::shared_ptr<Session>& session,
 
 void Server::handle_control(crow::websocket::connection& conn,
                             const std::shared_ptr<Session>& session,
-                            const std::string& data) 
-            
+                            const std::string& data)
+
     {
     const crow::json::rvalue parsed = crow::json::load(data);
     //parse the text status data into a CROS::JSON rvalue
@@ -193,21 +193,30 @@ void Server::handle_control(crow::websocket::connection& conn,
         return;
     } // only for handing stop
 
-    std::vector<std::int16_t> utterenace_audio = session->take_audio();
+    std::vector<std::int16_t> utterance_audio = session->take_audio();
     //take_audio() returns the completed audio buffer, clearing the session buffer
     //taking the audio on the socket thread to seperate it from any new incoming audio\
 
     crow::websocket::connection* conn_ptr = &conn; //CRUCIAL
-    //store a local variable reference to the connection 
+    //store a local variable reference to the connection
     //Because this variable is then used on a Worker Thread after handle_contorl returns
 
+    enqueue_pipeline_job(conn_ptr, session, std::move(utterance_audio));
+    //hand the audio and connection to the pipeline job builder
+}
 
-    pool_.enqueue([this, session, job_audio = std::move(utterance_audio), conn_ptr] 
+void Server::enqueue_pipeline_job(crow::websocket::connection* conn_ptr,
+                                  const std::shared_ptr<Session>& session,
+                                  std::vector<std::int16_t> utterance_audio) 
+                                  {
+    pool_.enqueue([this, session, conn_ptr,
+        job_audio = std::move(utterance_audio)]
+
     //this captures the server Object to access member functions
     //session paramater is shared ptr to Session object to utilise its functions
     //create a new variable called audio which has the utterance_audio moved into it
     //therefore the audio is moved not duplicated which is expensive
-    
+
     {
         const std::string transcript = stt_->transcribe(job_audio);
         session->record_answer(transcript);
@@ -223,4 +232,31 @@ void Server::handle_control(crow::websocket::connection& conn,
     );
 }
 
-}  // namespace sim
+void Server::send_examiner_result(crow::websocket::connection* conn_ptr,
+                                  const std::string& reply,
+                                  const std::vector<std::int16_t>& speech) {
+    Message message; //create Message Object
+    message.type = MessageType::ExaminerText; //Set Message.type to Examiner Text
+    message.payload = reply; //set payload to examiners reply
+    const std::string json = to_json(message).dump();
+    //build the examiner text as a CROW::JSON object
+
+    conn_ptr->send_text(json);
+    //send the reply text down the socket as a text frame
+    //Crow handles the thread-safety of the send internally
+
+    const char* bytes = reinterpret_cast<const char*>(speech.data());
+    //speech.data() returns a const std::int16_t* to sample 0 of the audio
+    //reinterpret that pointer as a const char* so the samples are viewed as raw bytes
+
+    const std::size_t byte_count = speech.size() * sizeof(std::int16_t);
+    //byte_count is the total number of bytes in the audio
+    //number of bytes = number of samples * bytes per sample OR
+
+    conn_ptr->send_binary(std::string(bytes, byte_count));
+    //construct a std::string from the byte range (start pointer + length)
+    //the string here is just a byte container, not readable text
+    //send those raw PCM bytes down the socket as a binary frame
+}
+} // namespace sim
+
