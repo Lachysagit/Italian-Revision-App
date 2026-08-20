@@ -9,6 +9,7 @@
 #include "sim/stt.hpp"
 #include "sim/tts.hpp"
 #include "sim/worker.hpp"
+#include "sim/session.hpp"
 
 namespace sim {
 
@@ -32,10 +33,16 @@ private:
 
     WorkerPool pool_;
     
+    std::shared_ptr<Session> find_session(crow::websocket::connection* conn);
+
+    void handle_audio(const std::shared_ptr<Session>& session, const std::string& data);
+    void handle_control(crow::websocket::connection& conn,
+                        const std::shared_ptr<Session>& session,
+                        const std::string& data);
+
     std::mutex sessions_mutex_;
     std::unordered_map<crow::websocket::connection*, std::shared_ptr<Session>> sessions_;
 
-    std::shared_ptr<Session> find_session(crow::websocket::connection* conn);
 
     std::unique_ptr<InterfaceSTT> stt_;
     std::unique_ptr<InterfaceExaminer> examiner_;

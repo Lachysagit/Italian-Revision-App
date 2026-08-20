@@ -22,7 +22,7 @@ void WorkerPool::worker_loop() {
                 return stop_ || !jobs_.empty();
             //conditionalv is of type std::conditional which has the .wait method
             //.wait takes the lock object and the lambda which captures the WorkerPool Object
-           
+        
             //predicate returns FALSE if no work and no shutdown, 
             //.wait calls mutex unlock and its released and thread sleeps
 
@@ -41,7 +41,7 @@ void WorkerPool::worker_loop() {
             jobs_.pop();    
             //pop the now unspecified first element of jobs away
 
-        } //lock releases before job operation
+        } //lock releases before job operation as lock variable goes out of scope
 
         currentjob();
     }

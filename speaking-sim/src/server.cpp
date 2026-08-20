@@ -43,6 +43,7 @@ void Server::run() {
 
             {
                 std::lock_guard<std::mutex> lock(sessions_mutex_);
+                //local variable lock of type lock_guard which calls lock on session_mutex
                 sessions_[&conn] = session;
                 //for this conn key in the map assign its value the sharedptr session
 
@@ -59,21 +60,26 @@ void Server::run() {
             //if nullptr was returned it evaluates to false which returns
             }
 
-            if (is_binary) {
+            if (is_binary) { //boolean check
                 handle_audio(session, data);
             //binary check
-            } else {
+            } else { //handles false of boolean if binary
                 handle_control(conn, session, data);
             }
             //text = JSON control message
         })
         .onclose([this](crow::websocket::connection& conn,
                         const std::string& reason,
-                        uint16_t code) {
+                        uint16_t code) 
+         //params are connection, reason for close and
+        //code is a numeric WebSocket close code
+        
+                        {
             std::lock_guard<std::mutex> lock(sessions_mutex_);
+            //lock the mutex
             sessions_.erase(&conn);
             //erase the conn key in the sessions map
-        });
+        });//mutex is unlocked as the lock variable goes out of scope
 
     app_.port(config_.port).multithreaded().run();
 }
@@ -122,5 +128,28 @@ std::shared_ptr<Session> Server::find_session(crow::websocket::connection* conn)
     return it->second;
     //second is the value not the key in the map
     //return the shared_ptr value of session for this conn
+
+void Server::handle_audio(const std::shared_ptr<Session>& session,
+                          const std::string& data) { 
+    //passed in session and std::string of PCM bytes
+    const char* bytes = data.data(); 
+    //data.data() returns a const char* to byte 0 of the audio data
+    const auto* samples = reinterpret_cast<const std::int16_t*>(bytes);
+    //reinterpret byte 0 as const 16 bit integer
+    //therefore the data is read 2 at a time as 16-bit integers.
+
+    const std::size_t count = data.size() / sizeof(std::int16_t);
+    //count is the amount of samples in the audio data
+    //number of samples = total bytes / bytes per sample OR
+    //number of samples = audio data (bytes) / size of 16bit int (2bytes)
+
+    std::vector<std::int16_t> pcm(samples, samples + count);
+    //vector takes a range: start and 1 past the end
+    //samples points to the start of data while count is number of samples
+    //therefore samples [0] + number of samples is beyond 
+
+    session->append_audio(pcm);
+    //pcm now has its own heap allocated memory which is a vector of 16 bit int
+}
 
 }  // namespace sim
