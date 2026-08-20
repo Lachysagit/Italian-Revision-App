@@ -45,4 +45,4 @@ void WorkerPool::worker_loop() {
 
         currentjob();
     }
-}
+}}

@@ -40,6 +40,18 @@ FetchContent_MakeAvailable(Crow)
 # would not notice new files without a manual reconfigure.
 add_library(sim
     src/config.cpp
+    src/protocol.cpp
+    src/session.cpp
+    src/stt/whisper_stt.cpp
+    src/tts/piper_tts.cpp
+    src/examiner/gemini_examiner.cpp
+    src/examiner/hailo_examiner.cpp
+    # Still being written, so not compiled yet:
+    # src/worker.cpp - namespace sim is never closed; ~WorkerPool and enqueue
+    #                  are declared in worker.hpp but not defined.
+    # src/server.cpp - enqueue_pipeline_job is defined but not declared in
+    #                  server.hpp; it also calls Session::get_history, which
+    #                  does not exist yet.
 )
 
 target_include_directories(sim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -50,6 +62,6 @@ if(WIN32)
     target_compile_definitions(sim PUBLIC _WIN32_WINNT=0x0A00)
 endif()
 
-# No entry point exists yet. Once src/main.cpp is written:
+# main.cpp compiles, but the executable cannot link until src/server.cpp builds.
 # add_executable(speaking_sim src/main.cpp)
 # target_link_libraries(speaking_sim PRIVATE sim)
