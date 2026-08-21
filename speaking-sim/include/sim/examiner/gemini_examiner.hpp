@@ -7,12 +7,11 @@
 
 namespace sim {
 
-class GeminiExaminer : public InterfaceExaminer { //inheritance
+class GeminiExaminer : public InterfaceExaminer {
 public:
     explicit GeminiExaminer(std::string api_key);
 
     std::string respond(const std::vector<Turn>& history) override;
-    //override pure virtual respond method of base class
 
 private:
     std::string api_key_;
