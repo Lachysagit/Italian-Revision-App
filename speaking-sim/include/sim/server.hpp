@@ -18,6 +18,23 @@
 
 namespace sim {
 
+//Liveness handle for one websocket connection, shared between Crow's socket
+//thread and the worker that sends the turn back.
+//Crow v1.3.3 gives handlers a crow::websocket::connection&, a pure-virtual base
+//with no enable_shared_from_this and no way to reach the shared_ptr Crow owns
+//internally, so a send cannot hold the connection alive by refcount. Crow's own
+//anchor_ weak_ptr does not help either: it guards the work asio::post() defers,
+//but send_text() has to dereference the connection to read anchor_ in the first
+//place, so a dead pointer is already undefined behaviour at the call site.
+//Liveness therefore has to be tracked here. m is held for the whole send; conn
+//is nulled by onclose, which must take m to do it and so cannot return while a
+//send is in flight. ~Connection cannot start until onclose returns, so the send
+//always completes before the connection is destroyed.
+struct ConnHandle {
+    std::mutex m;
+    crow::websocket::connection* conn = nullptr;
+};
+
 class Server {
 public:
     Server(Config config,
@@ -38,12 +55,16 @@ private:
     std::string system_prompt_;
 
     std::shared_ptr<Session> find_session(crow::websocket::connection* conn);
+    std::shared_ptr<ConnHandle> find_conn_handle(crow::websocket::connection* conn);
+    //resolved on the socket thread when a job is enqueued, then carried by the
+    //job itself. The send path never looks a handle up, so it never needs the
+    //map mutex
 
     void handle_audio(const std::shared_ptr<Session>& session, const std::string& data);
     void handle_control(crow::websocket::connection& conn,
                         const std::shared_ptr<Session>& session,
                         const std::string& data);
-    void enqueue_pipeline_job(crow::websocket::connection* conn_ptr,
+    void enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                               const std::shared_ptr<Session>& session,
                               std::vector<std::int16_t> utterance_audio,
                               bool transcribe_first,
@@ -51,13 +72,20 @@ private:
     void send_busy(crow::websocket::connection& conn);
     //tells the client its turn was refused because a job is already in flight
 
-    void send_examiner_result(crow::websocket::connection* conn_ptr,
-                              const std::shared_ptr<Session>& session,
+    void send_examiner_result(const std::shared_ptr<ConnHandle>& handle,
                               const std::string& reply,
                               const std::vector<std::int16_t>& speech);
 
+    //guards the two maps below and nothing else. It is a map mutex again: no
+    //send is performed while it is held, so a turn on one connection no longer
+    //serialises the socket threads of every other connection behind it
     std::mutex sessions_mutex_;
     std::unordered_map<crow::websocket::connection*, std::shared_ptr<Session>> sessions_;
+    std::unordered_map<crow::websocket::connection*, std::shared_ptr<ConnHandle>> conn_handles_;
+    //kept parallel to sessions_ rather than folded into Session, which owns
+    //transcript and audio only and no connection state. Both maps are written
+    //in onopen and onclose alone, in each case inside one lock scope, so they
+    //cannot drift apart
 
 
     std::unique_ptr<InterfaceSTT> stt_;

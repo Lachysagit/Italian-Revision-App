@@ -59,11 +59,19 @@ void Server::run()
             //sessions keys are <crow::websocket::connection*, 
             //sessions values are std::shared_ptr<Session>>
 
+            auto handle = std::make_shared<ConnHandle>();
+            handle->conn = &conn;
+            //one handle per connection instance. A later connection landing on
+            //the same address gets its own handle, so a worker still holding
+            //the old one sees a nulled conn rather than the new connection
+
             {
                 std::lock_guard<std::mutex> lock(sessions_mutex_);
                 //local variable lock of type lock_guard which calls lock on session_mutex
                 sessions_[&conn] = session;
                 //for this conn key in the map assign its value the sharedptr session
+                conn_handles_[&conn] = std::move(handle);
+                //both maps written under the one scope so they cannot drift
 
             }
             } 
@@ -100,11 +108,39 @@ void Server::run()
         //code is a numeric WebSocket close code
         
         {
-            std::lock_guard<std::mutex> lock(sessions_mutex_);
-            //lock the mutex
-            sessions_.erase(&conn);
-            //erase the conn key in the sessions map
-        } //mutex is unlocked as the lock variable goes out of scope
+            std::shared_ptr<ConnHandle> handle;
+
+            {
+                std::lock_guard<std::mutex> lock(sessions_mutex_);
+                //lock the mutex
+                auto it = conn_handles_.find(&conn);
+                if (it != conn_handles_.end()) {
+                    handle = std::move(it->second);
+                    conn_handles_.erase(it);
+                }
+                //lifted out before the erase so the handle survives the map entry
+                sessions_.erase(&conn);
+                //erase the conn key in the sessions map
+            } //mutex is unlocked as the lock variable goes out of scope
+
+            //the two scopes are sequential and never nested, deliberately. The
+            //send path takes handle->m and never sessions_mutex_; this handler
+            //takes sessions_mutex_ and then, only after releasing it, handle->m.
+            //No path holds either while reaching for the other, so there is no
+            //AB/BA cycle. Nesting these scopes is exactly the deadlock
+
+            if (handle) {
+                std::lock_guard<std::mutex> lock(handle->m);
+                handle->conn = nullptr;
+                //blocks here until any send in flight releases m, which is what
+                //keeps the connection alive across that send. Crow calls this
+                //handler from check_destroy() and only drops the last reference
+                //in remove_websocket() afterwards, so ~Connection cannot begin
+                //until this returns, and this cannot return until the send is
+                //done. That is the same happens-before the old server-wide lock
+                //produced by stalling onclose, now scoped to one connection
+            }
+        }
     ); // end of .onclose
 
     app_.port(config_.port).multithreaded().run();
@@ -180,6 +216,22 @@ std::shared_ptr<Session> Server::find_session(crow::websocket::connection* conn)
     //second is the value not the key in the map
     //return the shared_ptr value of session for this conn
     }
+
+std::shared_ptr<ConnHandle> Server::find_conn_handle(crow::websocket::connection* conn)
+
+    {
+    std::lock_guard<std::mutex> lock(sessions_mutex_);
+    //a map lookup and nothing more, same as find_session
+    auto it = conn_handles_.find(conn);
+    if (it == conn_handles_.end()) {
+        return nullptr;
+        //onclose already ran for this connection, so there is nothing to send on
+    }
+    return it->second;
+    //the caller keeps this shared_ptr alive for as long as the job lives, so the
+    //handle outlives the connection even if it is destroyed mid-turn
+    }
+
     
 void Server::handle_audio(const std::shared_ptr<Session>& session,
                           const std::string& data) 
@@ -198,10 +250,15 @@ void Server::handle_audio(const std::shared_ptr<Session>& session,
     //number of samples = audio data (bytes) / size of 16bit int (2bytes)
 
     std::vector<std::int16_t> pcm(count);
-    std::memcpy(pcm.data(), bytes.data(), count * sizeof(std::int16_t));
-    //memcpy rather than reinterpret_cast: bytes.data() is a char* with no
-    //guarantee of 2-byte alignment, and reading it as std::int16_t* is
-    //undefined behaviour on targets that care
+    if (count > 0) {
+        std::memcpy(pcm.data(), bytes.data(), count * sizeof(std::int16_t));
+        //memcpy rather than reinterpret_cast: bytes.data() is a char* with no
+        //guarantee of 2-byte alignment, and reading it as std::int16_t* is
+        //undefined behaviour on targets that care
+    }
+    //a frame carrying a single odd byte leaves count at 0, and pcm.data() is
+    //allowed to be null for an empty vector. memcpy with a null pointer is
+    //undefined even for a length of 0, so the copy is skipped entirely
 
     if (bytes.size() % sizeof(std::int16_t) != 0) {
         session->stash_partial_byte(bytes.substr(count * sizeof(std::int16_t)));
@@ -238,6 +295,11 @@ void Server::handle_control(crow::websocket::connection& conn,
     //convert the readable JSON into a Message object
 
     if (message.type == MessageType::Start) {
+        std::shared_ptr<ConnHandle> handle = find_conn_handle(&conn);
+        if (!handle) {
+            return;
+        } //the connection is already closing, so there is nowhere to send a reply
+
         if (!session->try_begin_job()) {
             send_busy(conn);
             return;
@@ -247,7 +309,7 @@ void Server::handle_control(crow::websocket::connection& conn,
         //not an owner, just an RAII handle whose deleter releases the claim
         //the deleter holds session, so the Session outlives the end_job() call
 
-        enqueue_pipeline_job(&conn, session, {}, false, std::move(claim));
+        enqueue_pipeline_job(std::move(handle), session, {}, false, std::move(claim));
         //the opening turn: no audio has been spoken yet, so there is nothing to
         //transcribe. The examiner runs on the system prompt alone and asks the
         //first question, instead of the student having to talk into silence
@@ -257,6 +319,12 @@ void Server::handle_control(crow::websocket::connection& conn,
     if (message.type != MessageType::Stop) {
         return;
     } // only for handing stop
+
+    std::shared_ptr<ConnHandle> handle = find_conn_handle(&conn);
+    if (!handle) {
+        return;
+    } //resolved before try_begin_job(), so a connection that is already closing
+    //does not take a claim it can never release a reply through
 
     if (!session->try_begin_job()) {
         send_busy(conn);
@@ -270,15 +338,13 @@ void Server::handle_control(crow::websocket::connection& conn,
     //take_audio() returns the completed audio buffer, clearing the session buffer
     //taking the audio on the socket thread to seperate it from any new incoming audio\
 
-    crow::websocket::connection* conn_ptr = &conn; //CRUCIAL
-    //store a local variable reference to the connection
-    //Because this variable is then used on a Worker Thread after handle_contorl returns
-
-    enqueue_pipeline_job(conn_ptr, session, std::move(utterance_audio), true, std::move(claim));
-    //hand the audio and connection to the pipeline job builder
+    enqueue_pipeline_job(std::move(handle), session, std::move(utterance_audio), true, std::move(claim));
+    //hand the audio and the connection handle to the pipeline job builder. The
+    //handle rather than &conn: the job outlives handle_control, and by then the
+    //raw pointer may name a destroyed connection
 }
 
-void Server::enqueue_pipeline_job(crow::websocket::connection* conn_ptr,
+void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                                   const std::shared_ptr<Session>& session,
                                   std::vector<std::int16_t> utterance_audio,
                                   bool transcribe_first,
@@ -293,13 +359,17 @@ void Server::enqueue_pipeline_job(crow::websocket::connection* conn_ptr,
         //drops the previous turn's answer, this job appends a fresher one below
     }
 
-    pool_.enqueue([this, session, conn_ptr, transcribe_first,
+    pool_.enqueue([this, session, transcribe_first,
+        handle = std::move(handle),
         job_audio = std::move(utterance_audio),
         job_input = std::move(examiner_input),
         claim = std::move(claim)]() mutable
 
     //this captures the server Object to access member functions
     //session paramater is shared ptr to Session object to utilise its functions
+    //handle is captured by value, so the job owns a reference to it. The
+    //ConnHandle therefore outlives the connection itself, and the send below
+    //has something valid to check even if the connection is long gone
     //create a new variable called job_audio which has the utterance_audio moved into it
     //therefore the audio is moved not duplicated which is expensive
     //job_input owns its Turns, so respond() borrows nothing from the Session
@@ -368,7 +438,7 @@ void Server::enqueue_pipeline_job(crow::websocket::connection* conn_ptr,
             //same recovery, and reply is preserved for the same reason as above
         }
 
-        send_examiner_result(conn_ptr, session, reply, speech);
+        send_examiner_result(handle, reply, speech);
         //hand the result back to Crow's thread for sending. Reached on both
         //paths, so the client is always re-armed while the session is alive
     }
@@ -382,8 +452,7 @@ void Server::send_busy(crow::websocket::connection& conn) {
     conn.send_text(to_json(message).dump());
 }
 
-void Server::send_examiner_result(crow::websocket::connection* conn_ptr,
-                                  const std::shared_ptr<Session>& session,
+void Server::send_examiner_result(const std::shared_ptr<ConnHandle>& handle,
                                   const std::string& reply,
                                   const std::vector<std::int16_t>& speech) {
     Message message; //create Message Object
@@ -401,16 +470,20 @@ void Server::send_examiner_result(crow::websocket::connection* conn_ptr,
     const std::string json = to_json(message).dump();
     //build the examiner text as a CROW::JSON object
 
-    //before sending message to browser check connection 
-    //to avoid derefencing a potentially dangling pointer
-    std::lock_guard<std::mutex> lock(sessions_mutex_);
-    
-    //sessions is a map of key (conn) and value (shared ptr sessions)
-    auto it = sessions_.find(conn_ptr); //iterator returning handle where key = connection
-    if (it == sessions_.end() || it->second != session) {
-    //end() is past the last element so if find returns nothing it = end
-    //checks if the session value passed into the func matches the session value in sessions_ map
+    //before sending message to browser check the connection is still alive,
+    //to avoid dereferencing a potentially dangling pointer
+    std::lock_guard<std::mutex> lock(handle->m);
+    //the connection's own mutex, not sessions_mutex_. Held across both writes
+    //below for the same reason the server-wide lock used to be: it is what stops
+    //onclose from nulling conn, returning, and letting ~Connection run while a
+    //write is in flight. What it no longer does is stall every other
+    //connection's socket thread. Sends now serialise per connection only
+
+    crow::websocket::connection* conn_ptr = handle->conn;
+    if (conn_ptr == nullptr) {
         return;
+        //onclose already ran, the connection is gone and the turn is dropped.
+        //Nothing to re-arm: the client that owned it is no longer listening
     }
 
     conn_ptr->send_text(json);

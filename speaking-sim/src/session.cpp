@@ -59,17 +59,15 @@ std::vector<Turn> Session::build_examiner_input() const {
     //by value. NRVO elides the copy, and even if it did not this would move
 }
 
-bool Session::append_audio(const std::vector<std::int16_t>& chunk) {
+void Session::append_audio(const std::vector<std::int16_t>& chunk) {
     if (audio_buffer_.size() >= kMaxBufferedSamples) {
-        return false;
+        return;
     }
 
     const std::size_t room = kMaxBufferedSamples - audio_buffer_.size();
     const std::size_t take = std::min(room, chunk.size());
     audio_buffer_.insert(audio_buffer_.end(), chunk.begin(), chunk.begin() + static_cast<std::ptrdiff_t>(take));
     //keeping earliest 40 seconds of buffer
-
-    return take == chunk.size();
 }
 
 bool Session::audio_full() const {

@@ -29,8 +29,9 @@ public:
     static constexpr std::size_t kCaptureSampleRate = 16000;
     static constexpr std::size_t kMaxBufferedSamples = 40 * kCaptureSampleRate;
     //40 seconds of capture. a client that streams audio and never sends Stop
-    bool append_audio(const std::vector<std::int16_t>& chunk);
-    //returns false if the cap was hit and some or all of the chunk was dropped
+    void append_audio(const std::vector<std::int16_t>& chunk);
+    //silently drops whatever does not fit under the cap. callers detect the
+    //cap through the audio_full() transition rather than a per-call result
     bool audio_full() const;
     std::vector<std::int16_t> take_audio();
 
