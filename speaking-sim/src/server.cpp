@@ -276,13 +276,14 @@ void Server::enqueue_pipeline_job(crow::websocket::connection* conn_ptr,
 
         const std::vector<std::int16_t> speech = tts_->synthesize(reply);
 
-        send_examiner_result(conn_ptr, reply, speech);
+        send_examiner_result(conn_ptr, session, reply, speech);
         //hand the result back to Crow's thread for sending
     }
     );
 }
 
 void Server::send_examiner_result(crow::websocket::connection* conn_ptr,
+                                  const std::shared_ptr<Session>& session,
                                   const std::string& reply,
                                   const std::vector<std::int16_t>& speech) {
     Message message; //create Message Object
@@ -294,22 +295,37 @@ void Server::send_examiner_result(crow::websocket::connection* conn_ptr,
     const std::string json = to_json(message).dump();
     //build the examiner text as a CROW::JSON object
 
+    //before sending message to browser check connection 
+    //to avoid derefencing a potentially dangling pointer
+    std::lock_guard<std::mutex> lock(sessions_mutex_);
+    
+    //sessions is a map of key (conn) and value (shared ptr sessions)
+    auto it = sessions_.find(conn_ptr); //iterator returning handle where key = connection
+    if (it == sessions_.end() || it->second != session) {
+    //end() is past the last element so if find returns nothing it = end
+    //checks if the session value passed into the func matches the session value in sessions_ map
+        return;
+    }
+
     conn_ptr->send_text(json);
     //send the reply text down the socket as a text frame
     //Crow handles the thread-safety of the send internally
 
-    const char* bytes = reinterpret_cast<const char*>(speech.data());
-    //speech.data() returns a const std::int16_t* to sample 0 of the audio
-    //reinterpret that pointer as a const char* so the samples are viewed as raw bytes
+    if (!speech.empty()) {
+        const char* bytes = reinterpret_cast<const char*>(speech.data());
+        //speech.data() returns a const std::int16_t* to sample 0 of the audio
+        //reinterpret that pointer as a const char* so the samples are viewed as raw bytes
 
-    const std::size_t byte_count = speech.size() * sizeof(std::int16_t);
-    //byte_count is the total number of bytes in the audio
-    //number of bytes = number of samples * bytes per sample OR
+        const std::size_t byte_count = speech.size() * sizeof(std::int16_t);
+        //byte_count is the total number of bytes in the audio
+        //number of bytes = number of samples * bytes per sample
 
-    conn_ptr->send_binary(std::string(bytes, byte_count));
-    //construct a std::string from the byte range (start pointer + length)
-    //the string here is just a byte container, not readable text
-    //send those raw PCM bytes down the socket as a binary frame
+        conn_ptr->send_binary(std::string(bytes, byte_count));
+        //construct a std::string from the byte range (start pointer + length)
+        //the string here is just a byte container, not readable text
+        //send those raw PCM bytes down the socket as a binary frame
+    }
+    //Currently no handling for empty audio buffer
 }
 } // namespace sim
 

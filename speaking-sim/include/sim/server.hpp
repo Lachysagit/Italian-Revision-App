@@ -50,6 +50,7 @@ private:
                               std::vector<std::int16_t> utterance_audio,
                               bool transcribe_first);
     void send_examiner_result(crow::websocket::connection* conn_ptr,
+                              const std::shared_ptr<Session>& session,
                               const std::string& reply,
                               const std::vector<std::int16_t>& speech);
 
