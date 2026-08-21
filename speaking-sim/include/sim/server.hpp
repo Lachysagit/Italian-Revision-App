@@ -87,6 +87,13 @@ private:
     //a frame that could land BETWEEN a worker's examiner text and the PCM frame
     //it describes, and the client arms its mic on a busy status
 
+    void send_error(const std::shared_ptr<ConnHandle>& handle,
+                    const std::string& text);
+    //tells the client a turn failed. MessageType::Error was declared in
+    //protocol.hpp and constructed nowhere, so a failed turn reached the browser
+    //as an examiner_text with an empty payload and nothing else: the mic
+    //re-armed, but the student was never told why the examiner went silent
+
     void send_transcript(const std::shared_ptr<ConnHandle>& handle,
                          const std::string& text);
     //what STT heard, so the student can see their own answer. MessageType

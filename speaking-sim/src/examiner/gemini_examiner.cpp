@@ -93,7 +93,7 @@ std::string GeminiExaminer::respond(const std::vector<Turn>& history) {
 
     crow::json::rvalue parsed = crow::json::load(res->body);
     if (!parsed) {
-        throw std::runtime_error("Gemini returned unparseable JSON");
+        throw std::runtime_error("Gemini returned unreadable JSON");
     }
 
     if (!parsed.has("candidates")) {

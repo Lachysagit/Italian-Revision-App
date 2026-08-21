@@ -428,6 +428,13 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
         } catch (const std::exception& e) {
             std::cerr << "turn failed, sending what we have: " << e.what() << '\n';
             speech.clear();
+            send_error(handle, "something went wrong on that turn");
+            //a fixed student-facing string, not e.what(). The detail is already
+            //on stderr, and what reaches the browser here would otherwise be a
+            //raw internal message - a Gemini error body, a whisper failure, a
+            //piper exit - which is a diagnostic for the operator, not the
+            //student. Sent BEFORE send_examiner_result so the explanation
+            //arrives ahead of the frame that re-arms the mic
             //reply is deliberately NOT cleared. record_question() above commits
             //before synthesize() runs, so a TTS failure has already written the
             //question into the session. Clearing the text here would send the
@@ -459,6 +466,7 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
         } catch (...) {
             std::cerr << "turn failed with non-std exception, sending what we have\n";
             speech.clear();
+            send_error(handle, "something went wrong on that turn");
             //same recovery, and reply is preserved for the same reason as above
         }
 
@@ -494,6 +502,18 @@ void Server::send_busy(const std::shared_ptr<ConnHandle>& handle) {
     //was posting for the same connection, so "busy" could arrive between an
     //examiner text and its PCM. The client arms its mic on "busy", so it would
     //unmute exactly as the examiner started speaking and record the reply
+}
+
+void Server::send_error(const std::shared_ptr<ConnHandle>& handle,
+                        const std::string& text) {
+    Message message;
+    message.type = MessageType::Error;
+    message.payload = text;
+    send_text_on_handle(handle, to_json(message).dump());
+    //carries no sample_rate, so the client's "sample_rate means a binary frame
+    //follows" rule is untouched and this cannot be mistaken for a turn. It
+    //lands in client.js addLog, which writes #log - the diagnostic surface -
+    //rather than addTurn, so a failed turn still paints nothing in #transcript
 }
 
 void Server::send_transcript(const std::shared_ptr<ConnHandle>& handle,
