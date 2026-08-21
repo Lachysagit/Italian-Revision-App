@@ -1,5 +1,7 @@
 #include "sim/worker.hpp"
 
+#include <exception>
+#include <iostream>
 #include <utility>
 
 namespace sim {
@@ -43,7 +45,27 @@ void WorkerPool::worker_loop() {
 
         } //lock releases before job operation as lock variable goes out of scope
 
-        currentjob();
+        try {
+            currentjob();
+        } catch (const std::exception& e) {
+            std::cerr << "worker job threw: " << e.what() << '\n';
+        } catch (...) {
+            std::cerr << "worker job threw non-std exception\n";
+        }
+        //last-resort backstop: an exception escaping the thread's top-level
+        //function calls std::terminate and kills the whole process, so nothing
+        //may leave this frame. The try wraps ONLY the invocation, not the
+        //wait/pop block above - wrapping the whole while body would exit the
+        //loop on a throw and the thread would still die, just one frame later.
+        //catch (...) is total on purpose: terminate fires for any escaping
+        //type, so catching std::exception alone would still let an int or a
+        //third-party type through. That includes std::bad_alloc - an OOM turn
+        //is dropped and the loop continues, which beats aborting a live server.
+        //The job was std::moved out of the queue above, so a throw drops it,
+        //there is no re-dispatch and no throw-loop.
+        //std::cerr not CROW_LOG_ERROR so the pool stays Crow-free and generic.
+        //Cost: each << is a separate write, so two threads failing at once can
+        //interleave a line. Acceptable for a last-resort log.
     }
 }
 

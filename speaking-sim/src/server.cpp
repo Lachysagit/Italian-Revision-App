@@ -2,7 +2,9 @@
 
 #include <cstdint>
 #include <cstring>
+#include <exception>
 #include <fstream>
+#include <iostream>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -237,6 +239,7 @@ void Server::handle_control(crow::websocket::connection& conn,
 
     if (message.type == MessageType::Start) {
         if (!session->try_begin_job()) {
+            send_busy(conn);
             return;
         } //a job is already in flight on this session, so refuse this message
 
@@ -256,8 +259,10 @@ void Server::handle_control(crow::websocket::connection& conn,
     } // only for handing stop
 
     if (!session->try_begin_job()) {
+        send_busy(conn);
         return;
     } //refuse before take_audio(), so a rejected Stop does not discard the buffer
+    //the buffer survives, so the client can re-arm and send the same answer again
 
     std::shared_ptr<Session> claim(session.get(), [session](Session* s) { s->end_job(); });
 
@@ -304,27 +309,77 @@ void Server::enqueue_pipeline_job(crow::websocket::connection* conn_ptr,
     //spoken yet and there is no audio to run through STT
 
     {
-        if (transcribe_first) {
-            std::string transcript = stt_->transcribe(job_audio);
+        std::string reply;
+        std::vector<std::int16_t> speech;
+        //declared out here so the send below still runs after a failure.
+        //speech staying empty is what turns this into a recoverable turn
 
-            job_input.push_back(Turn{Role::Student, transcript});
-            //onto the owned snapshot, STT had not run when it was built
+        try {
+            if (transcribe_first) {
+                std::string transcript = stt_->transcribe(job_audio);
 
-            session->record_answer(std::move(transcript));
-            //write-through so the NEXT turn's snapshot can see this answer
+                job_input.push_back(Turn{Role::Student, transcript});
+                //onto the owned snapshot, STT had not run when it was built
+
+                session->record_answer(std::move(transcript));
+                //write-through so the NEXT turn's snapshot can see this answer
+            }
+
+            reply = examiner_->respond(job_input);
+            //borrows the lambda's own vector, which nothing else can touch
+
+            session->record_question(reply);
+
+            speech = tts_->synthesize(reply);
+        } catch (const std::exception& e) {
+            std::cerr << "turn failed, sending what we have: " << e.what() << '\n';
+            speech.clear();
+            //reply is deliberately NOT cleared. record_question() above commits
+            //before synthesize() runs, so a TTS failure has already written the
+            //question into the session. Clearing the text here would send the
+            //student nothing while the examiner's next snapshot still contains
+            //that question - it would then pair a question the student never
+            //received with an answer to the previous one, and every later turn
+            //inherits the divergence. Sending the text keeps the invariant
+            //"last_question_ is committed if and only if the text was sent":
+            //the student reads the question instead of hearing it.
+            //If respond() was the thrower, reply was never assigned and is
+            //already empty, so nothing is sent and nothing was committed.
+            //speech.clear() is a no-op today (a throwing synthesize() leaves
+            //the target untouched) and is kept only as defence if more stages
+            //are added between here and the send.
+            //the worker_loop backstop would keep the process alive, but it
+            //cannot send anything: no frame would go out, and the client is
+            //waiting post-stop for the control message that tells it to
+            //re-arm. It would never arrive, the mic would stay shut and the
+            //student would be stuck on a live server.
+            //So route the failure into the send path instead of propagating.
+            //Empty speech means send_examiner_result omits sample_rate and
+            //skips send_binary, and "no sample_rate" is already the client's
+            //signal to arm immediately. The turn is lost - the student repeats
+            //the answer - but the session recovers itself.
+            //This catch is also where the Gemini failover will live: retry
+            //examiner_->respond() here, and only fall through to the empty
+            //result if the fallback throws too. The pool backstop stays
+            //underneath as the defence against a bug in that failover path.
+        } catch (...) {
+            std::cerr << "turn failed with non-std exception, sending what we have\n";
+            speech.clear();
+            //same recovery, and reply is preserved for the same reason as above
         }
 
-        const std::string reply = examiner_->respond(job_input);
-        //borrows the lambda's own vector, which nothing else can touch
-
-        session->record_question(reply);
-
-        const std::vector<std::int16_t> speech = tts_->synthesize(reply);
-
         send_examiner_result(conn_ptr, session, reply, speech);
-        //hand the result back to Crow's thread for sending
+        //hand the result back to Crow's thread for sending. Reached on both
+        //paths, so the client is always re-armed while the session is alive
     }
     );
+}
+
+void Server::send_busy(crow::websocket::connection& conn) {
+    Message message;
+    message.type = MessageType::Status;
+    message.payload = "busy";
+    conn.send_text(to_json(message).dump());
 }
 
 void Server::send_examiner_result(crow::websocket::connection* conn_ptr,
@@ -334,9 +389,15 @@ void Server::send_examiner_result(crow::websocket::connection* conn_ptr,
     Message message; //create Message Object
     message.type = MessageType::ExaminerText; //Set Message.type to Examiner Text
     message.payload = reply; //set payload to examiners reply
-    message.sample_rate = tts_->sample_rate();
-    //tell the browser what rate the PCM frame that follows was produced at,
-    //otherwise it plays it back at the AudioContext rate and the pitch shifts
+    if (!speech.empty()) {
+        message.sample_rate = tts_->sample_rate();
+        //tell the browser what rate the PCM frame that follows was produced at,
+        //otherwise it plays it back at the AudioContext rate and the pitch shifts
+    }
+    //left at 0 when there is no speech, and to_json omits the field entirely
+    //when it is 0, so the presence of "sample_rate" is the client's signal that
+    //a binary frame follows. Setting it unconditionally attached a rate to
+    //nothing and forced the client to guess with a timer instead
     const std::string json = to_json(message).dump();
     //build the examiner text as a CROW::JSON object
 
