@@ -238,15 +238,13 @@ void Server::handle_control(crow::websocket::connection& conn,
     if (message.type == MessageType::Start) {
         if (!session->try_begin_job()) {
             return;
-        }
-        //a job is already running on this session, so refuse this one rather
-        //than let two pipelines push turns onto the same history_ at once.
-        //claiming the session here on the socket thread rather than inside the
-        //job is what makes the check reliable: Crow delivers every message for
-        //one connection on a single thread, so nothing can slip between the
-        //claim and the enqueue below
+        } //a job is already in flight on this session, so refuse this message
 
-        enqueue_pipeline_job(&conn, session, {}, false);
+        std::shared_ptr<Session> claim(session.get(), [session](Session* s) { s->end_job(); });
+        //not an owner, just an RAII handle whose deleter releases the claim
+        //the deleter holds session, so the Session outlives the end_job() call
+
+        enqueue_pipeline_job(&conn, session, {}, false, std::move(claim));
         //the opening turn: no audio has been spoken yet, so there is nothing to
         //transcribe. The examiner runs on the system prompt alone and asks the
         //first question, instead of the student having to talk into silence
@@ -259,12 +257,9 @@ void Server::handle_control(crow::websocket::connection& conn,
 
     if (!session->try_begin_job()) {
         return;
-    }
-    //claimed before take_audio() on purpose. a refused Stop leaves the buffer
-    //exactly where it is, so the samples are not thrown away - they stay in
-    //audio_buffer_ and are carried into the next utterance once the session is
-    //free again. the trade is that the two utterances arrive at STT as one
-    //transcript, which is preferred here over silently losing speech
+    } //refuse before take_audio(), so a rejected Stop does not discard the buffer
+
+    std::shared_ptr<Session> claim(session.get(), [session](Session* s) { s->end_job(); });
 
     std::vector<std::int16_t> utterance_audio = session->take_audio();
     //take_audio() returns the completed audio buffer, clearing the session buffer
@@ -274,41 +269,54 @@ void Server::handle_control(crow::websocket::connection& conn,
     //store a local variable reference to the connection
     //Because this variable is then used on a Worker Thread after handle_contorl returns
 
-    enqueue_pipeline_job(conn_ptr, session, std::move(utterance_audio), true);
+    enqueue_pipeline_job(conn_ptr, session, std::move(utterance_audio), true, std::move(claim));
     //hand the audio and connection to the pipeline job builder
 }
 
 void Server::enqueue_pipeline_job(crow::websocket::connection* conn_ptr,
                                   const std::shared_ptr<Session>& session,
                                   std::vector<std::int16_t> utterance_audio,
-                                  bool transcribe_first)
+                                  bool transcribe_first,
+                                  std::shared_ptr<Session> claim)
                                   {
-    //every caller must have claimed the session with try_begin_job() first.
-    //WorkerPool::enqueue drops the job on the floor once the pool is stopping,
-    //and the claim would then never be released, but that only happens while the
-    //process is shutting down and the session is about to be destroyed anyway
+    std::vector<Turn> examiner_input = session->build_examiner_input();
+    //still on Crow's socket thread, which the claim has already made exclusive
+
+    if (transcribe_first && !examiner_input.empty() &&
+        examiner_input.back().role == Role::Student) {
+        examiner_input.pop_back();
+        //drops the previous turn's answer, this job appends a fresher one below
+    }
+
     pool_.enqueue([this, session, conn_ptr, transcribe_first,
-        job_audio = std::move(utterance_audio)]
+        job_audio = std::move(utterance_audio),
+        job_input = std::move(examiner_input),
+        claim = std::move(claim)]() mutable
 
     //this captures the server Object to access member functions
     //session paramater is shared ptr to Session object to utilise its functions
-    //create a new variable called audio which has the utterance_audio moved into it
+    //create a new variable called job_audio which has the utterance_audio moved into it
     //therefore the audio is moved not duplicated which is expensive
+    //job_input owns its Turns, so respond() borrows nothing from the Session
+    //claim releases the session whenever this lambda dies, dropped job included
+    //mutable because the transcript is pushed onto job_input below
     //transcribe_first is false for the opening turn, where the student has not
     //spoken yet and there is no audio to run through STT
 
     {
-        Session::JobGuard guard(*session);
-        //the caller already claimed the session with try_begin_job(), the job
-        //owns that claim now and the guard hands it back on every exit path,
-        //including an exception out of STT, the examiner or TTS
-
         if (transcribe_first) {
-            const std::string transcript = stt_->transcribe(job_audio);
-            session->record_answer(transcript);
+            std::string transcript = stt_->transcribe(job_audio);
+
+            job_input.push_back(Turn{Role::Student, transcript});
+            //onto the owned snapshot, STT had not run when it was built
+
+            session->record_answer(std::move(transcript));
+            //write-through so the NEXT turn's snapshot can see this answer
         }
 
-        const std::string reply = examiner_->respond(session->get_history());
+        const std::string reply = examiner_->respond(job_input);
+        //borrows the lambda's own vector, which nothing else can touch
+
         session->record_question(reply);
 
         const std::vector<std::int16_t> speech = tts_->synthesize(reply);

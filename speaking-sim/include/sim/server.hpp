@@ -46,7 +46,11 @@ private:
     void enqueue_pipeline_job(crow::websocket::connection* conn_ptr,
                               const std::shared_ptr<Session>& session,
                               std::vector<std::int16_t> utterance_audio,
-                              bool transcribe_first);
+                              bool transcribe_first,
+                              std::shared_ptr<Session> claim);
+    void send_busy(crow::websocket::connection& conn);
+    //tells the client its turn was refused because a job is already in flight
+
     void send_examiner_result(crow::websocket::connection* conn_ptr,
                               const std::shared_ptr<Session>& session,
                               const std::string& reply,
