@@ -140,6 +140,15 @@ if(EXISTS "${SIM_THIRD_PARTY}/piper/CMakeLists.txt")
     add_subdirectory("${SIM_THIRD_PARTY}/piper" EXCLUDE_FROM_ALL)
     if(TARGET piper)
         set(SIM_PIPER_EXECUTABLE "$<TARGET_FILE:piper>")
+        # EXCLUDE_FROM_ALL means the binary this path names does not exist until
+        # it is built on demand, yet SIM_HAVE_PIPER is defined below regardless.
+        # The TTS backend therefore compiles its subprocess path and fails to
+        # spawn at runtime until this is run. The failure is recoverable - the
+        # turn is sent as text with no audio - but it is silent from the build,
+        # so say it here.
+        message(STATUS
+            "piper is EXCLUDE_FROM_ALL. TTS stays silent until you run: "
+            "cmake --build <dir> --target piper")
     else()
         message(WARNING
             "third_party/piper defined no piper target - the TTS backend will "
@@ -173,6 +182,15 @@ add_executable(speaking-sim
 target_include_directories(speaking-sim
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/include"   # resolves "sim/..."
+)
+
+# Crow goes in SYSTEM so its headers stop being diagnosed as ours. Asio and
+# cpp-httplib already arrive that way through their own interface targets, and
+# Crow was the one dependency listed as a plain PRIVATE include - which is why
+# raising the warning level buried the project's own diagnostics under dozens of
+# C4244/C4267/C4996 hits from crow/json.h, routing.h and mustache.h.
+target_include_directories(speaking-sim
+    SYSTEM PRIVATE
         "${CROW_INCLUDE_DIR}"                   # resolves "crow.h" and "crow/json.h"
 )
 

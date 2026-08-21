@@ -15,7 +15,7 @@ WorkerPool::WorkerPool(std::size_t thread_count) { //unsigned int param
 
 void WorkerPool::worker_loop() {
     while (true) {
-        Job currentjob;
+        Job currentJob;
 
         {
             std::unique_lock<std::mutex> lock(mutex_); 
@@ -37,16 +37,16 @@ void WorkerPool::worker_loop() {
             //only shutdown if stop_ is true and no jobs 
             }
 
-            currentjob = std::move(jobs_.front());
+            currentJob = std::move(jobs_.front());
             // the front element of jobs is a std::function<void()>
-            //therefore is can be stored in the currentjob which is the same type
+            //therefore it can be stored in currentJob which is the same type
             jobs_.pop();    
             //pop the now unspecified first element of jobs away
 
         } //lock releases before job operation as lock variable goes out of scope
 
         try {
-            currentjob();
+            currentJob();
         } catch (const std::exception& e) {
             std::cerr << "worker job threw: " << e.what() << '\n';
         } catch (...) {

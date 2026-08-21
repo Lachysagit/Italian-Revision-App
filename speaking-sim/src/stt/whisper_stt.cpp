@@ -21,6 +21,15 @@ WhisperSTT::WhisperSTT(std::string model_path): model_path_(std::move(model_path
 }
 
 std::string WhisperSTT::transcribe(const std::vector<std::int16_t>& pcm) {
+    if (pcm.empty()) {
+        return {};
+        // A Stop with nothing buffered (the student pressed Finished Response
+        // without speaking) reaches here with no samples. whisper_full on a
+        // zero-length buffer has nothing to decode, and loading a 74 MB model
+        // to discover that costs seconds. The caller already treats an empty
+        // transcript as "the student said nothing" and omits the Student turn.
+    }
+
 #ifdef SIM_HAVE_WHISPER
     // whisper needs 16 kHz mono float32 in [-1, 1] and does not resample
     // internally. client.js downsamples to 16 kHz and captures a single

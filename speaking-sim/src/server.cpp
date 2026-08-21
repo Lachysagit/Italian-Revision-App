@@ -1,5 +1,6 @@
 #include "sim/server.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <exception>
@@ -25,7 +26,11 @@ Server::Server(Config config,
       stt_(std::move(stt)),
       examiner_(std::move(examiner)),
       tts_(std::move(tts)),
-      pool_(2) {
+      pool_(config_.worker_threads) {
+    //config_ is declared before pool_, so it is already initialised when this
+    //reads it - member initialisation follows declaration order, not the order
+    //written here. The literal 2 that used to sit here ignored WORKER_THREADS
+    //entirely and capped the server at two concurrent turns on every machine
 }
 
 
@@ -128,6 +133,12 @@ void Server::run()
             //takes sessions_mutex_ and then, only after releasing it, handle->m.
             //No path holds either while reaching for the other, so there is no
             //AB/BA cycle. Nesting these scopes is exactly the deadlock
+
+            CROW_LOG_DEBUG << "websocket closed, code " << code
+                           << ", reason: " << reason;
+            //reason and code were named and never read. Logging them both uses
+            //the parameters and turns a silent disconnect into something that
+            //can be told apart from a client that simply went away
 
             if (handle) {
                 std::lock_guard<std::mutex> lock(handle->m);
@@ -301,7 +312,7 @@ void Server::handle_control(crow::websocket::connection& conn,
         } //the connection is already closing, so there is nowhere to send a reply
 
         if (!session->try_begin_job()) {
-            send_busy(conn);
+            send_busy(handle);
             return;
         } //a job is already in flight on this session, so refuse this message
 
@@ -327,7 +338,7 @@ void Server::handle_control(crow::websocket::connection& conn,
     //does not take a claim it can never release a reply through
 
     if (!session->try_begin_job()) {
-        send_busy(conn);
+        send_busy(handle);
         return;
     } //refuse before take_audio(), so a rejected Stop does not discard the buffer
     //the buffer survives, so the client can re-arm and send the same answer again
@@ -388,11 +399,24 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
             if (transcribe_first) {
                 std::string transcript = stt_->transcribe(job_audio);
 
-                job_input.push_back(Turn{Role::Student, transcript});
-                //onto the owned snapshot, STT had not run when it was built
+                if (!transcript.empty()) {
+                    send_transcript(handle, transcript);
+                    //paint what STT heard before the examiner replies to it, so
+                    //the student can see a misheard answer rather than only the
+                    //reply that makes no sense because of it
 
-                session->record_answer(std::move(transcript));
-                //write-through so the NEXT turn's snapshot can see this answer
+                    job_input.push_back(Turn{Role::Student, transcript});
+                    //onto the owned snapshot, STT had not run when it was built
+
+                    session->record_answer(std::move(transcript));
+                    //write-through so the NEXT turn's snapshot can see this answer
+                }
+                //an empty transcript is NOT appended. It used to go in as a
+                //Turn with empty text, which Gemini rejects: a parts entry must
+                //carry non-empty text, so a student who pressed Finished
+                //Response without speaking got HTTP 400 rather than a repeat of
+                //the question. Skipping it leaves last_answer_ at its previous
+                //value and the examiner simply re-asks
             }
 
             reply = examiner_->respond(job_input);
@@ -445,11 +469,48 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
     );
 }
 
-void Server::send_busy(crow::websocket::connection& conn) {
+void Server::send_text_on_handle(const std::shared_ptr<ConnHandle>& handle,
+                                 const std::string& json) {
+    std::lock_guard<std::mutex> lock(handle->m);
+    //same discipline as send_examiner_result: the null check and the send are
+    //one critical section, so onclose cannot null conn and return - and let
+    //~Connection run - between the two
+
+    crow::websocket::connection* conn_ptr = handle->conn;
+    if (conn_ptr == nullptr) {
+        return;
+    }
+    conn_ptr->send_text(json);
+}
+
+void Server::send_busy(const std::shared_ptr<ConnHandle>& handle) {
     Message message;
     message.type = MessageType::Status;
     message.payload = "busy";
-    conn.send_text(to_json(message).dump());
+    send_text_on_handle(handle, to_json(message).dump());
+    //this used to be conn.send_text() straight off the socket thread. The
+    //connection is certainly alive there, so it was not a lifetime bug - but
+    //it posted a frame with no ordering relationship to the frames a worker
+    //was posting for the same connection, so "busy" could arrive between an
+    //examiner text and its PCM. The client arms its mic on "busy", so it would
+    //unmute exactly as the examiner started speaking and record the reply
+}
+
+void Server::send_transcript(const std::shared_ptr<ConnHandle>& handle,
+                             const std::string& text) {
+    if (text.empty()) {
+        return;
+        //an empty transcript is not a turn, so nothing is painted for it
+    }
+    Message message;
+    message.type = MessageType::Transcript;
+    message.payload = text;
+    send_text_on_handle(handle, to_json(message).dump());
+    //MessageType::Transcript existed in protocol.hpp and was never constructed
+    //anywhere, so the matching branch in client.js handleMessage was
+    //unreachable and the student never saw what STT actually heard. Sent as its own frame before the examiner reply,
+    //and carrying no sample_rate, so it does not disturb the client's
+    //"sample_rate means a binary frame follows" rule
 }
 
 void Server::send_examiner_result(const std::shared_ptr<ConnHandle>& handle,

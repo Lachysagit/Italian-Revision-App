@@ -46,4 +46,6 @@ models/*
 .DS_Store
 
 # Local notes, not tracked
-README.md
+/NOTES.md
+# README.md used to be listed here, which silently untracked speaking-sim's own
+# README along with any other. Ignore a dedicated scratch file instead.

@@ -1,9 +1,11 @@
 #include "sim/config.hpp"
 
+#include <cstddef>
 #include <cstdlib>
 #include <exception>
 #include <iostream>
 #include <string>
+#include <thread>
 
 namespace sim {
 
@@ -43,6 +45,28 @@ Config load_config() {
         }
     } catch (const std::exception&) {
         std::cerr << "PORT " << port_text << " is not a number, using 8080\n";
+    }
+
+    const std::string threads_text = get_env("WORKER_THREADS", "0");
+    config.worker_threads = 0;
+    try {
+        const int thread_value = std::stoi(threads_text);
+        if (thread_value > 0) {
+            config.worker_threads = static_cast<std::size_t>(thread_value);
+        }
+        //0 and negatives both fall through to the hardware-derived default
+        //below, so "WORKER_THREADS=0" means "decide for me" rather than
+        //"run no workers", which would leave every enqueued turn unclaimed
+    } catch (const std::exception&) {
+        std::cerr << "WORKER_THREADS " << threads_text
+                  << " is not a number, deriving from the CPU count\n";
+    }
+
+    if (config.worker_threads == 0) {
+        const unsigned int cores = std::thread::hardware_concurrency();
+        config.worker_threads = (cores == 0) ? 2u : cores;
+        //hardware_concurrency() is allowed to return 0 when it cannot tell, so
+        //the old hardcoded 2 stays as the floor rather than the ceiling
     }
 
     if (config.examiner_backend == ExaminerBackend::Gemini &&
