@@ -37,8 +37,6 @@ private:
     std::string load_system_prompt();
     std::string system_prompt_;
 
-    WorkerPool pool_;
-    
     std::shared_ptr<Session> find_session(crow::websocket::connection* conn);
 
     void handle_audio(const std::shared_ptr<Session>& session, const std::string& data);
@@ -61,6 +59,11 @@ private:
     std::unique_ptr<InterfaceSTT> stt_;
     std::unique_ptr<InterfaceExaminer> examiner_;
     std::unique_ptr<InterfaceTTS> tts_;
+
+    //Declared last on purpose: members are destroyed in reverse declaration
+    //order, so ~WorkerPool (which drains queued jobs before joining) runs
+    //first and every backend those jobs touch is still alive.
+    WorkerPool pool_;
 };
 
 }  // namespace sim

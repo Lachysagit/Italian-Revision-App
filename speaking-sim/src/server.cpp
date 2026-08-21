@@ -20,10 +20,10 @@ Server::Server(Config config,
                std::unique_ptr<InterfaceExaminer> examiner,
                std::unique_ptr<InterfaceTTS> tts)
     : config_(std::move(config)),
-      pool_(2),
       stt_(std::move(stt)),
       examiner_(std::move(examiner)),
-      tts_(std::move(tts)) {
+      tts_(std::move(tts)),
+      pool_(2) {
 }
 
 
@@ -206,8 +206,17 @@ void Server::handle_audio(const std::shared_ptr<Session>& session,
         //hold the trailing half sample back for the next frame
     }
 
+    const bool was_full = session->audio_full();
     session->append_audio(pcm);
     //pcm now has its own heap allocated memory which is a vector of 16 bit int
+
+    if (!was_full && session->audio_full()) {
+        CROW_LOG_WARNING << "session audio buffer hit its "
+                         << (Session::kMaxBufferedSamples / Session::kCaptureSampleRate)
+                         << "s cap, further audio is dropped until Stop";
+        //logged on the transition only, otherwise a client that keeps streaming
+        //past the cap would produce a warning per frame for as long as it runs
+    }
 }
 
 void Server::handle_control(crow::websocket::connection& conn,
@@ -227,6 +236,16 @@ void Server::handle_control(crow::websocket::connection& conn,
     //convert the readable JSON into a Message object
 
     if (message.type == MessageType::Start) {
+        if (!session->try_begin_job()) {
+            return;
+        }
+        //a job is already running on this session, so refuse this one rather
+        //than let two pipelines push turns onto the same history_ at once.
+        //claiming the session here on the socket thread rather than inside the
+        //job is what makes the check reliable: Crow delivers every message for
+        //one connection on a single thread, so nothing can slip between the
+        //claim and the enqueue below
+
         enqueue_pipeline_job(&conn, session, {}, false);
         //the opening turn: no audio has been spoken yet, so there is nothing to
         //transcribe. The examiner runs on the system prompt alone and asks the
@@ -237,6 +256,15 @@ void Server::handle_control(crow::websocket::connection& conn,
     if (message.type != MessageType::Stop) {
         return;
     } // only for handing stop
+
+    if (!session->try_begin_job()) {
+        return;
+    }
+    //claimed before take_audio() on purpose. a refused Stop leaves the buffer
+    //exactly where it is, so the samples are not thrown away - they stay in
+    //audio_buffer_ and are carried into the next utterance once the session is
+    //free again. the trade is that the two utterances arrive at STT as one
+    //transcript, which is preferred here over silently losing speech
 
     std::vector<std::int16_t> utterance_audio = session->take_audio();
     //take_audio() returns the completed audio buffer, clearing the session buffer
@@ -253,8 +281,12 @@ void Server::handle_control(crow::websocket::connection& conn,
 void Server::enqueue_pipeline_job(crow::websocket::connection* conn_ptr,
                                   const std::shared_ptr<Session>& session,
                                   std::vector<std::int16_t> utterance_audio,
-                                  bool transcribe_first) 
+                                  bool transcribe_first)
                                   {
+    //every caller must have claimed the session with try_begin_job() first.
+    //WorkerPool::enqueue drops the job on the floor once the pool is stopping,
+    //and the claim would then never be released, but that only happens while the
+    //process is shutting down and the session is about to be destroyed anyway
     pool_.enqueue([this, session, conn_ptr, transcribe_first,
         job_audio = std::move(utterance_audio)]
 
@@ -266,6 +298,11 @@ void Server::enqueue_pipeline_job(crow::websocket::connection* conn_ptr,
     //spoken yet and there is no audio to run through STT
 
     {
+        Session::JobGuard guard(*session);
+        //the caller already claimed the session with try_begin_job(), the job
+        //owns that claim now and the guard hands it back on every exit path,
+        //including an exception out of STT, the examiner or TTS
+
         if (transcribe_first) {
             const std::string transcript = stt_->transcribe(job_audio);
             session->record_answer(transcript);

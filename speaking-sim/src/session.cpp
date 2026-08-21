@@ -1,5 +1,7 @@
 #include "sim/session.hpp"
 
+#include <algorithm>
+#include <cstddef>
 #include <utility>
 
 namespace sim {
@@ -34,8 +36,23 @@ const std::vector<Turn>& Session::get_history() const {
     return history_;
 }
 
-void Session::append_audio(const std::vector<std::int16_t>& chunk) {
-    audio_buffer_.insert(audio_buffer_.end(), chunk.begin(), chunk.end());
+bool Session::append_audio(const std::vector<std::int16_t>& chunk) {
+    if (audio_buffer_.size() >= kMaxBufferedSamples) {
+        return false;
+    }
+
+    const std::size_t room = kMaxBufferedSamples - audio_buffer_.size();
+    const std::size_t take = std::min(room, chunk.size());
+    audio_buffer_.insert(audio_buffer_.end(), chunk.begin(), chunk.begin() + static_cast<std::ptrdiff_t>(take));
+    //the head of the utterance is kept and the overflowing tail dropped. keeping
+    //the newest 40 s instead would mean erasing from the front of the vector on
+    //every frame, and would leave STT with speech that starts mid-word
+
+    return take == chunk.size();
+}
+
+bool Session::audio_full() const {
+    return audio_buffer_.size() >= kMaxBufferedSamples;
 }
 
 std::vector<std::int16_t> Session::take_audio() {
@@ -55,6 +72,20 @@ std::string Session::take_partial_byte() {
     std::string result = std::move(partial_byte_);
     partial_byte_.clear();
     return result;
+}
+
+bool Session::try_begin_job() {
+    bool expected = false;
+    return job_in_flight_.compare_exchange_strong(expected, true);
+    //flip false to true and report whether this caller was the one that did it.
+    //expected has to be a fresh local every call: compare_exchange_strong writes
+    //the observed value back into it when the exchange fails, so a reused or
+    //shared variable would come back holding true and never match again
+}
+
+void Session::end_job() {
+    job_in_flight_.store(false);
+    //the session is free again, the next Start or Stop can claim it
 }
 
 
