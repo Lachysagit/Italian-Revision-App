@@ -1,4 +1,3 @@
-const log = document.getElementById("log");
 const transcript = document.getElementById("transcript");
 const startButton = document.getElementById("start");
 const doneButton = document.getElementById("done");
@@ -62,23 +61,54 @@ const CAPTURE_SAMPLE_RATE = 16000;
 const BLOCK_SIZE = 4096;
 //the ScriptProcessor block length, used to clamp the cut points
 
-function addLog(text) { //update log element with status or text from server
-    const line = document.createElement("div");
-    line.textContent = text; //create a new div element with text
-    log.appendChild(line); //append the text to the preexisting log element
+function addLog(text) { //status or text from the server, for the operator only
+    console.log(text);
+    //this used to append to a #log div under the transcript, which put raw
+    //protocol lines - "thinking...", "socket error", every examiner_text a
+    //second time - on screen underneath the conversation cards. A student
+    //reading the page saw each turn twice, once styled and once as a trace.
+    //The diagnostics are still worth keeping, so they moved to the console
+    //rather than being deleted: every existing addLog call site stays valid
+    //and nothing in the turn logic had to change.
 }
 
+const ROLE_LABELS = {
+    examiner: "Examiner",
+    student: "You",
+};
+//the speaker is a fixed key rather than free text so a caller cannot invent a
+//role that lands unstyled, or spell one two ways and split it into two looks
+
 function addTurn(role, text) {
-    const line = document.createElement("div");
-    line.textContent = `${role}: ${text}`;
-    transcript.appendChild(line);
+    const label = ROLE_LABELS[role];
+    if (!label) {
+        addLog(`ignored turn from unknown role: ${role}`);
+        return;
+        //an unrecognised role means the caller is wrong, so refuse to paint
+        //rather than show a turn whose speaker the student cannot identify
+    }
+
+    const card = document.createElement("div");
+    card.className = `turn ${role}`;
+
+    const heading = document.createElement("div");
+    heading.className = "turn-role";
+    heading.textContent = label;
+
+    const body = document.createElement("div");
+    body.className = "turn-text";
+    body.textContent = text;
+
+    card.appendChild(heading);
+    card.appendChild(body);
+    transcript.appendChild(card);
     //the student-facing conversation surface. Appending here is the assertion
     //"a turn happened", so only text the server actually committed to the
     //session may be passed in. Diagnostics go to addLog instead.
-    //Splitting the two surfaces is what makes that structural rather than a
-    //convention: #transcript cannot paint a trace and #log cannot manufacture
-    //a turn, because the invariant is which element gets appendChild rather
-    //than a predicate some later refactor could relax
+    //The two surfaces stay structurally separate rather than separated by
+    //convention: this function is the only thing that appends to #transcript,
+    //and addLog can no longer reach the DOM at all, so a diagnostic cannot
+    //become a turn by way of some later refactor relaxing a predicate
 }
 
 function setTurnState(state) {
@@ -350,7 +380,7 @@ function handleMessage(event) { //message from server
         }
 
         if (message.type === "transcript") {
-            addTurn("You", message.payload);
+            addTurn("student", message.payload);
             //the student's own answer as STT heard it. The server does not
             //send this yet - MessageType::Transcript is declared in the
             //protocol but never constructed - so this branch is dormant.
@@ -360,7 +390,7 @@ function handleMessage(event) { //message from server
 
         if (message.type === "examiner_text") {
             if (message.payload) {
-                addTurn("Examiner", message.payload);
+                addTurn("examiner", message.payload);
             }
             //guarded on non-empty because a failed turn still sends an
             //examiner_text, with an empty payload, purely to re-arm the mic.

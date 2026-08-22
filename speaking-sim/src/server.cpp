@@ -53,6 +53,13 @@ void Server::run()
     //index.html pulls this in with <script src="client.js">. Without a route
     //for it the page renders and the browser client never runs at all
 
+    CROW_ROUTE(app_, "/styles.css") //HTTP ROUTE -----------------------------------
+    ([this] {
+        return serve_stylesheet();
+    });
+    //same reason as client.js: index.html links it, and an unrouted asset is a
+    //404 the browser swallows silently - the page still renders, unstyled
+
     CROW_WEBSOCKET_ROUTE(app_, "/ws") //WEBSOCKET ROUTE ----------------------------------
         .onopen([this](crow::websocket::connection& conn) 
         
@@ -193,6 +200,25 @@ crow::response Server::serve_client_script()
     //build http response
     response.set_header("Content-Type", "application/javascript");
     //set header so the browser executes it rather than displaying it
+    return response;
+}
+
+crow::response Server::serve_stylesheet() 
+
+    {
+    std::ifstream file("web/styles.css");
+    if (!file) {
+        return crow::response(404, "styles.css not found");
+    }
+    //open the page stylesheet
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    //stream the entire stylesheet into a string
+    crow::response response(buffer.str());
+    //build http response
+    response.set_header("Content-Type", "text/css");
+    //set header so the browser applies it rather than displaying it as text
     return response;
 }
 

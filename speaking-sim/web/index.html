@@ -2,23 +2,27 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Speaking Exam Simulator</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <h1>Speaking Exam Simulator</h1>
 
-    <button id="start">Start</button>
-    <button id="done" disabled>Finished Response</button>
-    <button id="end" disabled>End session</button>
+    <div id="controls">
+        <button id="start">Start</button>
+        <button id="done" disabled>Finished Response</button>
+        <button id="end" disabled>End session</button>
+    </div>
+    <!-- sticky so the turn controls stay reachable however far the transcript
+         has grown. The buttons are the turn guard as well as the display, so
+         scrolling them off screen hid the only way to end a response -->
 
     <div id="transcript"></div>
-    <!-- student-facing conversation surface. Only real turns are appended
-         here, so its content mirrors the session history the examiner sees.
-         Diagnostics must never be written here - that is what #log is for -->
-
-    <div id="log"></div>
-    <!-- diagnostic trace of every message that crosses the socket, including
-         status and failed turns. Never treated as conversation -->
+    <!-- student-facing conversation surface, and the only surface on the page.
+         Only real turns are appended here, so its content mirrors the session
+         history the examiner sees. Diagnostics must never be written here -
+         addLog() sends those to the browser console instead -->
 
     <script src="client.js"></script>
 </body>

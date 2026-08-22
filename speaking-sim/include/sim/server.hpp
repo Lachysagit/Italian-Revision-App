@@ -61,6 +61,7 @@ private:
     crow::SimpleApp app_;
     crow::response serve_index();
     crow::response serve_client_script();
+    crow::response serve_stylesheet();
     
     std::string load_system_prompt();
     std::string system_prompt_;

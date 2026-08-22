@@ -1,0 +1,116 @@
+:root {
+    --page-bg: #f6f7f9;
+    --ink: #1c1e21;
+    --muted: #6b7280;
+
+    --examiner-bg: #eaf2fd;
+    --examiner-edge: #2f6fd0;
+    --examiner-ink: #17427e;
+
+    --student-bg: #eaf7ee;
+    --student-edge: #2e8b52;
+    --student-ink: #1c5c36;
+}
+
+body {
+    margin: 0 auto;
+    padding: 0 1.25rem 3rem;
+    max-width: 46rem;
+    background: var(--page-bg);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.5;
+}
+
+h1 {
+    font-size: 1.4rem;
+    padding-top: 1.5rem;
+}
+
+/* the controls ride along with the scroll so the turn buttons are reachable
+   from anywhere in a long transcript. The negative margins let the opaque
+   band span the full body width while the buttons keep the text gutter,
+   otherwise transcript cards showed through at the edges as they passed under */
+#controls {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0 -1.25rem;
+    padding: 0.75rem 1.25rem;
+    background: var(--page-bg);
+    border-bottom: 1px solid #dcdfe4;
+}
+
+#controls button {
+    padding: 0.5rem 1rem;
+    border: 1px solid #c3c8d0;
+    border-radius: 6px;
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.95rem;
+    cursor: pointer;
+}
+
+#controls button:hover:not(:disabled) {
+    border-color: #8b93a0;
+}
+
+#controls button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+#transcript {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 1.25rem;
+}
+
+/* one card per committed turn. The role is carried as a class rather than
+   baked into the text so the speaker is readable at a glance without parsing
+   a "Role: text" prefix */
+.turn {
+    padding: 0.6rem 0.85rem;
+    border: 1px solid;
+    border-left-width: 4px;
+    border-radius: 8px;
+}
+
+.turn-role {
+    margin-bottom: 0.2rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.turn-text {
+    white-space: pre-wrap;
+}
+
+.turn.examiner {
+    background: var(--examiner-bg);
+    border-color: var(--examiner-edge);
+}
+
+.turn.examiner .turn-role {
+    color: var(--examiner-ink);
+}
+
+.turn.student {
+    background: var(--student-bg);
+    border-color: var(--student-edge);
+}
+
+.turn.student .turn-role {
+    color: var(--student-ink);
+}
+
+/* the #log diagnostic surface was removed from the page - addLog() writes to
+   the browser console now, so the transcript cards are the only thing on
+   screen. Its rules are gone with it rather than left to style nothing. */
