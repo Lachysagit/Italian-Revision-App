@@ -47,5 +47,3 @@ models/*
 
 # Local notes, not tracked
 /NOTES.md
-# README.md used to be listed here, which silently untracked speaking-sim's own
-# README along with any other. Ignore a dedicated scratch file instead.

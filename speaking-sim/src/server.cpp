@@ -1,5 +1,6 @@
 #include "sim/server.hpp"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -392,12 +393,26 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
     {
         std::string reply;
         std::vector<std::int16_t> speech;
+
+        using clock = std::chrono::steady_clock;
+        const auto ms_since = [](clock::time_point t) {
+            return std::chrono::duration_cast<std::chrono::milliseconds>(
+                       clock::now() - t).count();
+        };
+        const auto turn_started = clock::now();
+        long long stt_ms = 0;
+        long long examiner_ms = 0;
+        long long tts_ms = 0;
+        //stage timings, so a slow turn can be attributed to one backend rather
+        //than guessed at. Written on stderr next to the other pipeline logs.
         //declared out here so the send below still runs after a failure.
         //speech staying empty is what turns this into a recoverable turn
 
         try {
             if (transcribe_first) {
+                const auto stt_started = clock::now();
                 std::string transcript = stt_->transcribe(job_audio);
+                stt_ms = ms_since(stt_started);
 
                 if (!transcript.empty()) {
                     send_transcript(handle, transcript);
@@ -410,21 +425,67 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
 
                     session->record_answer(std::move(transcript));
                     //write-through so the NEXT turn's snapshot can see this answer
+                } else {
+                    std::cerr << "turn skipped: empty transcript, no examiner "
+                                 "request made (audio "
+                              << (job_audio.size() / 16000.0) << "s, stt "
+                              << stt_ms << "ms)\n";
+
+                    send_error(handle, "didn't catch that, please try again");
+                    send_examiner_result(handle, reply, speech);
+                    return;
+                    //an empty transcript is NOT appended, and as of here it no
+                    //longer reaches the examiner at all. Skipping the append
+                    //alone still called respond(), which spent one
+                    //generate_content_free_tier_requests unit out of a daily
+                    //20 to have the model re-ask a question the student had
+                    //already been asked. With STT disabled during prototyping
+                    //every turn transcribes empty, so that path drained the
+                    //whole day's budget without a single real exchange.
+                    //
+                    //Both frames below already exist and the client already
+                    //handles them, so nothing in client.js changes. send_error
+                    //carries no sample_rate and lands in addLog, which writes
+                    //#log rather than #transcript - the student is told the
+                    //audio was not heard without a turn being painted that the
+                    //session history does not contain. send_examiner_result is
+                    //then called with reply and speech both still empty, which
+                    //is byte-for-byte the frame the failure path already sends:
+                    //an examiner_text with an empty payload and, because speech
+                    //is empty, no sample_rate field at all. client.js treats a
+                    //missing sample_rate as "no binary frame follows" and arms
+                    //the mic immediately, so the "sample_rate present implies a
+                    //binary frame follows" rule holds - the field is absent and
+                    //no binary frame is sent.
+                    //
+                    //The early return is what skips respond(); the tail call to
+                    //send_examiner_result after the catch is unreachable from
+                    //here, which is why it is issued explicitly above rather
+                    //than fallen through to. Nothing was committed to the
+                    //session on this path - no record_answer, no
+                    //record_question - so the next snapshot is unchanged and
+                    //the examiner re-asks from the same state, exactly as
+                    //before. The non-empty path below is untouched.
                 }
-                //an empty transcript is NOT appended. It used to go in as a
-                //Turn with empty text, which Gemini rejects: a parts entry must
-                //carry non-empty text, so a student who pressed Finished
-                //Response without speaking got HTTP 400 rather than a repeat of
-                //the question. Skipping it leaves last_answer_ at its previous
-                //value and the examiner simply re-asks
             }
 
+            const auto examiner_started = clock::now();
             reply = examiner_->respond(job_input);
+            examiner_ms = ms_since(examiner_started);
             //borrows the lambda's own vector, which nothing else can touch
 
             session->record_question(reply);
 
+            const auto tts_started = clock::now();
             speech = tts_->synthesize(reply);
+            tts_ms = ms_since(tts_started);
+
+            std::cerr << "turn timings: audio " << (job_audio.size() / 16000.0)
+                      << "s, stt " << stt_ms << "ms, examiner " << examiner_ms
+                      << "ms, tts " << tts_ms << "ms, total "
+                      << ms_since(turn_started) << "ms\n";
+            //16000 is the capture rate the client resamples to, and the rate
+            //whisper requires; it is fixed on both sides, not read from config
         } catch (const std::exception& e) {
             std::cerr << "turn failed, sending what we have: " << e.what() << '\n';
             speech.clear();

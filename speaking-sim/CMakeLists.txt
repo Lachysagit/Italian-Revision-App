@@ -6,6 +6,19 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# ggml is the whole cost of a turn, and an unoptimised ggml is not slow by a few
+# percent - it is roughly eight times slower, which turns a two second
+# transcription into a sixteen second one. Ninja and Makefiles leave
+# CMAKE_BUILD_TYPE empty when it is not passed, and empty means /Od /RTC1 here,
+# so default it rather than letting a plain `cmake -B build` produce a server
+# that looks correct and is unusable. Multi-config generators (Visual Studio)
+# pick per build and are left alone.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING
+        "Build type (Release unless overridden)" FORCE)
+    message(STATUS "CMAKE_BUILD_TYPE was unset - defaulting to Release.")
+endif()
+
 # Emits build/compile_commands.json, which clangd discovers automatically.
 # This is what makes #include "sim/config.hpp" resolve in the editor.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)

@@ -75,9 +75,10 @@ std::string WhisperSTT::transcribe(const std::vector<std::int16_t>& pcm) {
     wparams.print_progress = false;
     wparams.print_realtime = false;
     wparams.print_special = false;
-    // Thread count could move to config later.
-    wparams.n_threads = static_cast<int>(
-        std::max(1u, std::min(4u, std::thread::hardware_concurrency())));
+    // All cores but one. hardware_concurrency() may return 0, and 0u - 1 wraps,
+    // so the subtraction only happens when there is something to subtract from.
+    const unsigned int cores = std::thread::hardware_concurrency();
+    wparams.n_threads = static_cast<int>(cores > 1 ? cores - 1 : 1);
 
     std::string transcript;
     {
