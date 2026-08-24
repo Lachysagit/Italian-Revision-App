@@ -108,7 +108,6 @@ startButton.onclick = async () => {
 
 
     socket = new WebSocket(`ws://${location.host}/ws`);
-n
     socket.binaryType = "arraybuffer";
     //tell the socket to send binary data as an ArrayBuffer (raw bytes)
 
