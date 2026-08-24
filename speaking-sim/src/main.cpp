@@ -45,8 +45,6 @@ int main() {
         std::cerr << "fatal: unknown error" << std::endl;
         return 1;
     }
-    //without this, an exception out of load_config(), a missing whisper or piper
-    //model, or a port already in use leaves main by way of std::terminate, which
-    //prints nothing useful and returns no exit code worth acting on. everything
-    //the server owns is still destroyed here because the throw unwinds normally
+    //without this a throw from load_config, a missing model or a taken port
+    //leaves main via std::terminate. The throw still unwinds normally
 }

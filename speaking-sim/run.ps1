@@ -1,15 +1,5 @@
-# Loads .env into the process environment and starts the server.
-#
-# The server reads its settings from environment variables, not from .env
-# itself, so something has to export them first. The README's
-# `set -a && . ./.env && set +a` is bash; this is the PowerShell equivalent.
-#
-#   .\run.ps1
-#
-# Run it from this directory. speaking-sim.exe opens web/index.html and
-# prompts/examiner_system.txt by relative path, so starting it from anywhere
-# else serves a 404 for the page and silently falls back to a built-in
-# one-line system prompt.
+# Loads .env into the process environment and starts the server; the PowerShell
+# equivalent of the README's `set -a`. Run it from this directory: paths are relative.
 
 $ErrorActionPreference = "Stop"
 
@@ -44,10 +34,8 @@ Get-Content $envFile | ForEach-Object {
     Set-Item -Path "Env:$name" -Value $value
 }
 
-# Fail loudly here rather than letting the server start half-configured. Both
-# of these degrade silently otherwise: an empty key means every examiner turn
-# comes back as an error frame, and an empty model path disables speech to text
-# entirely while the server still looks healthy.
+# Fail loudly rather than start half-configured: an empty key errors every
+# examiner turn, and an empty model path silently disables speech to text.
 if (-not $env:GEMINI_API_KEY -and $env:EXAMINER_BACKEND -ne "hailo") {
     Write-Error "GEMINI_API_KEY is empty in .env, and EXAMINER_BACKEND is not hailo."
 }

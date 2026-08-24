@@ -53,9 +53,7 @@ Message from_json(const crow::json::rvalue& json) {
     Message message; //Create a Message Object
     message.type = MessageType::Error;
     //default to Error: crow::json::load only rejects malformed syntax, so a
-    //well formed message with no "type" still reaches here. operator[] throws
-    //on a missing key and .s() throws on a non-string, and both would escape
-    //onto the socket thread, so every field is checked before it is read
+    //well formed message with no "type" reaches here. Every field is checked
 
     if (json.has("type") && json["type"].t() == crow::json::type::String) {
         message.type = type_from_string(json["type"].s());

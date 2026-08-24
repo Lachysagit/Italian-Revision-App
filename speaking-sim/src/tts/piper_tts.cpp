@@ -25,11 +25,8 @@ namespace sim {
 
 namespace {
 
-// piper reads the voice sample rate out of <model>.onnx.json under
-// audio.sample_rate and falls back to 22050 when the key is absent. Doing the
-// same here is what keeps sample_rate() honest: the browser builds its playback
-// AudioBuffer from whatever this reports, so a wrong value plays the examiner
-// back at the wrong pitch and speed.
+// piper reads the voice sample rate from <model>.onnx.json, falling back to
+// 22050. Reporting a wrong value plays the examiner back at the wrong pitch.
 int read_voice_sample_rate(const std::string& model_path) {
     constexpr int kPiperDefaultRate = 22050;
     if (model_path.empty()) {
@@ -59,9 +56,8 @@ int read_voice_sample_rate(const std::string& model_path) {
     if (rate.t() != crow::json::type::Number) {
         return kPiperDefaultRate;
     }
-    // Every step is checked because crow rvalue::operator[] throws on a missing
-    // key and .i() throws on a wrong type, and this runs from the constructor.
-    // A throw here would take down startup over a cosmetic field.
+    // Every step is checked because crow throws on a missing key or wrong
+    // type, and a throw here would take down startup over a cosmetic field.
 
     const int value = static_cast<int>(rate.i());
     return value > 0 ? value : kPiperDefaultRate;
@@ -78,9 +74,8 @@ std::string run_piper(const std::string& model_path, const std::string& text) {
         close(in_pipe[0]);
         close(in_pipe[1]);
         throw std::runtime_error("piper: pipe() failed");
-        // The two pipe() calls are no longer short-circuited into one
-        // condition: pipe(a) != 0 || pipe(b) != 0 leaked the descriptors of a
-        // whenever b was the call that failed.
+        // Not short-circuited into one condition: pipe(a) != 0 || pipe(b) != 0
+        // leaked the descriptors of a whenever b was the call that failed.
     }
 
     const pid_t pid = fork();
@@ -100,9 +95,8 @@ std::string run_piper(const std::string& model_path, const std::string& text) {
         execl(SIM_PIPER_EXECUTABLE, SIM_PIPER_EXECUTABLE,
               "--model", model_path.c_str(),
               "--output_raw", static_cast<char*>(nullptr));
-        // --model is not optional. Without it piper prints its usage to stderr
-        // and exits, so the parent read below returned an empty buffer and
-        // every turn arrived at the browser silent.
+        // --model is not optional: without it piper prints usage and exits, so
+        // the parent read below returned empty and every turn arrived silent.
         _exit(127);  // exec only returns on failure
     }
 
@@ -210,18 +204,15 @@ std::string run_piper(const std::string& model_path, const std::string& text) {
 }
 #endif
 
-// piper --output_raw writes little-endian int16 samples with no container at
-// all. The previous pcm_from_wav() skipped a 44-byte RIFF header that is never
-// present on this path, so the first 22 samples of every utterance were thrown
-// away.
+// piper --output_raw writes little-endian int16 with no container. The old
+// pcm_from_wav() skipped a 44-byte header, losing the first 22 samples.
 std::vector<std::int16_t> pcm_from_raw(const std::string& raw) {
     const std::size_t count = raw.size() / sizeof(std::int16_t);
     std::vector<std::int16_t> samples(count);
     if (count > 0) {
         std::memcpy(samples.data(), raw.data(), count * sizeof(std::int16_t));
-        // memcpy rather than a reinterpret_cast: raw.data() is a char* with no
-        // 2-byte alignment guarantee. A trailing odd byte is dropped, which is
-        // correct - it cannot be half of a sample piper meant to emit.
+        // memcpy rather than reinterpret_cast: raw.data() has no 2-byte
+        // alignment guarantee. A trailing odd byte is dropped, which is right.
     }
     return samples;
 }
@@ -231,9 +222,8 @@ std::vector<std::int16_t> pcm_from_raw(const std::string& raw) {
 PiperTTS::PiperTTS(std::string model_path)
     : model_path_(std::move(model_path)),
       sample_rate_(read_voice_sample_rate(model_path_)) {
-    // model_path_ is initialised first because it is declared first, so reading
-    // it here is defined. Passing the parameter instead would read a moved-from
-    // string.
+    // model_path_ is initialised first because it is declared first. Passing
+    // the parameter instead would read a moved-from string.
 }
 
 int PiperTTS::sample_rate() const {
@@ -250,11 +240,8 @@ std::vector<std::int16_t> PiperTTS::synthesize(const std::string& text) {
 #else
     (void)text;
     return {};
-    // No piper binary was configured. An empty result is already the "no audio"
-    // signal the whole send path is built around: send_examiner_result omits
-    // sample_rate, skips send_binary, and the client arms the mic immediately.
-    // The old #else branch had no statements at all, so the function fell off
-    // its end without returning.
+    // No piper binary configured. Empty is already the "no audio" signal the
+    // send path is built around; the old #else fell off its end without one.
 #endif
 }
 

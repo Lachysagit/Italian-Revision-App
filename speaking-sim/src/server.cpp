@@ -28,10 +28,8 @@ Server::Server(Config config,
       examiner_(std::move(examiner)),
       tts_(std::move(tts)),
       pool_(config_.worker_threads) {
-    //config_ is declared before pool_, so it is already initialised when this
-    //reads it - member initialisation follows declaration order, not the order
-    //written here. The literal 2 that used to sit here ignored WORKER_THREADS
-    //entirely and capped the server at two concurrent turns on every machine
+    //config_ is initialised before pool_ - member init follows declaration
+    //order. The literal 2 here ignored WORKER_THREADS on every machine
 }
 
 
@@ -68,15 +66,13 @@ void Server::run()
             session->set_system_prompt(system_prompt_);
 
 
-            //sessions is std::unordered_map 
-            //sessions keys are <crow::websocket::connection*, 
-            //sessions values are std::shared_ptr<Session>>
+            //sessions_ maps crow::websocket::connection* keys to
+            //std::shared_ptr<Session> values
 
             auto handle = std::make_shared<ConnHandle>();
             handle->conn = &conn;
-            //one handle per connection instance. A later connection landing on
-            //the same address gets its own handle, so a worker still holding
-            //the old one sees a nulled conn rather than the new connection
+            //one handle per connection instance: a worker still holding the
+            //old one sees a nulled conn rather than a new connection
 
             {
                 std::lock_guard<std::mutex> lock(sessions_mutex_);
@@ -136,28 +132,19 @@ void Server::run()
                 //erase the conn key in the sessions map
             } //mutex is unlocked as the lock variable goes out of scope
 
-            //the two scopes are sequential and never nested, deliberately. The
-            //send path takes handle->m and never sessions_mutex_; this handler
-            //takes sessions_mutex_ and then, only after releasing it, handle->m.
-            //No path holds either while reaching for the other, so there is no
-            //AB/BA cycle. Nesting these scopes is exactly the deadlock
+            //the two scopes are sequential and never nested, deliberately.
+            //Holding one while reaching for the other is exactly the deadlock
 
             CROW_LOG_DEBUG << "websocket closed, code " << code
                            << ", reason: " << reason;
-            //reason and code were named and never read. Logging them both uses
-            //the parameters and turns a silent disconnect into something that
-            //can be told apart from a client that simply went away
+            //reason and code were named and never read. Logging both tells a
+            //silent disconnect apart from a client that simply went away
 
             if (handle) {
                 std::lock_guard<std::mutex> lock(handle->m);
                 handle->conn = nullptr;
-                //blocks here until any send in flight releases m, which is what
-                //keeps the connection alive across that send. Crow calls this
-                //handler from check_destroy() and only drops the last reference
-                //in remove_websocket() afterwards, so ~Connection cannot begin
-                //until this returns, and this cannot return until the send is
-                //done. That is the same happens-before the old server-wide lock
-                //produced by stalling onclose, now scoped to one connection
+                //blocks until any send in flight releases m; ~Connection
+                //cannot begin until this returns, so the send is never cut off
             }
         }
     ); // end of .onclose
@@ -279,24 +266,20 @@ void Server::handle_audio(const std::shared_ptr<Session>& session,
     std::string bytes = session->take_partial_byte();
     bytes += data;
     //a websocket frame is free to split a 16-bit sample across two frames.
-    //the odd byte left over last time is put back on the front here, otherwise
-    //it is dropped and every following sample is shifted by one byte
+    //the odd byte left over last time is put back on the front of the new buffer
 
     const std::size_t count = bytes.size() / sizeof(std::int16_t);
-    //count is the amount of samples in the audio data
-    //number of samples = total bytes / bytes per sample OR
-    //number of samples = audio data (bytes) / size of 16bit int (2bytes)
+    //count is the number of samples: total bytes / bytes per sample,
+    //i.e. size in bytes / sizeof(std::int16_t)
 
     std::vector<std::int16_t> pcm(count);
     if (count > 0) {
         std::memcpy(pcm.data(), bytes.data(), count * sizeof(std::int16_t));
-        //memcpy rather than reinterpret_cast: bytes.data() is a char* with no
-        //guarantee of 2-byte alignment, and reading it as std::int16_t* is
-        //undefined behaviour on targets that care
+        //memcpy rather than reinterpret_cast: bytes.data() is a char* with
+        //no 2-byte alignment guarantee, so reading it as std::int16_t* is UB
     }
-    //a frame carrying a single odd byte leaves count at 0, and pcm.data() is
-    //allowed to be null for an empty vector. memcpy with a null pointer is
-    //undefined even for a length of 0, so the copy is skipped entirely
+    //a lone odd byte leaves count at 0, and memcpy from the possibly-null
+    //data() of an empty vector is undefined even for length 0
 
     if (bytes.size() % sizeof(std::int16_t) != 0) {
         session->stash_partial_byte(bytes.substr(count * sizeof(std::int16_t)));
@@ -348,15 +331,12 @@ void Server::handle_control(crow::websocket::connection& conn,
         //the deleter holds session, so the Session outlives the end_job() call
 
         enqueue_pipeline_job(std::move(handle), session, {}, false, std::move(claim));
-        //the opening turn: no audio has been spoken yet, so there is nothing to
-        //transcribe. The examiner runs on the system prompt alone and asks the
-        //first question, instead of the student having to talk into silence
         return;
     }
 
     if (message.type != MessageType::Stop) {
         return;
-    } // only for handing stop
+    } 
 
     std::shared_ptr<ConnHandle> handle = find_conn_handle(&conn);
     if (!handle) {
@@ -377,9 +357,8 @@ void Server::handle_control(crow::websocket::connection& conn,
     //taking the audio on the socket thread to seperate it from any new incoming audio\
 
     enqueue_pipeline_job(std::move(handle), session, std::move(utterance_audio), true, std::move(claim));
-    //hand the audio and the connection handle to the pipeline job builder. The
-    //handle rather than &conn: the job outlives handle_control, and by then the
-    //raw pointer may name a destroyed connection
+    //the handle rather than &conn: the job outlives handle_control, and by
+    //then the raw pointer may name a destroyed connection
 }
 
 void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
@@ -403,18 +382,8 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
         job_input = std::move(examiner_input),
         claim = std::move(claim)]() mutable
 
-    //this captures the server Object to access member functions
-    //session paramater is shared ptr to Session object to utilise its functions
-    //handle is captured by value, so the job owns a reference to it. The
-    //ConnHandle therefore outlives the connection itself, and the send below
-    //has something valid to check even if the connection is long gone
-    //create a new variable called job_audio which has the utterance_audio moved into it
-    //therefore the audio is moved not duplicated which is expensive
-    //job_input owns its Turns, so respond() borrows nothing from the Session
-    //claim releases the session whenever this lambda dies, dropped job included
-    //mutable because the transcript is pushed onto job_input below
-    //transcribe_first is false for the opening turn, where the student has not
-    //spoken yet and there is no audio to run through STT
+    //handle is captured by value, so a job outliving the connection still has
+    //something valid to check. audio and input are moved in, not copied
 
     {
         std::string reply;
@@ -429,10 +398,8 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
         long long stt_ms = 0;
         long long examiner_ms = 0;
         long long tts_ms = 0;
-        //stage timings, so a slow turn can be attributed to one backend rather
-        //than guessed at. Written on stderr next to the other pipeline logs.
-        //declared out here so the send below still runs after a failure.
-        //speech staying empty is what turns this into a recoverable turn
+        //stage timings on stderr, so a slow turn names one backend. Declared
+        //out here so the send below still runs after a failure
 
         try {
             if (transcribe_first) {
@@ -442,9 +409,8 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
 
                 if (!transcript.empty()) {
                     send_transcript(handle, transcript);
-                    //paint what STT heard before the examiner replies to it, so
-                    //the student can see a misheard answer rather than only the
-                    //reply that makes no sense because of it
+                    //paint what STT heard before the reply, so a misheard
+                    //answer is visible rather than only a reply that makes no sense
 
                     job_input.push_back(Turn{Role::Student, transcript});
                     //onto the owned snapshot, STT had not run when it was built
@@ -460,38 +426,8 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                     send_error(handle, "didn't catch that, please try again");
                     send_examiner_result(handle, reply, speech);
                     return;
-                    //an empty transcript is NOT appended, and as of here it no
-                    //longer reaches the examiner at all. Skipping the append
-                    //alone still called respond(), which spent one
-                    //generate_content_free_tier_requests unit out of a daily
-                    //20 to have the model re-ask a question the student had
-                    //already been asked. With STT disabled during prototyping
-                    //every turn transcribes empty, so that path drained the
-                    //whole day's budget without a single real exchange.
-                    //
-                    //Both frames below already exist and the client already
-                    //handles them, so nothing in client.js changes. send_error
-                    //carries no sample_rate and lands in addLog, which writes
-                    //#log rather than #transcript - the student is told the
-                    //audio was not heard without a turn being painted that the
-                    //session history does not contain. send_examiner_result is
-                    //then called with reply and speech both still empty, which
-                    //is byte-for-byte the frame the failure path already sends:
-                    //an examiner_text with an empty payload and, because speech
-                    //is empty, no sample_rate field at all. client.js treats a
-                    //missing sample_rate as "no binary frame follows" and arms
-                    //the mic immediately, so the "sample_rate present implies a
-                    //binary frame follows" rule holds - the field is absent and
-                    //no binary frame is sent.
-                    //
-                    //The early return is what skips respond(); the tail call to
-                    //send_examiner_result after the catch is unreachable from
-                    //here, which is why it is issued explicitly above rather
-                    //than fallen through to. Nothing was committed to the
-                    //session on this path - no record_answer, no
-                    //record_question - so the next snapshot is unchanged and
-                    //the examiner re-asks from the same state, exactly as
-                    //before. The non-empty path below is untouched.
+                    //an empty transcript never reaches the examiner: respond()
+                    //would spend daily quota re-asking. Both frames below re-arm the mic
                 }
             }
 
@@ -516,40 +452,8 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
             std::cerr << "turn failed, sending what we have: " << e.what() << '\n';
             speech.clear();
             send_error(handle, "something went wrong on that turn");
-            //a fixed student-facing string, not e.what(). The detail is already
-            //on stderr, and what reaches the browser here would otherwise be a
-            //raw internal message - a Gemini error body, a whisper failure, a
-            //piper exit - which is a diagnostic for the operator, not the
-            //student. Sent BEFORE send_examiner_result so the explanation
-            //arrives ahead of the frame that re-arms the mic
-            //reply is deliberately NOT cleared. record_question() above commits
-            //before synthesize() runs, so a TTS failure has already written the
-            //question into the session. Clearing the text here would send the
-            //student nothing while the examiner's next snapshot still contains
-            //that question - it would then pair a question the student never
-            //received with an answer to the previous one, and every later turn
-            //inherits the divergence. Sending the text keeps the invariant
-            //"last_question_ is committed if and only if the text was sent":
-            //the student reads the question instead of hearing it.
-            //If respond() was the thrower, reply was never assigned and is
-            //already empty, so nothing is sent and nothing was committed.
-            //speech.clear() is a no-op today (a throwing synthesize() leaves
-            //the target untouched) and is kept only as defence if more stages
-            //are added between here and the send.
-            //the worker_loop backstop would keep the process alive, but it
-            //cannot send anything: no frame would go out, and the client is
-            //waiting post-stop for the control message that tells it to
-            //re-arm. It would never arrive, the mic would stay shut and the
-            //student would be stuck on a live server.
-            //So route the failure into the send path instead of propagating.
-            //Empty speech means send_examiner_result omits sample_rate and
-            //skips send_binary, and "no sample_rate" is already the client's
-            //signal to arm immediately. The turn is lost - the student repeats
-            //the answer - but the session recovers itself.
-            //This catch is also where the Gemini failover will live: retry
-            //examiner_->respond() here, and only fall through to the empty
-            //result if the fallback throws too. The pool backstop stays
-            //underneath as the defence against a bug in that failover path.
+            //a fixed student-facing string, not e.what(), which is an
+            //operator diagnostic. reply is kept - record_question committed it
         } catch (...) {
             std::cerr << "turn failed with non-std exception, sending what we have\n";
             speech.clear();
@@ -568,8 +472,7 @@ void Server::send_text_on_handle(const std::shared_ptr<ConnHandle>& handle,
                                  const std::string& json) {
     std::lock_guard<std::mutex> lock(handle->m);
     //same discipline as send_examiner_result: the null check and the send are
-    //one critical section, so onclose cannot null conn and return - and let
-    //~Connection run - between the two
+    //one critical section, so onclose cannot free the connection between them
 
     crow::websocket::connection* conn_ptr = handle->conn;
     if (conn_ptr == nullptr) {
@@ -583,12 +486,8 @@ void Server::send_busy(const std::shared_ptr<ConnHandle>& handle) {
     message.type = MessageType::Status;
     message.payload = "busy";
     send_text_on_handle(handle, to_json(message).dump());
-    //this used to be conn.send_text() straight off the socket thread. The
-    //connection is certainly alive there, so it was not a lifetime bug - but
-    //it posted a frame with no ordering relationship to the frames a worker
-    //was posting for the same connection, so "busy" could arrive between an
-    //examiner text and its PCM. The client arms its mic on "busy", so it would
-    //unmute exactly as the examiner started speaking and record the reply
+    //not conn.send_text() off the socket thread: that had no ordering against
+    //a worker's frames, so "busy" could arm the mic mid-utterance
 }
 
 void Server::send_error(const std::shared_ptr<ConnHandle>& handle,
@@ -597,10 +496,8 @@ void Server::send_error(const std::shared_ptr<ConnHandle>& handle,
     message.type = MessageType::Error;
     message.payload = text;
     send_text_on_handle(handle, to_json(message).dump());
-    //carries no sample_rate, so the client's "sample_rate means a binary frame
-    //follows" rule is untouched and this cannot be mistaken for a turn. It
-    //lands in client.js addLog, which writes #log - the diagnostic surface -
-    //rather than addTurn, so a failed turn still paints nothing in #transcript
+    //carries no sample_rate, so it cannot be mistaken for a turn. It lands in
+    //client.js addLog rather than addTurn, painting nothing in #transcript
 }
 
 void Server::send_transcript(const std::shared_ptr<ConnHandle>& handle,
@@ -613,11 +510,8 @@ void Server::send_transcript(const std::shared_ptr<ConnHandle>& handle,
     message.type = MessageType::Transcript;
     message.payload = text;
     send_text_on_handle(handle, to_json(message).dump());
-    //MessageType::Transcript existed in protocol.hpp and was never constructed
-    //anywhere, so the matching branch in client.js handleMessage was
-    //unreachable and the student never saw what STT actually heard. Sent as its own frame before the examiner reply,
-    //and carrying no sample_rate, so it does not disturb the client's
-    //"sample_rate means a binary frame follows" rule
+    //MessageType::Transcript was never constructed, so the client branch was
+    //unreachable. Its own frame, no sample_rate, sent before the reply
 }
 
 void Server::send_examiner_result(const std::shared_ptr<ConnHandle>& handle,
@@ -631,21 +525,16 @@ void Server::send_examiner_result(const std::shared_ptr<ConnHandle>& handle,
         //tell the browser what rate the PCM frame that follows was produced at,
         //otherwise it plays it back at the AudioContext rate and the pitch shifts
     }
-    //left at 0 when there is no speech, and to_json omits the field entirely
-    //when it is 0, so the presence of "sample_rate" is the client's signal that
-    //a binary frame follows. Setting it unconditionally attached a rate to
-    //nothing and forced the client to guess with a timer instead
+    //left at 0 with no speech, and to_json omits a 0, so the presence of
+    //"sample_rate" is the client's signal that a binary frame follows
     const std::string json = to_json(message).dump();
     //build the examiner text as a CROW::JSON object
 
     //before sending message to browser check the connection is still alive,
     //to avoid dereferencing a potentially dangling pointer
     std::lock_guard<std::mutex> lock(handle->m);
-    //the connection's own mutex, not sessions_mutex_. Held across both writes
-    //below for the same reason the server-wide lock used to be: it is what stops
-    //onclose from nulling conn, returning, and letting ~Connection run while a
-    //write is in flight. What it no longer does is stall every other
-    //connection's socket thread. Sends now serialise per connection only
+    //the connection's own mutex, not sessions_mutex_: it stops onclose letting
+    //~Connection run mid-write without stalling every other connection
 
     crow::websocket::connection* conn_ptr = handle->conn;
     if (conn_ptr == nullptr) {
@@ -668,9 +557,8 @@ void Server::send_examiner_result(const std::shared_ptr<ConnHandle>& handle,
         //number of bytes = number of samples * bytes per sample
 
         conn_ptr->send_binary(std::string(bytes, byte_count));
-        //construct a std::string from the byte range (start pointer + length)
-        //the string here is just a byte container, not readable text
-        //send those raw PCM bytes down the socket as a binary frame
+        //a std::string built from the byte range as a container, not text,
+        //then sent down the socket as a binary frame
     }
     //Currently no handling for empty audio buffer
 }

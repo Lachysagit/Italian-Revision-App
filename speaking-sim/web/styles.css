@@ -27,10 +27,8 @@ h1 {
     padding-top: 1.5rem;
 }
 
-/* the controls ride along with the scroll so the turn buttons are reachable
-   from anywhere in a long transcript. The negative margins let the opaque
-   band span the full body width while the buttons keep the text gutter,
-   otherwise transcript cards showed through at the edges as they passed under */
+/* the controls ride along with the scroll so the turn buttons stay reachable.
+   The negative margins span the opaque band across the full body width */
 #controls {
     position: sticky;
     top: 0;
@@ -71,9 +69,8 @@ h1 {
     margin-top: 1.25rem;
 }
 
-/* one card per committed turn. The role is carried as a class rather than
-   baked into the text so the speaker is readable at a glance without parsing
-   a "Role: text" prefix */
+/* one card per committed turn. The role is a class rather than baked into
+   the text, so the speaker reads at a glance without parsing a prefix */
 .turn {
     padding: 0.6rem 0.85rem;
     border: 1px solid;
@@ -111,6 +108,5 @@ h1 {
     color: var(--student-ink);
 }
 
-/* the #log diagnostic surface was removed from the page - addLog() writes to
-   the browser console now, so the transcript cards are the only thing on
-   screen. Its rules are gone with it rather than left to style nothing. */
+/* the #log surface was removed from the page - addLog() writes to the console
+   now - so its rules are gone rather than left styling nothing. */

@@ -1,19 +1,31 @@
 #include "sim/session.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstddef>
+#include <string>
 #include <utility>
 
 namespace sim {
+
+namespace {
+
+bool has_visible_text(const std::string& text) {
+    return std::any_of(text.begin(), text.end(), [](unsigned char ch) {
+        return std::isspace(ch) == 0;
+    });
+    //.empty() tests length alone, so a whitespace-only transcript went to the
+    //model as a blank turn. The unsigned char cast is required by isspace
+}
+
+}  // namespace
 
 Session::Session() = default;
 
 void Session::set_system_prompt(std::string prompt) {
     system_prompt_ = std::move(prompt);
-    //the examiner only ever sees build_examiner_input(), so the prompt has to
-    //live in the snapshot as the leading turn or it never reaches the model at all
-    //no replace-vs-insert branch is needed any more: the snapshot is rebuilt
-    //from scratch every call, so calling this twice cannot stack prompts
+    //the examiner only sees build_examiner_input(), so the prompt has to lead
+    //the snapshot. The snapshot is rebuilt per call, so prompts cannot stack
 }
 
 void Session::record_answer(std::string answer) {
@@ -42,18 +54,17 @@ std::vector<Turn> Session::build_examiner_input() const {
     //at most system + question + answer, so one allocation and no regrowth
 
     input.push_back(Turn{Role::System, system_prompt_});
-    //copies the prompt into the caller's vector. the copy is the point: the
-    //returned Turns own their text, so the caller can outlive this Session's
-    //next write without reading freed memory
+    //copies the prompt into the caller's vector, deliberately: the returned
+    //Turns own their text and can outlive this Session's next write
 
-    if (!last_question_.empty()) {
+    if (has_visible_text(last_question_)) {
         input.push_back(Turn{Role::Examiner, last_question_});
     }
-    if (!last_answer_.empty()) {
+    if (has_visible_text(last_answer_)) {
         input.push_back(Turn{Role::Student, last_answer_});
     }
-    //empty strings are skipped rather than sent as blank turns. on the opening
-    //turn both are empty and the examiner runs on the prompt alone
+    //strings with no visible characters are skipped rather than sent as blank
+    //turns. On the opening turn the examiner runs on the prompt alone
 
     return input;
     //by value. NRVO elides the copy, and even if it did not this would move

@@ -11,8 +11,8 @@ enum class MessageType {
     Stop, //from browser
     Status, //from server
     Transcript, //from server
-    ExaminerText,
-    Error,
+    ExaminerText, //from server
+    Error, //from server
 };
     
 struct Message {
