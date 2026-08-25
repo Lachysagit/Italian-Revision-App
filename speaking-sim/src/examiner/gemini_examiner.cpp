@@ -81,7 +81,7 @@ const char* gemini_role(Role role) {
 }  // namespace
 
 GeminiExaminer::GeminiExaminer(std::string api_key)
-    : api_key_(std::move(api_key)) {}
+    : api_key_(std::move(api_key)) {} // constructor
 
 std::string GeminiExaminer::respond(const std::vector<Turn>& history) {
     crow::json::wvalue body;

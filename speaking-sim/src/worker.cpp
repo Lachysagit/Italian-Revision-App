@@ -11,7 +11,7 @@ WorkerPool::WorkerPool(std::size_t thread_count) { //unsigned int param
         //for loop with i set to same type as variable looped through
         threads_.emplace_back([this] { worker_loop(); });
     }
-}
+} // constructor
 
 void WorkerPool::worker_loop() {
     while (true) {
@@ -88,6 +88,6 @@ WorkerPool::~WorkerPool() {
         //a std::thread that is still joinable when destroyed calls
         //std::terminate, so every thread must be joined here
     }
-}
+} // destructor
 
 }  // namespace sim

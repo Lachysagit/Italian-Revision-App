@@ -18,7 +18,8 @@ int main() {
 
         auto stt = std::make_unique<sim::WhisperSTT>(config.whisper_model_path);
         auto tts = std::make_unique<sim::PiperTTS>(config.piper_model_path);
-        //build the concrete STT and TTS implementations
+        //build the concrete STT and TTS implementations 
+        //use unique_ptr
 
         std::unique_ptr<sim::InterfaceExaminer> examiner;
         if (config.examiner_backend == sim::ExaminerBackend::Hailo) {
@@ -46,5 +47,5 @@ int main() {
         return 1;
     }
     //without this a throw from load_config, a missing model or a taken port
-    //leaves main via std::terminate. The throw still unwinds normally
+    //leaves main via std::terminate with no clear error messaging
 }

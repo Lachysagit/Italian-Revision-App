@@ -6,7 +6,7 @@
 namespace sim {
 
 HailoExaminer::HailoExaminer(std::string ollama_url): ollama_url_(std::move(ollama_url)) {
-}
+} // constructor
 
 std::string HailoExaminer::respond(const std::vector<Turn>& history) {
     (void)history;

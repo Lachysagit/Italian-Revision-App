@@ -28,16 +28,15 @@ Server::Server(Config config,
       examiner_(std::move(examiner)),
       tts_(std::move(tts)),
       pool_(config_.worker_threads) {
-    //config_ is initialised before pool_ - member init follows declaration
-    //order. The literal 2 here ignored WORKER_THREADS on every machine
-}
+    //constructor where config_ is initialised
+} // constructor
 
 
 void Server::run() 
 
     {
     system_prompt_ = load_system_prompt();
-    //load examiner system prompt once at startup
+    //load examiner system prompt once at startup, file open
 
     CROW_ROUTE(app_, "/") //HTTP ROUTE -----------------------------------
     ([this] {
@@ -48,18 +47,16 @@ void Server::run()
     ([this] {
         return serve_client_script();
     });
-    //index.html pulls this in with <script src="client.js">. Without a route
-    //for it the page renders and the browser client never runs at all
+    //index.html pulls this in with <script src="client.js">
 
     CROW_ROUTE(app_, "/styles.css") //HTTP ROUTE -----------------------------------
     ([this] {
         return serve_stylesheet();
     });
-    //same reason as client.js: index.html links it, and an unrouted asset is a
-    //404 the browser swallows silently - the page still renders, unstyled
+    //same reason as client.js: index.html links it
 
     CROW_WEBSOCKET_ROUTE(app_, "/ws") //WEBSOCKET ROUTE ----------------------------------
-        .onopen([this](crow::websocket::connection& conn) 
+        .onopen([this](crow::websocket::connection& conn) //handles when websocket is opened
         
             {
             auto session = std::make_shared<Session>();
@@ -84,11 +81,11 @@ void Server::run()
 
             }
             } 
-        ) //end of .onopen
+        ) //end of .onopen 
 
-        .onmessage([this](crow::websocket::connection& conn,
+        .onmessage([this](crow::websocket::connection& conn, //handles when websocket receives message
                           const std::string& data,
-                          bool is_binary) 
+                          bool is_binary)  //flag
                           
             {
             //params are conn, data, and binary flag
@@ -149,17 +146,17 @@ void Server::run()
         }
     ); // end of .onclose
 
-    app_.port(config_.port).multithreaded().run();
+    app_.port(config_.port).multithreaded().run(); //IMPORTANT LINE
+    //Launches server loop, accepts websocket requests accross multi threads
 }
 
 crow::response Server::serve_index() 
-
     {
-    std::ifstream file("web/index.html");
+    std::ifstream file("web(frontend)/index.html");
     if (!file) {
         return crow::response(404, "index.html not found");
     }
-    //open index html file
+    //open index html file with error handling
 
     std::stringstream buffer;
     buffer << file.rdbuf();
@@ -214,7 +211,7 @@ std::string Server::load_system_prompt()
     {
     std::ifstream file("prompts/examiner_system.txt");
     if (!file) {
-        return "You are an examiner. Ask the student questions.";
+        return "You are an examiner. Ask the student questions in Italian at a begginers level.";
     }
     //open examiner system prompt file, fallback if missing
 

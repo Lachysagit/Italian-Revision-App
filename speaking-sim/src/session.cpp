@@ -20,7 +20,7 @@ bool has_visible_text(const std::string& text) {
 
 }  // namespace
 
-Session::Session() = default;
+Session::Session() = default; // constructor
 
 void Session::set_system_prompt(std::string prompt) {
     system_prompt_ = std::move(prompt);

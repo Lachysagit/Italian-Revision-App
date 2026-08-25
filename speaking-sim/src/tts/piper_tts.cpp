@@ -224,7 +224,7 @@ PiperTTS::PiperTTS(std::string model_path)
       sample_rate_(read_voice_sample_rate(model_path_)) {
     // model_path_ is initialised first because it is declared first. Passing
     // the parameter instead would read a moved-from string.
-}
+} // constructor
 
 int PiperTTS::sample_rate() const {
     return sample_rate_;

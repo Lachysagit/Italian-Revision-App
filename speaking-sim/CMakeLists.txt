@@ -248,7 +248,7 @@ if(WIN32 AND SIM_NATIVE_LIBS AND CMAKE_VERSION VERSION_GREATER_EQUAL 3.21)
     )
 endif()
 
-# web/index.html and prompts/examiner_system.txt are opened by relative path, so
+# web(frontend)/index.html and prompts/examiner_system.txt are opened by relative path, so
 # the binary has to be started from the project root. Pinning the output
 # directory keeps ./build/speaking-sim predictable across generators.
 set_target_properties(speaking-sim PROPERTIES

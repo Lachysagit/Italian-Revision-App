@@ -34,7 +34,7 @@ WhisperSTT::WhisperSTT(std::string model_path): model_path_(std::move(model_path
     }
 #endif
 
-}
+} // constructor
 
 WhisperSTT::~WhisperSTT() {
 #ifdef SIM_HAVE_WHISPER
@@ -44,7 +44,7 @@ WhisperSTT::~WhisperSTT() {
     // whisper_free matches whisper_init_from_file_*. Only reached with a
     // non-null ctx_, and copy/move are deleted, so it runs exactly once.
 #endif
-}
+} // destructor
 
 std::string WhisperSTT::transcribe(const std::vector<std::int16_t>& pcm) {
     if (pcm.empty()) {

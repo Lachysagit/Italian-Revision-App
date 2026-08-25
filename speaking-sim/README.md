@@ -111,7 +111,7 @@ set -a && . ./.env && set +a
 ./build/speaking-sim
 ```
 
-**Run the binary from this directory.** It opens `web/index.html` and
+**Run the binary from this directory.** It opens `web(frontend)/index.html` and
 `prompts/examiner_system.txt` by relative path, so starting it from anywhere
 else serves a 404 for the page and silently falls back to a built-in one-line
 system prompt.
@@ -140,7 +140,7 @@ include/sim/      Public headers. The interfaces (InterfaceSTT, InterfaceExamine
 src/              Implementation, mirroring include/sim/. main.cpp picks the
                   examiner backend from config and injects the concrete pieces
                   into Server as interfaces.
-web/              Browser client: index.html and client.js (mic capture, PCM
+web(frontend)/    Browser client: index.html and client.js (mic capture, PCM
                   conversion, WebSocket, playback).
 prompts/          examiner_system.txt, the examiner's system prompt, read once
                   at startup.
