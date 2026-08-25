@@ -339,13 +339,11 @@ void Server::handle_control(crow::websocket::connection& conn,
     if (!handle) {
         return;
     } //resolved before try_begin_job(), so a connection that is already closing
-    //does not take a claim it can never release a reply through
 
     if (!session->try_begin_job()) {
         send_busy(handle);
         return;
     } //refuse before take_audio(), so a rejected Stop does not discard the buffer
-    //the buffer survives, so the client can re-arm and send the same answer again
 
     std::shared_ptr<Session> claim(session.get(), [session](Session* s) { s->end_job(); });
 
@@ -379,8 +377,7 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
         job_input = std::move(examiner_input),
         claim = std::move(claim)]() mutable
 
-    //handle is captured by value, so a job outliving the connection still has
-    //something valid to check. audio and input are moved in, not copied
+    //handle is captured by value
 
     {
         std::string reply;
@@ -424,7 +421,6 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                     send_examiner_result(handle, reply, speech);
                     return;
                     //an empty transcript never reaches the examiner: respond()
-                    //would spend daily quota re-asking. Both frames below re-arm the mic
                 }
             }
 
@@ -444,13 +440,12 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                       << "ms, tts " << tts_ms << "ms, total "
                       << ms_since(turn_started) << "ms\n";
             //16000 is the capture rate the client resamples to, and the rate
-            //whisper requires; it is fixed on both sides, not read from config
+            //whisper requires it
         } catch (const std::exception& e) {
             std::cerr << "turn failed, sending what we have: " << e.what() << '\n';
             speech.clear();
             send_error(handle, "something went wrong on that turn");
-            //a fixed student-facing string, not e.what(), which is an
-            //operator diagnostic. reply is kept - record_question committed it
+            //a fixed student-facing string, 
         } catch (...) {
             std::cerr << "turn failed with non-std exception, sending what we have\n";
             speech.clear();
@@ -459,8 +454,7 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
         }
 
         send_examiner_result(handle, reply, speech);
-        //hand the result back to Crow's thread for sending. Reached on both
-        //paths, so the client is always re-armed while the session is alive
+        //hand the result back to Crow's thread for sending. 
     }
     );
 }
@@ -469,7 +463,6 @@ void Server::send_text_on_handle(const std::shared_ptr<ConnHandle>& handle,
                                  const std::string& json) {
     std::lock_guard<std::mutex> lock(handle->m);
     //same discipline as send_examiner_result: the null check and the send are
-    //one critical section, so onclose cannot free the connection between them
 
     crow::websocket::connection* conn_ptr = handle->conn;
     if (conn_ptr == nullptr) {
@@ -483,8 +476,6 @@ void Server::send_busy(const std::shared_ptr<ConnHandle>& handle) {
     message.type = MessageType::Status;
     message.payload = "busy";
     send_text_on_handle(handle, to_json(message).dump());
-    //not conn.send_text() off the socket thread: that had no ordering against
-    //a worker's frames, so "busy" could arm the mic mid-utterance
 }
 
 void Server::send_error(const std::shared_ptr<ConnHandle>& handle,
@@ -508,7 +499,6 @@ void Server::send_transcript(const std::shared_ptr<ConnHandle>& handle,
     message.payload = text;
     send_text_on_handle(handle, to_json(message).dump());
     //MessageType::Transcript was never constructed, so the client branch was
-    //unreachable. Its own frame, no sample_rate, sent before the reply
 }
 
 void Server::send_examiner_result(const std::shared_ptr<ConnHandle>& handle,
@@ -520,15 +510,11 @@ void Server::send_examiner_result(const std::shared_ptr<ConnHandle>& handle,
     if (!speech.empty()) {
         message.sample_rate = tts_->sample_rate();
         //tell the browser what rate the PCM frame that follows was produced at,
-        //otherwise it plays it back at the AudioContext rate and the pitch shifts
     }
-    //left at 0 with no speech, and to_json omits a 0, so the presence of
-    //"sample_rate" is the client's signal that a binary frame follows
+    
     const std::string json = to_json(message).dump();
     //build the examiner text as a CROW::JSON object
 
-    //before sending message to browser check the connection is still alive,
-    //to avoid dereferencing a potentially dangling pointer
     std::lock_guard<std::mutex> lock(handle->m);
     //the connection's own mutex, not sessions_mutex_: it stops onclose letting
     //~Connection run mid-write without stalling every other connection
@@ -542,7 +528,6 @@ void Server::send_examiner_result(const std::shared_ptr<ConnHandle>& handle,
 
     conn_ptr->send_text(json);
     //send the reply text down the socket as a text frame
-    //Crow handles the thread-safety of the send internally
 
     if (!speech.empty()) {
         const char* bytes = reinterpret_cast<const char*>(speech.data());
