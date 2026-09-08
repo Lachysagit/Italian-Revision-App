@@ -1,6 +1,7 @@
 #include "sim/server.hpp"
 
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -8,6 +9,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -15,9 +17,45 @@
 #include <vector>
 
 #include "sim/protocol.hpp"
+#include "sim/question_bank.hpp"
+#include "sim/text_clean.hpp"
+#include "sim/topics.hpp"
+#include "sim/translate.hpp"
 #include "sim/session.hpp"
 
 namespace sim {
+
+namespace {
+
+// Both are escape hatches, not schedules: the barrier fills in microseconds and
+// the handshakes take a few hundred milliseconds. They exist so that a pool
+// smaller than worker_threads, or a network that never answers, costs a slow
+// first turn instead of a server that never finishes starting.
+constexpr int kPrewarmBarrierSeconds = 5;
+constexpr int kPrewarmJoinSeconds = 15;
+
+// The translate box is for a sentence at a time. The cap stops an accidental
+// paste of the whole transcript turning into one long, billable request.
+constexpr std::size_t kMaxTranslateChars = 1000;
+
+// The route only ever serves this app's two directions, so the language pair is
+// checked against a list rather than passed through. Without this the request
+// body could steer the outbound call at any language Google offers.
+bool is_supported_language(const std::string& code) {
+    return code == "it" || code == "en";
+}
+
+crow::response json_error(int status, const std::string& message) {
+    crow::json::wvalue json;
+    json["error"] = message;
+    crow::response response(status, json.dump());
+    response.set_header("Content-Type", "application/json");
+    return response;
+    //an error is JSON too, so the client can read .error the same way on every
+    //path instead of guessing whether a body is text or JSON by status code
+}
+
+}  // namespace
 
 Server::Server(Config config,
                std::unique_ptr<InterfaceSTT> stt,
@@ -35,8 +73,34 @@ Server::Server(Config config,
 void Server::run() 
 
     {
-    system_prompt_ = load_system_prompt();
-    //load examiner system prompt once at startup, file open
+    first_prompt_ = load_prompt(
+        "prompts/examiner_first.txt",
+        "You are an examiner. Ask the student one short, easy question in "
+        "Italian, in the present tense, at a beginner's level.");
+    ongoing_prompt_ = load_prompt(
+        "prompts/examiner_ongoing.txt",
+        "You are an examiner. Ask the student questions in Italian at a "
+        "beginner's level.");
+    //both read once at startup. Which one a turn gets is Session's decision,
+    //because only the Session knows whether a question has been asked yet
+
+    question_bank_ = std::make_shared<const QuestionBank>(
+        QuestionBank::load("prompts/question_bank.txt"));
+    if (question_bank_->empty()) {
+        std::cerr << "prompts/question_bank.txt is missing or carries no "
+                     "questions, so the examiner runs without samples"
+                  << std::endl;
+        //named in the log for the same reason a missing prompt file is: the
+        //exam still runs, and the only symptom is questions drifting off the
+        //syllabus with nothing to point at
+    } else {
+        std::cerr << "question bank: " << question_bank_->group_count()
+                  << " topics loaded" << std::endl;
+    }
+
+    prewarm_tts();
+    prewarm_examiner();
+    //before the port is bound, so the first student to connect cannot race them
 
     CROW_ROUTE(app_, "/") //HTTP ROUTE -----------------------------------
     ([this] {
@@ -55,12 +119,27 @@ void Server::run()
     });
     //same reason as client.js: index.html links it
 
+    CROW_ROUTE(app_, "/api/gemini-keys") //HTTP ROUTE -----------------------------------
+    ([this] {
+        return serve_gemini_keys();
+    });
+    //the settings modal fetches this to populate its picker
+
+    CROW_ROUTE(app_, "/api/translate").methods("POST"_method) //HTTP ROUTE -----------------------------------
+    ([this](const crow::request& req) {
+        return serve_translate(req);
+    });
+    //the translate box posts here. Handlers run on crow's own socket threads,
+    //so this blocks one for the call and never touches pool_ - a lookup cannot
+    //take a worker away from a student who is mid-turn
+
     CROW_WEBSOCKET_ROUTE(app_, "/ws") //WEBSOCKET ROUTE ----------------------------------
         .onopen([this](crow::websocket::connection& conn) //handles when websocket is opened
         
             {
             auto session = std::make_shared<Session>();
-            session->set_system_prompt(system_prompt_);
+            session->set_prompts(first_prompt_, ongoing_prompt_);
+            session->set_question_bank(question_bank_);
 
 
             //sessions_ maps crow::websocket::connection* keys to
@@ -150,7 +229,101 @@ void Server::run()
     //Launches server loop, accepts websocket requests accross multi threads
 }
 
-crow::response Server::serve_index() 
+void Server::prewarm_tts() {
+    //PiperTTS spawns a fresh piper process per turn, and the first spawn of the
+    //run pays for loading the executable, onnxruntime and the voice .onnx off
+    //cold disk - seconds, all of it landing on the opening question. Doing it
+    //here pulls those pages into the OS file cache while nobody is waiting, so
+    //every later spawn is a warm one. The samples are thrown away.
+    const auto started = std::chrono::steady_clock::now();
+    try {
+        const std::vector<std::int16_t> warm = tts_->synthesize("Buongiorno.");
+        const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now() - started).count();
+        if (warm.empty()) {
+            std::cerr << "tts prewarm produced no audio in " << ms
+                      << "ms - piper is not configured, replies will be silent" << std::endl;
+        } else {
+            std::cerr << "tts prewarm: " << ms << "ms, "
+                      << (warm.size() / static_cast<double>(tts_->sample_rate()))
+                      << "s of audio discarded" << std::endl;
+            //the number to compare against the first turn's tts timing: if they
+            //are still close, the cost is synthesis itself, not the cold start
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "tts prewarm failed, continuing: " << e.what() << std::endl;
+        //never fatal. A broken piper must still leave a server that serves the
+        //page and the text of every reply, exactly as a mid-turn failure does
+    }
+}
+
+void Server::prewarm_examiner() {
+    // GeminiExaminer's httplib Client is thread_local, so one prewarm() call
+    // would open a connection on ONE pool thread and leave the rest cold. The
+    // jobs below hold at a barrier until every one of them is running, which
+    // is what guarantees they occupy distinct threads: a job that returned
+    // early would free its thread to pick up the next job off the queue and
+    // warm the same connection twice.
+    const std::size_t count = config_.worker_threads;
+    if (count == 0) {
+        return;
+    }
+
+    struct Barrier {
+        std::mutex m;
+        std::condition_variable cv;
+        std::size_t arrived = 0;
+        std::size_t finished = 0;
+        bool released = false;
+    };
+    auto barrier = std::make_shared<Barrier>();
+    //shared_ptr rather than stack locals captured by reference: both waits
+    //below can time out, and on that path this frame returns while jobs are
+    //still running. References would dangle; a shared owner cannot
+
+    for (std::size_t i = 0; i < count; ++i) {
+        pool_.enqueue([this, barrier, count] {
+            {
+                std::unique_lock<std::mutex> lock(barrier->m);
+                if (++barrier->arrived == count) {
+                    barrier->released = true;
+                    barrier->cv.notify_all();
+                    //the last job to arrive frees all of them, itself included
+                }
+                barrier->cv.wait_for(lock,
+                                     std::chrono::seconds(kPrewarmBarrierSeconds),
+                                     [&] { return barrier->released; });
+                //wait_for, not wait: if the pool were ever smaller than
+                //worker_threads the barrier could never fill, and a startup
+                //that hangs forever is far worse than a cold first turn
+            }
+
+            examiner_->prewarm();
+            //outside the lock, so all the handshakes overlap instead of
+            //queueing one behind another
+
+            {
+                std::lock_guard<std::mutex> lock(barrier->m);
+                ++barrier->finished;
+            }
+            barrier->cv.notify_all();
+        });
+    }
+
+    std::unique_lock<std::mutex> lock(barrier->m);
+    barrier->cv.wait_for(lock, std::chrono::seconds(kPrewarmJoinSeconds),
+                         [&] { return barrier->finished == count; });
+    //waited on rather than abandoned so the port does not open mid-handshake,
+    //and so the log below reads in order with the rest of startup
+    if (barrier->finished != count) {
+        std::cerr << "examiner prewarm: only " << barrier->finished << " of "
+                  << count << " workers warmed before the timeout" << std::endl;
+        //the stragglers pay the handshake on their first real turn, and the
+        //jobs still hold the barrier alive behind us
+    }
+}
+
+crow::response Server::serve_index()
     {
     std::ifstream file("web(frontend)/index.html");
     if (!file) {
@@ -171,7 +344,7 @@ crow::response Server::serve_index()
 crow::response Server::serve_client_script() 
 
     {
-    std::ifstream file("web/client.js");
+    std::ifstream file("web(frontend)/client.js");
     if (!file) {
         return crow::response(404, "client.js not found");
     }
@@ -190,7 +363,7 @@ crow::response Server::serve_client_script()
 crow::response Server::serve_stylesheet() 
 
     {
-    std::ifstream file("web/styles.css");
+    std::ifstream file("web(frontend)/styles.css");
     if (!file) {
         return crow::response(404, "styles.css not found");
     }
@@ -206,14 +379,87 @@ crow::response Server::serve_stylesheet()
     return response;
 }
 
-std::string Server::load_system_prompt() 
-    
+crow::response Server::serve_gemini_keys()
     {
-    std::ifstream file("prompts/examiner_system.txt");
-    if (!file) {
-        return "You are an examiner. Ask the student questions in Italian at a begginers level.";
+    crow::json::wvalue json;
+    unsigned index = 0;
+    //crow wvalue::operator[] takes unsigned, same reasoning as gemini_examiner.cpp
+    for (const GeminiKeyOption& option : config_.gemini_api_keys) {
+        json[index] = option.name;
+        //name only - the key itself never leaves the server
+        ++index;
     }
-    //open examiner system prompt file, fallback if missing
+    crow::response response(json.dump());
+    response.set_header("Content-Type", "application/json");
+    return response;
+}
+
+crow::response Server::serve_translate(const crow::request& req)
+    {
+    if (config_.translate_api_key.empty()) {
+        return json_error(503, "Translation is not configured on this server.");
+        //said out loud rather than attempted with an empty key, which would come
+        //back as an opaque 403 from Google and read like a broken feature
+    }
+
+    crow::json::rvalue parsed = crow::json::load(req.body);
+    if (!parsed) {
+        return json_error(400, "Request body was not valid JSON.");
+    }
+
+    if (!parsed.has("text") || parsed["text"].t() != crow::json::type::String ||
+        !parsed.has("source") || parsed["source"].t() != crow::json::type::String ||
+        !parsed.has("target") || parsed["target"].t() != crow::json::type::String) {
+        return json_error(400, "Expected text, source and target strings.");
+        //both the presence and the type are checked, same as protocol.cpp does:
+        //rvalue::operator[] throws on a missing key and .s() on a wrong type
+    }
+
+    const std::string text(parsed["text"].s());
+    const std::string source(parsed["source"].s());
+    const std::string target(parsed["target"].s());
+
+    if (text.empty()) {
+        return json_error(400, "Nothing to translate.");
+    }
+    if (text.size() > kMaxTranslateChars) {
+        return json_error(400, "That is too long - translate a sentence at a time.");
+    }
+    if (!is_supported_language(source) || !is_supported_language(target) ||
+        source == target) {
+        return json_error(400, "Unsupported language pair.");
+    }
+
+    try {
+        const std::string translation =
+            translate_text(config_.translate_api_key, text, source, target);
+
+        crow::json::wvalue json;
+        json["translation"] = translation;
+        crow::response response(json.dump());
+        response.set_header("Content-Type", "application/json");
+        return response;
+    } catch (const std::exception& e) {
+        std::cerr << "translate route: " << e.what() << std::endl;
+        return json_error(502, "The translation service could not be reached.");
+        //the detail goes to the operator's log and a fixed string to the page,
+        //the same split the examiner path uses for its failures
+    }
+}
+
+std::string Server::load_prompt(const std::string& path,
+                                const std::string& fallback)
+
+    {
+    std::ifstream file(path);
+    if (!file) {
+        std::cerr << "prompt file " << path
+                  << " not found, falling back to a built-in one line prompt"
+                  << std::endl;
+        return fallback;
+        //named in the log rather than failing silently: a missing file used to
+        //produce a working but oddly terse examiner and no clue why
+    }
 
     std::stringstream buffer;
     buffer << file.rdbuf();
@@ -323,6 +569,12 @@ void Server::handle_control(crow::websocket::connection& conn,
             return;
         } //a job is already in flight on this session, so refuse this message
 
+        session->set_gemini_key_name(message.gemini_key);
+        session->set_student_name(message.student_name);
+        //both picked once, before the first job, and reused by every later turn
+        //- Stop messages carry neither field of their own. Set before the job is
+        //enqueued, so even the opening question already knows the name
+
         std::shared_ptr<Session> claim(session.get(), [session](Session* s) { s->end_job(); });
         //not an owner, just an RAII handle whose deleter releases the claim
         //the deleter holds session, so the Session outlives the end_job() call
@@ -351,16 +603,20 @@ void Server::handle_control(crow::websocket::connection& conn,
     //take_audio() returns the completed audio buffer, clearing the session buffer
     //taking the audio on the socket thread to seperate it from any new incoming audio\
 
-    enqueue_pipeline_job(std::move(handle), session, std::move(utterance_audio), true, std::move(claim));
+    enqueue_pipeline_job(std::move(handle), session, std::move(utterance_audio), true,
+                         std::move(claim), message.final);
     //the handle rather than &conn: the job outlives handle_control, and by
-    //then the raw pointer may name a destroyed connection
+    //then the raw pointer may name a destroyed connection. message.final is
+    //the browser saying its clock has run out, which turns this into the
+    //last job of the session: transcribed, but never sent to the examiner
 }
 
 void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                                   const std::shared_ptr<Session>& session,
                                   std::vector<std::int16_t> utterance_audio,
                                   bool transcribe_first,
-                                  std::shared_ptr<Session> claim)
+                                  std::shared_ptr<Session> claim,
+                                  bool answer_only)
                                   {
     std::vector<Turn> examiner_input = session->build_examiner_input();
     //still on Crow's socket thread, which the claim has already made exclusive
@@ -371,7 +627,7 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
         //drops the previous turn's answer, this job appends a fresher one below
     }
 
-    pool_.enqueue([this, session, transcribe_first,
+    pool_.enqueue([this, session, transcribe_first, answer_only,
         handle = std::move(handle),
         job_audio = std::move(utterance_audio),
         job_input = std::move(examiner_input),
@@ -382,6 +638,9 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
     {
         std::string reply;
         std::vector<std::int16_t> speech;
+        bool text_sent = false;
+        //once the question has gone out promising audio, the client is muted
+        //until a binary frame arrives, so every exit below has to send one
 
         using clock = std::chrono::steady_clock;
         const auto ms_since = [](clock::time_point t) {
@@ -418,18 +677,51 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                               << stt_ms << "ms)\n";
 
                     send_error(handle, "didn't catch that, please try again");
-                    send_examiner_result(handle, reply, speech);
+                    if (answer_only) {
+                        send_status(handle, "ended");
+                        //nothing to re-arm for: the clock has run out and this
+                        //job was the last one, heard or not
+                    } else {
+                        send_examiner_text(handle, reply, false);
+                    }
                     return;
+                    //no audio promised, so the client re-arms off the text alone
                     //an empty transcript never reaches the examiner: respond()
                 }
             }
 
+            if (answer_only) {
+                send_status(handle, "ended");
+                return;
+                //the exam clock ran out before this answer was submitted. It
+                //has been transcribed, painted and recorded above, and the job
+                //stops here rather than spending a question the student has no
+                //time left to hear
+            }
+
             const auto examiner_started = clock::now();
-            reply = examiner_->respond(job_input);
+            const std::string raw =
+                examiner_->respond(job_input, session->gemini_key_name());
             examiner_ms = ms_since(examiner_started);
+
+            const std::string topic = topic_tag(raw);
+            const std::string group = topic_group(topic);
+            //logged only; Session maps the tag itself
+            reply = clean_for_speech(raw);
+            //read then stripped, so the tag never reaches the student or piper
+            //cleaned here, once, ahead of all three consumers below: the model
+            //slips into markdown however plainly the prompt asks for prose, and
+            //the markers reached the transcript and piper's mouth alike
             //borrows the lambda's own vector, which nothing else can touch
 
             session->record_question(reply);
+            session->note_question_topic(topic);
+
+            send_examiner_text(handle, reply, true);
+            text_sent = true;
+            //ahead of synthesis, not after it. The question is on screen while
+            //piper is still working, so the wait the student actually sees is
+            //the examiner call alone rather than examiner + tts back to back
 
             const auto tts_started = clock::now();
             speech = tts_->synthesize(reply);
@@ -438,7 +730,11 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
             std::cerr << "turn timings: audio " << (job_audio.size() / 16000.0)
                       << "s, stt " << stt_ms << "ms, examiner " << examiner_ms
                       << "ms, tts " << tts_ms << "ms, total "
-                      << ms_since(turn_started) << "ms\n";
+                      << ms_since(turn_started) << "ms, topic "
+                      << (topic.empty() ? "(untagged)" : topic) << ", group "
+                      << (group.empty() ? "(unrecognised)" : group) << "\n";
+            //an exam full of "(untagged)" means the budget is running blind,
+            //and "(unrecognised)" means a tag arrived from outside the enum
             //16000 is the capture rate the client resamples to, and the rate
             //whisper requires it
         } catch (const std::exception& e) {
@@ -453,7 +749,13 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
             //same recovery, and reply is preserved for the same reason as above
         }
 
-        send_examiner_result(handle, reply, speech);
+        if (text_sent) {
+            send_speech(handle, speech);
+            //empty if synthesis threw, which is the signal that re-arms the mic
+        } else {
+            send_examiner_text(handle, reply, false);
+            //the examiner itself failed, so reply is empty and no audio is owed
+        }
         //hand the result back to Crow's thread for sending. 
     }
     );
@@ -462,7 +764,7 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
 void Server::send_text_on_handle(const std::shared_ptr<ConnHandle>& handle,
                                  const std::string& json) {
     std::lock_guard<std::mutex> lock(handle->m);
-    //same discipline as send_examiner_result: the null check and the send are
+    //same discipline as send_speech: the null check and the send are
 
     crow::websocket::connection* conn_ptr = handle->conn;
     if (conn_ptr == nullptr) {
@@ -471,11 +773,18 @@ void Server::send_text_on_handle(const std::shared_ptr<ConnHandle>& handle,
     conn_ptr->send_text(json);
 }
 
-void Server::send_busy(const std::shared_ptr<ConnHandle>& handle) {
+void Server::send_status(const std::shared_ptr<ConnHandle>& handle,
+                         const std::string& text) {
     Message message;
     message.type = MessageType::Status;
-    message.payload = "busy";
+    message.payload = text;
     send_text_on_handle(handle, to_json(message).dump());
+    //carries no sample_rate, so like send_error it paints nothing: the client
+    //reads the payload and acts on it
+}
+
+void Server::send_busy(const std::shared_ptr<ConnHandle>& handle) {
+    send_status(handle, "busy");
 }
 
 void Server::send_error(const std::shared_ptr<ConnHandle>& handle,
@@ -501,22 +810,27 @@ void Server::send_transcript(const std::shared_ptr<ConnHandle>& handle,
     //MessageType::Transcript was never constructed, so the client branch was
 }
 
-void Server::send_examiner_result(const std::shared_ptr<ConnHandle>& handle,
-                                  const std::string& reply,
-                                  const std::vector<std::int16_t>& speech) {
+void Server::send_examiner_text(const std::shared_ptr<ConnHandle>& handle,
+                                const std::string& reply,
+                                bool speech_follows) {
     Message message; //create Message Object
     message.type = MessageType::ExaminerText; //Set Message.type to Examiner Text
     message.payload = reply; //set payload to examiners reply
-    if (!speech.empty()) {
+    if (speech_follows) {
         message.sample_rate = tts_->sample_rate();
-        //tell the browser what rate the PCM frame that follows was produced at,
+        //tell the browser what rate the PCM frame that follows was produced at.
+        //Taken from the backend rather than from the samples, because this is
+        //now sent BEFORE synthesis runs - there are no samples to measure yet.
+        //Its presence is also how the client knows to hold the mic muted until
+        //the binary frame lands, so it must not be set on a text-only turn
     }
-    
-    const std::string json = to_json(message).dump();
-    //build the examiner text as a CROW::JSON object
+    send_text_on_handle(handle, to_json(message).dump());
+}
 
+void Server::send_speech(const std::shared_ptr<ConnHandle>& handle,
+                         const std::vector<std::int16_t>& speech) {
     std::lock_guard<std::mutex> lock(handle->m);
-    //the connection's own mutex, not sessions_mutex_: it stops onclose letting
+    //the connection own mutex, not sessions_mutex_: it stops onclose letting
     //~Connection run mid-write without stalling every other connection
 
     crow::websocket::connection* conn_ptr = handle->conn;
@@ -526,23 +840,25 @@ void Server::send_examiner_result(const std::shared_ptr<ConnHandle>& handle,
         //Nothing to re-arm: the client that owned it is no longer listening
     }
 
-    conn_ptr->send_text(json);
-    //send the reply text down the socket as a text frame
-
-    if (!speech.empty()) {
-        const char* bytes = reinterpret_cast<const char*>(speech.data());
-        //speech.data() returns a const std::int16_t* to sample 0 of the audio
-        //reinterpret that pointer as a const char* so the samples are viewed as raw bytes
-
-        const std::size_t byte_count = speech.size() * sizeof(std::int16_t);
-        //byte_count is the total number of bytes in the audio
-        //number of bytes = number of samples * bytes per sample
-
-        conn_ptr->send_binary(std::string(bytes, byte_count));
-        //a std::string built from the byte range as a container, not text,
-        //then sent down the socket as a binary frame
+    if (speech.empty()) {
+        conn_ptr->send_binary(std::string());
+        //a zero length frame, deliberately, not nothing. playAudio treats a
+        //length of 0 as "no audio to wait for" and hands the turn back to the
+        //student, which is the only way out once the text promised audio
+        return;
     }
-    //Currently no handling for empty audio buffer
+
+    const char* bytes = reinterpret_cast<const char*>(speech.data());
+    //speech.data() returns a const std::int16_t* to sample 0 of the audio
+    //reinterpret that pointer as a const char* so the samples are viewed as raw bytes
+
+    const std::size_t byte_count = speech.size() * sizeof(std::int16_t);
+    //byte_count is the total number of bytes in the audio
+    //number of bytes = number of samples * bytes per sample
+
+    conn_ptr->send_binary(std::string(bytes, byte_count));
+    //a std::string built from the byte range as a container, not text,
+    //then sent down the socket as a binary frame
 }
 } // namespace sim
 

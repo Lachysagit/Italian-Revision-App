@@ -11,6 +11,7 @@
 
 #include "sim/config.hpp"
 #include "sim/examiner.hpp"
+#include "sim/question_bank.hpp"
 #include "sim/stt.hpp"
 #include "sim/tts.hpp"
 #include "sim/worker.hpp"
@@ -40,9 +41,35 @@ private:
     crow::response serve_index();
     crow::response serve_client_script();
     crow::response serve_stylesheet();
-    
-    std::string load_system_prompt();
-    std::string system_prompt_;
+    crow::response serve_gemini_keys();
+    //names only, never the keys themselves - this is a plain unauthenticated
+    //GET a browser tab can fire, so it must be safe to expose to anyone who
+    //can already reach the server
+
+    crow::response serve_translate(const crow::request& req);
+    //the translate box. Deliberately plain HTTP rather than a /ws message: the
+    //socket only exists while a session is running, and the session's one-job
+    //latch would refuse a lookup made mid-turn as "busy"
+
+    std::string load_prompt(const std::string& path, const std::string& fallback);
+
+    std::shared_ptr<const QuestionBank> question_bank_;
+    //loaded once at startup and handed to every session by pointer. Read-only
+    //from there on, so the sessions share it without a lock
+
+    std::string first_prompt_;
+    std::string ongoing_prompt_;
+    //one authoritative file per phase of the exam, read once at startup. The
+    //opening question and every later turn are governed by exactly one of
+    //these and nothing else, so a rule has a single place it can be changed
+
+    void prewarm_tts();
+    //one throwaway synthesis at startup so the first real turn does not pay
+    //piper's cold cost. Called from run() before the port is bound
+
+    void prewarm_examiner();
+    //the same idea for the examiner's HTTPS connection, but it has to run once
+    //on EVERY pool thread, because the client behind it is thread_local
 
     std::shared_ptr<Session> find_session(crow::websocket::connection* conn);
     std::shared_ptr<ConnHandle> find_conn_handle(crow::websocket::connection* conn);
@@ -57,9 +84,14 @@ private:
                               const std::shared_ptr<Session>& session,
                               std::vector<std::int16_t> utterance_audio,
                               bool transcribe_first,
-                              std::shared_ptr<Session> claim);
+                              std::shared_ptr<Session> claim,
+                              bool answer_only = false);
+    //answer_only stops the job after STT: the transcript is sent and recorded,
+    //and the examiner is never called. It is how the last answer of an expired
+    //exam is still heard without buying the student another question
+    void send_status(const std::shared_ptr<ConnHandle>& handle,
+                     const std::string& text);
     void send_busy(const std::shared_ptr<ConnHandle>& handle);
-
 
     void send_error(const std::shared_ptr<ConnHandle>& handle,
                     const std::string& text);
@@ -69,9 +101,16 @@ private:
                          const std::string& text);
     
 
-    void send_examiner_result(const std::shared_ptr<ConnHandle>& handle,
-                              const std::string& reply,
-                              const std::vector<std::int16_t>& speech);
+    void send_examiner_text(const std::shared_ptr<ConnHandle>& handle,
+                            const std::string& reply,
+                            bool speech_follows);
+    //split off from the old send_examiner_result so the question can be painted
+    //the moment the examiner returns it, rather than behind the TTS it describes
+
+    void send_speech(const std::shared_ptr<ConnHandle>& handle,
+                     const std::vector<std::int16_t>& speech);
+    //always sent once send_examiner_text said audio was coming, empty included:
+    //the client re-arms the mic off this frame and would otherwise wait forever
 
     static void send_text_on_handle(const std::shared_ptr<ConnHandle>& handle,
                                     const std::string& json);
