@@ -1,0 +1,547 @@
+<title>speaking-sim Data Flow</title>
+<style>
+  :root {
+    --ground: #f7f8fa;
+    --plate: #ffffff;
+    --ink: #16202f;
+    --ink-soft: #5b6675;
+    --ink-faint: #8b95a3;
+    --rule: #dde1e8;
+    --rule-soft: #eaedf2;
+    --accent: #21386e;
+    --amber: #8a6a1f;
+    --slate: #45474f;
+    --chip: #eef1f7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #11141b;
+      --plate: #181c25;
+      --ink: #e4e8f0;
+      --ink-soft: #9aa5b6;
+      --ink-faint: #6f7a8b;
+      --rule: #2a303c;
+      --rule-soft: #232935;
+      --accent: #93b0e6;
+      --amber: #d7b264;
+      --slate: #a6adba;
+      --chip: #222836;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #11141b;
+    --plate: #181c25;
+    --ink: #e4e8f0;
+    --ink-soft: #9aa5b6;
+    --ink-faint: #6f7a8b;
+    --rule: #2a303c;
+    --rule-soft: #232935;
+    --accent: #93b0e6;
+    --amber: #d7b264;
+    --slate: #a6adba;
+    --chip: #222836;
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    margin: 0;
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 56px 28px 96px;
+    display: flex;
+    flex-direction: column;
+    gap: 52px;
+  }
+
+  .eyebrow {
+    font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
+    font-size: 11.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 14px;
+  }
+  h1 {
+    font-size: clamp(30px, 4.5vw, 46px);
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+    margin: 0 0 16px;
+    font-weight: 600;
+  }
+  .standfirst {
+    max-width: 66ch;
+    color: var(--ink-soft);
+    margin: 0;
+    font-size: 18px;
+  }
+  h2 {
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 6px;
+    text-wrap: balance;
+  }
+  .sec-note {
+    color: var(--ink-soft);
+    max-width: 68ch;
+    margin: 0 0 22px;
+    font-size: 16px;
+  }
+  section { display: block; }
+
+  figure {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .plate {
+    background: #ffffff;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    overflow-x: auto;
+    padding: 10px;
+  }
+  .plate svg { display: block; min-width: 1080px; width: 100%; height: auto; }
+  figcaption {
+    font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
+    font-size: 12px;
+    color: var(--ink-faint);
+    letter-spacing: 0.02em;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 15.5px;
+  }
+  .scroll { overflow-x: auto; }
+  th {
+    text-align: left;
+    font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 500;
+    padding: 0 16px 8px 0;
+    border-bottom: 1px solid var(--rule);
+    white-space: nowrap;
+  }
+  td {
+    padding: 11px 16px 11px 0;
+    border-bottom: 1px solid var(--rule-soft);
+    vertical-align: top;
+  }
+  tr td:last-child, tr th:last-child { padding-right: 0; }
+  .id {
+    font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .id.p { color: var(--accent); }
+  .id.d { color: var(--slate); }
+  .id.e { color: var(--amber); }
+  .nm { font-weight: 600; white-space: nowrap; }
+  code {
+    font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
+    font-size: 13px;
+    background: var(--chip);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  .tag {
+    font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    padding: 1px 5px;
+    white-space: nowrap;
+  }
+
+  .notes { display: flex; flex-direction: column; gap: 20px; max-width: 74ch; }
+  .note {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 5px;
+    border-left: 2px solid var(--rule);
+    padding-left: 18px;
+  }
+  .note h3 {
+    margin: 0;
+    font-size: 16.5px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+  }
+  .note p { margin: 0; color: var(--ink-soft); font-size: 15.5px; }
+
+  hr.div { border: 0; border-top: 1px solid var(--rule); margin: 0; }
+
+  @media (max-width: 640px) {
+    body { font-size: 16px; }
+    .wrap { padding: 36px 18px 64px; gap: 40px; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">speaking-sim &middot; NSW HSC Software Engineering</p>
+    <h1>Level 1 Data Flow Diagram</h1>
+    <p class="standfirst">The Italian oral exam simulator, generalised from its source into seven major processes. Every element below was traced through the running code rather than the prose in the README.</p>
+  </header>
+
+  <hr class="div">
+
+  <section>
+    <h2>The diagram</h2>
+    <p class="sec-note">Circle: a process. Open&#8209;ended rectangle: a data store. Closed rectangle: an external entity. Labelled curved arrow: a data flow. Dashed grey marks a flow that is planned, or that carries control rather than data.</p>
+    <figure>
+      <div class="plate"><svg id="dfd" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1700 1300" role="img" aria-label="Level 1 data flow diagram for speaking-sim" font-family="Segoe UI, system-ui, sans-serif">
+<defs>
+  <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#2b3a5c"/>
+  </marker>
+  <marker id="ahp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#9aa0ab"/>
+  </marker>
+  <style>
+    #dfd .flow  { fill:none; stroke:#2b3a5c; stroke-width:2; marker-end:url(#ah); }
+    #dfd .ctrl  { fill:none; stroke:#9aa0ab; stroke-width:2; stroke-dasharray:7 5; marker-end:url(#ahp); }
+    #dfd .plan  { fill:none; stroke:#9aa0ab; stroke-width:2; stroke-dasharray:7 5; marker-end:url(#ahp); marker-start:url(#ahp); }
+    #dfd .fl    { font-size:12.5px; fill:#16202f; paint-order:stroke; stroke:#ffffff; stroke-width:4.5; stroke-linejoin:round; }
+    #dfd .flc   { font-size:12.5px; fill:#6b7280; font-style:italic; paint-order:stroke; stroke:#ffffff; stroke-width:4.5; stroke-linejoin:round; }
+    #dfd .pid   { font-size:16px; font-weight:700; fill:#21386e; text-anchor:middle; }
+    #dfd .pnm   { font-size:13.5px; fill:#16202f; text-anchor:middle; }
+    #dfd .sid   { font-size:12.5px; font-weight:700; fill:#45474f; }
+    #dfd .snm   { font-size:13px; fill:#16202f; }
+    #dfd .eid   { font-size:12.5px; font-weight:700; fill:#8a6a1f; text-anchor:middle; }
+    #dfd .enm   { font-size:13.5px; fill:#16202f; text-anchor:middle; }
+    #dfd .proc  { fill:#e8f0fc; stroke:#21386e; stroke-width:2.2; }
+    #dfd .stf   { fill:#f1f2f5; }
+    #dfd .sto   { fill:none; stroke:#45474f; stroke-width:2.2; }
+    #dfd .ent   { fill:#fdf4e3; stroke:#8a6a1f; stroke-width:2.2; }
+  </style>
+</defs>
+
+<rect width="1700" height="1300" fill="#ffffff"/>
+
+<text x="880" y="40" font-size="23" font-weight="700" fill="#16202f" text-anchor="middle">speaking-sim &#8212; Level 1 Data Flow Diagram</text>
+<text x="880" y="64" font-size="13.5" fill="#6b7280" text-anchor="middle">Italian oral exam simulator &#183; seven major processes &#183; the system boundary encloses both the browser client and the C++ server</text>
+
+<!-- ===== LEGEND ===== -->
+<rect x="40" y="88" width="285" height="182" rx="6" fill="#fafafb" stroke="#d5d8de"/>
+<text x="54" y="110" font-size="13" font-weight="700" fill="#16202f">Symbols</text>
+<circle cx="72" cy="136" r="15" class="proc"/>
+<text x="102" y="140" font-size="11.5" fill="#16202f">Process &#8212; transforms input into output</text>
+<rect x="55" y="163" width="34" height="20" class="stf"/>
+<path d="M89 163 L57 163 L57 183 L89 183" class="sto"/>
+<text x="102" y="177" font-size="11.5" fill="#16202f">Data store &#8212; data at rest</text>
+<rect x="55" y="196" width="34" height="22" class="ent"/>
+<text x="102" y="211" font-size="11.5" fill="#16202f">External entity &#8212; source or sink</text>
+<path d="M56 244 Q 72 232 88 244" class="flow"/>
+<text x="102" y="248" font-size="11.5" fill="#16202f">Data flow (labelled)</text>
+<text x="54" y="264" font-size="10.5" fill="#6b7280">Dashed grey = planned, or control rather than data</text>
+
+<!-- ===== EXTERNAL ENTITIES ===== -->
+<rect x="50" y="490" width="160" height="190" rx="3" class="ent"/>
+<text x="130" y="558" class="eid">E1</text>
+<text x="130" y="582" class="enm">Student</text>
+<text x="130" y="604" class="enm" font-size="11.5" fill="#6b7280">microphone</text>
+<text x="130" y="622" class="enm" font-size="11.5" fill="#6b7280">+ speakers</text>
+
+<rect x="1420" y="530" width="170" height="92" rx="3" class="ent"/>
+<text x="1505" y="566" class="eid">E2</text>
+<text x="1505" y="590" class="enm">Gemini API</text>
+<text x="1505" y="608" class="enm" font-size="11" fill="#6b7280">generativelanguage&#8230;</text>
+
+<rect x="1420" y="380" width="170" height="80" rx="3" class="ent" stroke-dasharray="7 5" stroke="#9aa0ab" fill="#f7f7f8"/>
+<text x="1505" y="410" class="eid" fill="#6b7280">E4</text>
+<text x="1505" y="432" class="enm" fill="#6b7280">Ollama server</text>
+<text x="1505" y="450" class="enm" font-size="11" fill="#9aa0ab">planned</text>
+
+<rect x="1420" y="760" width="170" height="92" rx="3" class="ent"/>
+<text x="1505" y="796" class="eid">E3</text>
+<text x="1505" y="820" class="enm">Piper voice</text>
+<text x="1505" y="838" class="enm">engine (subprocess)</text>
+
+<!-- ===== DATA STORES ===== -->
+<rect x="880" y="105" width="240" height="68" class="stf"/>
+<path d="M1120 105 L880 105 L880 173 L1120 173" class="sto"/>
+<text x="896" y="132" class="sid">D1</text>
+<text x="896" y="154" class="snm">Utterance buffer</text>
+
+<rect x="590" y="340" width="220" height="64" class="stf"/>
+<path d="M810 340 L590 340 L590 404 L810 404" class="sto"/>
+<text x="606" y="366" class="sid">D3</text>
+<text x="606" y="388" class="snm">Job queue</text>
+
+<rect x="590" y="800" width="220" height="64" class="stf"/>
+<path d="M810 800 L590 800 L590 864 L810 864" class="sto"/>
+<text x="606" y="826" class="sid">D2</text>
+<text x="606" y="848" class="snm">Conversation state</text>
+
+<rect x="280" y="790" width="240" height="62" class="stf"/>
+<path d="M520 790 L280 790 L280 852 L520 852" class="sto"/>
+<text x="296" y="815" class="sid">D8</text>
+<text x="296" y="837" class="snm">Examiner system prompt</text>
+
+<rect x="1290" y="190" width="220" height="62" class="stf"/>
+<path d="M1510 190 L1290 190 L1290 252 L1510 252" class="sto"/>
+<text x="1306" y="215" class="sid">D5a</text>
+<text x="1306" y="237" class="snm">Whisper model file</text>
+
+<rect x="1300" y="950" width="220" height="62" class="stf"/>
+<path d="M1520 950 L1300 950 L1300 1012 L1520 1012" class="sto"/>
+<text x="1316" y="975" class="sid">D5b</text>
+<text x="1316" y="997" class="snm">Piper voice + config</text>
+
+<!-- ===== PROCESSES ===== -->
+<circle cx="400" cy="140" r="66" class="proc"/>
+<text x="400" y="124" class="pid">1</text>
+<text x="400" y="146" class="pnm">Capture</text>
+<text x="400" y="164" class="pnm">student speech</text>
+
+<circle cx="680" cy="140" r="66" class="proc"/>
+<text x="680" y="124" class="pid">2</text>
+<text x="680" y="146" class="pnm">Assemble</text>
+<text x="680" y="164" class="pnm">utterance</text>
+
+<circle cx="700" cy="570" r="92" class="proc"/>
+<text x="700" y="550" class="pid">3</text>
+<text x="700" y="574" class="pnm">Manage</text>
+<text x="700" y="594" class="pnm">exam turn</text>
+
+<circle cx="1120" cy="330" r="70" class="proc"/>
+<text x="1120" y="314" class="pid">4</text>
+<text x="1120" y="336" class="pnm">Transcribe</text>
+<text x="1120" y="354" class="pnm">speech</text>
+
+<circle cx="1120" cy="570" r="70" class="proc"/>
+<text x="1120" y="552" class="pid">5</text>
+<text x="1120" y="574" class="pnm">Generate</text>
+<text x="1120" y="592" class="pnm">examiner reply</text>
+
+<circle cx="1120" cy="790" r="70" class="proc"/>
+<text x="1120" y="772" class="pid">6</text>
+<text x="1120" y="794" class="pnm">Synthesise</text>
+<text x="1120" y="812" class="pnm">reply speech</text>
+
+<circle cx="380" cy="570" r="76" class="proc"/>
+<text x="380" y="552" class="pid">7</text>
+<text x="380" y="576" class="pnm">Deliver turn</text>
+<text x="380" y="594" class="pnm">to student</text>
+
+<!-- ===== FLOWS: capture ===== -->
+<path d="M214 505 Q 300 340 363 196" class="flow"/>
+<text x="240" y="430" class="fl" text-anchor="end">spoken answer</text>
+
+<path d="M466 140 Q 540 112 614 140" class="flow"/>
+<text x="540" y="98" class="fl" text-anchor="middle">16 kHz int16 PCM (binary frame)</text>
+
+<path d="M743 121 Q 812 100 878 112" class="flow"/>
+<text x="812" y="86" class="fl" text-anchor="middle">PCM chunk</text>
+
+<path d="M878 152 Q 812 178 743 160" class="flow"/>
+<text x="812" y="202" class="fl" text-anchor="middle">carry byte</text>
+
+<path d="M962 175 Q 990 380 735 485" class="flow"/>
+<text x="955" y="340" class="fl" text-anchor="end">complete utterance</text>
+
+<!-- ===== FLOWS: control / delivery ===== -->
+<path d="M212 540 Q 260 514 306 538" class="flow"/>
+<text x="259" y="500" class="fl" text-anchor="middle">button press</text>
+
+<path d="M306 606 Q 260 636 212 616" class="flow"/>
+<text x="270" y="694" class="fl" text-anchor="middle">turn cards &#183; speech &#183; errors</text>
+
+<path d="M456 540 Q 530 512 613 540" class="flow"/>
+<text x="533" y="498" class="fl" text-anchor="middle">start / stop message</text>
+
+<path d="M613 602 Q 530 638 456 604" class="flow"/>
+<text x="533" y="676" class="fl" text-anchor="middle">reply &#183; speech &#183; sample rate</text>
+
+<path d="M372 495 L 372 208" class="ctrl"/>
+<text x="362" y="352" class="flc" text-anchor="end">mic re-arm (control)</text>
+
+<!-- ===== FLOWS: stores around process 3 ===== -->
+<path d="M682 480 L 682 408" class="flow"/>
+<text x="672" y="450" class="fl" text-anchor="end">enqueue job</text>
+<path d="M722 408 L 722 480" class="flow"/>
+<text x="732" y="450" class="fl" text-anchor="start">dequeue job</text>
+
+<path d="M682 662 L 682 796" class="flow"/>
+<text x="672" y="720" class="fl" text-anchor="end">record answer / question</text>
+<path d="M722 796 L 722 662" class="flow"/>
+<text x="732" y="740" class="fl" text-anchor="start">history snapshot</text>
+
+<path d="M522 806 Q 600 780 652 648" class="flow"/>
+<text x="558" y="762" class="fl" text-anchor="middle">system prompt (startup)</text>
+
+<!-- ===== FLOWS: pipeline ===== -->
+<path d="M768 506 Q 920 390 1052 348" class="flow"/>
+<text x="900" y="402" class="fl" text-anchor="middle">utterance PCM</text>
+
+<path d="M1058 372 Q 930 470 786 536" class="flow"/>
+<text x="940" y="482" class="fl" text-anchor="middle">transcript</text>
+
+<path d="M1360 252 Q 1290 292 1182 318" class="flow"/>
+<text x="1215" y="266" class="fl" text-anchor="middle">model weights</text>
+
+<path d="M792 570 Q 930 545 1048 562" class="flow"/>
+<text x="920" y="532" class="fl" text-anchor="middle">conversation history</text>
+
+<path d="M1050 596 Q 930 632 789 592" class="flow"/>
+<text x="920" y="662" class="fl" text-anchor="middle">examiner reply</text>
+
+<path d="M1190 578 Q 1300 592 1418 578" class="flow"/>
+<text x="1300" y="618" class="fl" text-anchor="middle">history + system prompt + API key</text>
+
+<path d="M1418 548 Q 1300 526 1190 552" class="flow"/>
+<text x="1300" y="510" class="fl" text-anchor="middle">reply text</text>
+
+<path d="M1180 528 L 1416 434" class="plan"/>
+<text x="1252" y="456" class="flc" text-anchor="middle">planned: history / reply</text>
+
+<path d="M757 643 Q 900 762 1052 780" class="flow"/>
+<text x="890" y="692" class="fl" text-anchor="middle">reply text</text>
+
+<path d="M1050 810 Q 900 852 745 650" class="flow"/>
+<text x="900" y="832" class="fl" text-anchor="middle">speech PCM</text>
+
+<path d="M1190 800 Q 1300 796 1418 800" class="flow"/>
+<text x="1300" y="778" class="fl" text-anchor="middle">reply text (stdin)</text>
+
+<path d="M1418 828 Q 1300 844 1190 826" class="flow"/>
+<text x="1300" y="872" class="fl" text-anchor="middle">raw int16 PCM (stdout)</text>
+
+<path d="M1466 950 Q 1492 900 1506 854" class="flow"/>
+<text x="1532" y="912" class="fl" text-anchor="start">voice weights</text>
+
+<path d="M1300 984 Q 1216 950 1162 856" class="flow"/>
+<text x="1176" y="944" class="fl" text-anchor="end">sample rate</text>
+
+<!-- ===== STARTUP PANEL ===== -->
+<line x1="40" y1="1052" x2="1660" y2="1052" stroke="#d5d8de" stroke-width="1.5"/>
+<text x="40" y="1084" font-size="14" font-weight="700" fill="#16202f">Startup &#8212; happens once, before any turn (shown separately, so it does not clutter the turn cycle)</text>
+
+<rect x="60" y="1110" width="190" height="56" class="stf"/>
+<path d="M250 1110 L60 1110 L60 1166 L250 1166" class="sto"/>
+<text x="76" y="1133" class="sid">D6</text>
+<text x="76" y="1153" class="snm">.env file</text>
+
+<rect x="60" y="1196" width="190" height="52" rx="3" class="ent"/>
+<text x="155" y="1218" class="eid">E5</text>
+<text x="155" y="1238" class="enm">Host machine</text>
+
+<circle cx="420" cy="1178" r="58" class="proc"/>
+<text x="420" y="1166" class="pid">0</text>
+<text x="420" y="1188" class="pnm">Initialise</text>
+<text x="420" y="1206" class="pnm">system</text>
+
+<path d="M252 1140 Q 330 1150 364 1164" class="flow"/>
+<text x="300" y="1126" class="fl" text-anchor="middle">env vars</text>
+<path d="M252 1218 Q 330 1210 366 1196" class="flow"/>
+<text x="300" y="1250" class="fl" text-anchor="middle">CPU count</text>
+
+<path d="M478 1152 L 552 1142" class="flow"/>
+<path d="M478 1178 L 552 1178" class="flow"/>
+<path d="M478 1204 L 552 1214" class="flow"/>
+
+<text x="562" y="1146" font-size="12.5" fill="#16202f"><tspan font-weight="700">API key</tspan> &#8212; carried on every request to E2 (process 5)</text>
+<text x="562" y="1182" font-size="12.5" fill="#16202f"><tspan font-weight="700">model paths</tspan> &#8212; select which files D5a / D5b read</text>
+<text x="562" y="1218" font-size="12.5" fill="#16202f"><tspan font-weight="700">thread count</tspan> &#8212; sizes the pool draining D3 (control, not data)</text>
+<text x="562" y="1258" font-size="12.5" fill="#6b7280" font-style="italic">No data from the student ever reaches configuration &#8212; the flow is strictly one-way.</text>
+</svg>
+</div>
+      <figcaption>Scroll sideways on a narrow screen &middot; source: docs/dfd-level1.svg</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>External entities</h2>
+    <p class="sec-note">The system boundary encloses both the browser client and the C++ server, because <code>web/client.js</code> is this project's own code served by its own route. The student &mdash; their voice and their ears &mdash; is what sits outside it.</p>
+    <div class="scroll"><table>
+      <thead><tr><th>ID</th><th>Entity</th><th>Why it is outside the boundary</th></tr></thead>
+      <tbody>
+        <tr><td class="id e">E1</td><td class="nm">Student</td><td>Human source of speech and sink of audio and text. Reached through <code>getUserMedia</code> and the audio destination node.</td></tr>
+        <tr><td class="id e">E2</td><td class="nm">Gemini API</td><td>Third&#8209;party service called over HTTPS, with the API key sent as an <code>x-goog-api-key</code> header.</td></tr>
+        <tr><td class="id e">E3</td><td class="nm">Piper voice engine</td><td>A separate operating&#8209;system process, spawned and talked to over pipes &mdash; not a linked library.</td></tr>
+        <tr><td class="id e">E4</td><td class="nm">Ollama server <span class="tag">planned</span></td><td>Would be a local HTTP service for the Hailo examiner backend. The class exists and returns a placeholder.</td></tr>
+        <tr><td class="id e">E5</td><td class="nm">Host machine</td><td>Startup only. Supplies the CPU count when <code>WORKER_THREADS</code> is unset. The <em>server's</em> machine, not the student's.</td></tr>
+      </tbody>
+    </table></div>
+    <p class="sec-note" style="margin-top:20px">Whisper is deliberately <strong>not</strong> an entity: it is linked into the server and called in&#8209;process, so it lives inside process 4. Piper genuinely is a subprocess. That asymmetry is real &mdash; don't tidy it into symmetry.</p>
+  </section>
+
+  <section>
+    <h2>Major processes</h2>
+    <p class="sec-note">Fifteen code&#8209;level transformations generalised into seven. Process 0 runs once at startup and is drawn separately so it does not clutter the turn cycle.</p>
+    <div class="scroll"><table>
+      <thead><tr><th>ID</th><th>Process</th><th>Generalises</th></tr></thead>
+      <tbody>
+        <tr><td class="id p">1</td><td class="nm">Capture student speech</td><td>Microphone capture, turn trimming, downsample to 16&nbsp;kHz, float32&nbsp;&rarr;&nbsp;int16, transmit.</td></tr>
+        <tr><td class="id p">2</td><td class="nm">Assemble utterance</td><td>Binary frame reassembly, odd&#8209;byte carry between frames, buffer cap at 40&nbsp;seconds.</td></tr>
+        <tr><td class="id p">3</td><td class="nm">Manage exam turn</td><td>Parse control JSON, route start/stop, claim the session, snapshot the history, dispatch to a worker thread.</td></tr>
+        <tr><td class="id p">4</td><td class="nm">Transcribe speech</td><td>Whisper inference over the utterance, producing trimmed Italian text.</td></tr>
+        <tr><td class="id p">5</td><td class="nm">Generate examiner reply</td><td>Build the request from the history, call the model, parse the candidate reply.</td></tr>
+        <tr><td class="id p">6</td><td class="nm">Synthesise reply speech</td><td>Reply text to Piper's stdin, raw int16 PCM back off stdout.</td></tr>
+        <tr><td class="id p">7</td><td class="nm">Deliver turn to student</td><td>Serialise frames, render turn cards, play back the audio, re&#8209;arm the microphone.</td></tr>
+        <tr><td class="id p">0</td><td class="nm">Initialise system</td><td>Read environment into <code>Config</code>, construct the three backends, load the system prompt. Startup only.</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Data stores</h2>
+    <p class="sec-note">There is no database and no file the running server writes. Every store except the model files, the prompt and <code>.env</code> lives in memory and dies with the process; the per&#8209;connection ones die with the WebSocket.</p>
+    <div class="scroll"><table>
+      <thead><tr><th>ID</th><th>Store</th><th>Holds</th></tr></thead>
+      <tbody>
+        <tr><td class="id d">D1</td><td class="nm">Utterance buffer</td><td>The current turn's PCM, plus the odd carry byte left between binary frames.</td></tr>
+        <tr><td class="id d">D2</td><td class="nm">Conversation state</td><td>System prompt, last question, last answer &mdash; the examiner's entire memory of the exam.</td></tr>
+        <tr><td class="id d">D3</td><td class="nm">Job queue</td><td>Pipeline jobs waiting for a worker thread.</td></tr>
+        <tr><td class="id d">D5a</td><td class="nm">Whisper model file</td><td>GGML weights, loaded once at construction.</td></tr>
+        <tr><td class="id d">D5b</td><td class="nm">Piper voice + config</td><td>ONNX voice weights, and the sample rate read from the voice's JSON sidecar.</td></tr>
+        <tr><td class="id d">D6</td><td class="nm">.env file</td><td>Configuration at rest. Read at startup only &mdash; never during a turn.</td></tr>
+        <tr><td class="id d">D8</td><td class="nm">Examiner system prompt</td><td>Read once at startup, copied into every new session.</td></tr>
+      </tbody>
+    </table></div>
+    <p class="sec-note" style="margin-top:20px">Two more exist in the code but are not stores on this diagram. The session registry is a lookup table, not data the system reads back as content. <code>job_in_flight_</code> is a control flag &mdash; it belongs on the structure chart as a control couple. A declared <code>fact_store_</code> is never read or written anywhere, so it has no flows at all.</p>
+  </section>
+
+  <section>
+    <h2>Choices worth defending</h2>
+    <div class="notes">
+      <div class="note">
+        <h3>The browser is inside the boundary</h3>
+        <p>If you would rather draw it as external, processes 1 and 7 collapse into E1 and their flows disappear. Either convention is defensible &mdash; say on the diagram which one you used.</p>
+      </div>
+      <div class="note">
+        <h3>Configuration is a startup concern</h3>
+        <p>Config is a value built once and consumed to construct objects, not data at rest that a process reads back. Only two of its fields become real flows: the API key, carried on every request to E2, and the Piper sample rate, which reaches the student's browser inside the reply frame.</p>
+      </div>
+      <div class="note">
+        <h3>Thread count and port are not on the diagram</h3>
+        <p>They change how fast the queue drains and where the student connects, but never appear in any payload. Resourcing belongs in the written documentation, not on an arrow.</p>
+      </div>
+      <div class="note">
+        <h3>Nothing flows from the student into configuration</h3>
+        <p>There is no route, no setter, and inbound parsing only ever produces a message. Nothing a student sends can change how the server is configured &mdash; that absence is a property worth stating, not an omission.</p>
+      </div>
+    </div>
+  </section>
+
+</div>
