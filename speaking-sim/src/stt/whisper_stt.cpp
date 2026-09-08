@@ -1,5 +1,7 @@
 #include "sim/stt/whisper_stt.hpp"
 
+#include "sim/text_clean.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
@@ -98,18 +100,9 @@ std::string WhisperSTT::transcribe(const std::vector<std::int16_t>& pcm) {
     // The lock is released here: the trimming below works on this call's own
     // string, so the next turn can start decoding while this one tidies up.
 
-    const auto is_space = [](unsigned char c) { return std::isspace(c) != 0; };
-    std::size_t begin = 0;
-    while (begin < transcript.size() &&
-           is_space(static_cast<unsigned char>(transcript[begin]))) {
-        ++begin;
-    }
-    std::size_t end = transcript.size();
-    while (end > begin &&
-           is_space(static_cast<unsigned char>(transcript[end - 1]))) {
-        --end;
-    }
-    return transcript.substr(begin, end - begin);
+    return clean_transcript(transcript);
+    // Trims, and drops the non-speech annotations ([BLANK_AUDIO], (musica))
+    // that used to reach the examiner as if the student had said them.
 #else
     std::cerr << "WhisperSTT::transcribe not implemented\n";
     return "placeholder transcript";
