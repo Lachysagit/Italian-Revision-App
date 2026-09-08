@@ -45,6 +45,17 @@ crow::json::wvalue to_json(const Message& message) {
         //the browser cannot guess the rate piper produced, so it is sent
         //alongside the text and used to build the playback buffer
     }
+    if (!message.gemini_key.empty()) {
+        json["gemini_key"] = message.gemini_key;
+    }
+    if (!message.student_name.empty()) {
+        json["student_name"] = message.student_name;
+    }
+    if (message.final) {
+        json["final"] = true;
+        //absent rather than false on an ordinary turn, the same discipline the
+        //optional fields above keep
+    }
     return json;
 }
 
@@ -64,6 +75,22 @@ Message from_json(const crow::json::rvalue& json) {
     if (json.has("payload") && json["payload"].t() == crow::json::type::String) {
         message.payload = json["payload"].s();
         //pull the JSON payload field out as a string an put it into Message Object
+    }
+
+    if (json.has("gemini_key") && json["gemini_key"].t() == crow::json::type::String) {
+        message.gemini_key = json["gemini_key"].s();
+    }
+
+    if (json.has("student_name") && json["student_name"].t() == crow::json::type::String) {
+        message.student_name = json["student_name"].s();
+        //checked for presence AND type like every other field: a client that
+        //sends a number here must leave the name empty, not throw on .s()
+    }
+
+    if (json.has("final") && json["final"].t() == crow::json::type::True) {
+        message.final = true;
+        //crow gives true and false separate types, so testing for True is the
+        //whole check: anything else leaves the default false standing
     }
 
     return message;

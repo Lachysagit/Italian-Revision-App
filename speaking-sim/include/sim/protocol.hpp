@@ -21,6 +21,18 @@ struct Message {
     int sample_rate = 0;
     //sample rate of the binary audio frame that follows this message.
     //only written to the JSON when non-zero, so control messages are unchanged
+    std::string gemini_key;
+    //name of the Gemini key the settings picker chose, sent with Start only.
+    //only written to the JSON when non-empty, same discipline as sample_rate
+    std::string student_name;
+    //what the examiner calls the student, sent with Start only. Same discipline
+    //again: absent rather than empty when the settings field was left blank,
+    //which is how the session tells "no name given" from "named nothing"
+    bool final = false;
+    //sent with Stop only, and only once the exam clock has run out: transcribe
+    //this answer and record it, but make no examiner request from it. The
+    //browser is the only thing that knows the time, so it is the browser that
+    //says so - the server keeps no clock of its own
 };
 
 crow::json::wvalue to_json(const Message& message);
