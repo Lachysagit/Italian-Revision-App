@@ -1,0 +1,229 @@
+# SAMPLE QUESTIONS, NOT INSTRUCTIONS. Nothing in this file tells the examiner
+# how to behave: examiner_first.txt and examiner_ongoing.txt remain the whole
+# instruction for the exam. This is the pool of real syllabus questions that
+# Session shows the examiner a few of, per turn, for the topic already running.
+#
+# FORMAT
+#   ## <group>   a syllabus topic. The text must match topic_group() in
+#                src/topics.cpp exactly, or the group is never drawn from.
+#   > <question> a headline question, the kind that opens a topic.
+#   - <question> a connecting question, the kind that follows one up.
+#   # <text>     a comment. Blank lines are ignored.
+#
+# Both > and - are drawn from alike today; the mark records which is which so
+# that opening a topic can later be treated differently from following one up.
+#
+# One question mark per line. The examiner is told elsewhere to ask exactly one
+# question per reply, so a line carrying two would teach it the opposite.
+
+## family life, home and neighbourhood
+> Parla della tua famiglia.
+- Mi descrivi la tua famiglia?
+- Quanti siete in famiglia?
+- Hai fratelli o sorelle?
+- Com'è la tua famiglia?
+- Che lavoro fanno i tuoi genitori?
+- Vai d'accordo con i tuoi genitori?
+- Che rapporto hai con la tua famiglia?
+- Litighi con i tuoi fratelli?
+- Chi è la persona in famiglia che ammiri di più?
+- Per te la famiglia è importante?
+- Cosa ti piace fare con la tua famiglia?
+- Passi molto tempo con la tua famiglia?
+- Quali occasioni festeggiate in famiglia?
+- A che ora cenate in famiglia?
+- Come passavi le vacanze quando eri piccolo?
+- Come festeggiavi il Natale da piccolo?
+- Hai un animale domestico?
+- Ti piacciono gli animali?
+- Aiuti con i lavori domestici?
+> Com'è la zona dove abiti?
+- Dove abiti?
+- Abiti in una casa o in un appartamento?
+- Com'è la tua camera da letto?
+- Hai una camera per conto tuo?
+- Com'è il tuo quartiere?
+- Ti piace la zona dove abiti?
+- Che cosa c'è da fare nella tua zona?
+- C'è molto da fare per i giovani?
+- Che cosa si può fare la sera nella tua zona?
+- Che cosa c'è vicino a te?
+- C'è molto traffico nel tuo quartiere?
+- In futuro ti piacerebbe abitare in campagna o in città?
+- Abiti vicino alla scuola?
+- Come vai a scuola?
+- Quanto tempo ci vuole per andare a scuola?
+> Parlami un po' di te.
+- Che tipo di persona sei?
+- Di che nazionalità sei?
+- Di che origine sei?
+- Com'eri da piccolo?
+- Sei sempre lo stesso o sei cambiato?
+- Quanti anni hai?
+- Come festeggi di solito il tuo compleanno?
+- Come hai festeggiato il tuo ultimo compleanno?
+- Come festeggerai il tuo prossimo compleanno?
+- Come festeggiavi il tuo compleanno da piccolo?
+- Cosa vorresti ricevere per il tuo compleanno?
+
+## friends, recreation and pastimes
+> Hai molti amici?
+- Cosa fai con gli amici?
+- Hai un amico speciale?
+- Descrivi il tuo migliore amico.
+- Che tipo di persona è?
+- Com'è fisicamente?
+- Com'è di carattere?
+- Cosa vi piace fare insieme?
+- Cosa avete in comune?
+- Perché è il tuo migliore amico?
+- Da quanto tempo vi conoscete?
+- Come vi siete conosciuti?
+- Per te gli amici sono importanti?
+- Quando hai un problema, con chi ti confidi?
+> Cosa fai nel tuo tempo libero?
+- Quali sono i tuoi passatempi?
+- Qual è il tuo passatempo preferito?
+- Hai un hobby?
+- Parla un po' del tuo hobby.
+- Hai una passione per la musica?
+- Cosa fai di solito il fine settimana?
+- Cosa fai quando fa brutto tempo?
+- Quale stagione preferisci?
+- Preferisci rimanere a casa o uscire con gli amici?
+- Dove vai quando esci con gli amici?
+- Vai spesso in centro?
+- Cosa hai fatto il weekend scorso?
+- Che progetti hai per il prossimo weekend?
+- Che cosa fai per rilassarti dopo scuola?
+- A che ora vai a letto di solito?
+- Ti piace fare shopping?
+- Spendi tanti soldi per i vestiti?
+- Per te è importante vestire alla moda?
+- Ti piace andare al cinema?
+- Che genere di film ti piace vedere?
+- Ascolti la musica?
+- Che tipo di musica ti piace ascoltare?
+- Hai un cantante preferito?
+- Suoni uno strumento?
+- Ti piace leggere?
+- Che genere di libro ti piace leggere?
+- È meglio un bel film o un bel libro?
+- Guardi molto la tv?
+- Usi molto il tuo telefono?
+- Sai cucinare?
+> Ti piace lo sport?
+- Pratichi uno sport?
+- Sei un tipo sportivo?
+- Che sport pratichi?
+- Che sport preferisci?
+- Sei bravo in questo sport?
+- Giochi per una squadra?
+- Quante volte ti alleni alla settimana?
+- Sei tifoso di una squadra?
+- Vai allo stadio per vedere la tua squadra?
+- Che cosa fai per tenerti in forma?
+- Per te è importante essere in forma?
+> Cosa fai per stare bene?
+- Cosa fai per rilassarti?
+- Hai una dieta sana?
+- Per te è importante mangiare sano?
+- Ci tieni alla salute?
+- Che cosa mangi di solito a colazione?
+- Che cosa mangi di solito a cena?
+- Segui una dieta equilibrata?
+- Ti piace cucinare?
+- Cosa ti piace cucinare?
+- C'è un piatto che sai cucinare bene?
+- Ti piacciono i dolci?
+- Mangi spesso i cibi fast food?
+- Chi prepara la cena a casa tua?
+> Hai trascorso un bel fine settimana?
+- Cosa hai fatto di bello il fine settimana scorso?
+- Dove sei andato?
+- Con chi sei andato?
+- Ti sei divertito?
+
+## education and study
+> Parlami della tua scuola.
+- Com'è la tua scuola?
+- Ti piace la tua scuola?
+- Come sono i tuoi professori?
+- Hai un professore preferito?
+- Quali materie hai studiato quest'anno?
+- Hai una materia preferita?
+- C'è una materia che non ti piace?
+- In quale materia non vai bene?
+- Qual è il tuo forte?
+- Ti piace studiare le lingue?
+- Quante lingue parli?
+- Perché hai deciso di studiare l'italiano?
+- Com'è la tua giornata tipo a scuola?
+- Cosa fai durante la pausa?
+- Quanto tempo passi a fare i compiti?
+- Che cosa fai il pomeriggio dopo scuola?
+
+## part-time work and earnings
+> Parlami del tuo lavoro.
+- Hai un lavoro part-time?
+- Dove lavori?
+- Cosa fai al lavoro?
+- Ti piace il tuo lavoro?
+- Quante ore lavori alla settimana?
+- Quante ore vorresti lavorare?
+- Come sono i tuoi colleghi?
+- Sei riuscito a risparmiare?
+- Come spendi i soldi che guadagni?
+- Secondo te, è difficile studiare e lavorare?
+
+## people, places and communities
+> Cosa ti piace di più della cultura italiana?
+- Sei mai stato in un locale italiano?
+- Ti piacerebbe visitare l'Italia?
+- Vorresti visitare una città particolare in Italia?
+- Qual è il tuo piatto italiano preferito?
+- Conosci qualche prodotto italiano?
+- Segui la moda italiana?
+- Hai mai visto un film italiano?
+- C'è un cantante italiano che ti piace?
+- Hai mai mangiato in un ristorante italiano?
+- Ti piace la cucina italiana?
+- Hai mai cucinato del cibo all'italiana a casa?
+- Segui il calcio in Italia?
+- Hai una squadra italiana preferita?
+- Guardi i programmi italiani in televisione?
+- Ascolti la radio italiana?
+
+## holidays, travel and tourism
+> Parlami di una vacanza che hai fatto recentemente.
+- Dove ti piace andare in vacanza?
+- Vai in vacanza con la tua famiglia?
+- Racconta dove sei andato.
+- Con chi sei andato?
+- Cosa hai visto?
+- Ti sei divertito?
+- Dove preferisci passare le vacanze?
+- Descrivimi la tua vacanza ideale.
+- Hai viaggiato in Australia?
+- Sei mai stato in Italia?
+- Hai mai fatto un viaggio all'estero?
+- Hai intenzione di viaggiare all'estero?
+- Quale città ti piacerebbe visitare?
+- Come hai trascorso le ultime vacanze scolastiche?
+- Come passerai le vacanze estive?
+- Come festeggerai la fine degli esami?
+
+## future plans and aspirations
+> Cosa vorresti fare nel tuo futuro?
+- Quali sono i tuoi progetti per il futuro?
+- Hai un sogno nel cassetto?
+- Che lavoro ti piacerebbe fare?
+- Vuoi continuare a studiare?
+- Che corso hai in mente?
+- Vuoi iscriverti all'università?
+- Preferisci fare un viaggio prima di decidere?
+- Perché ti piacerebbe fare questo lavoro?
+- Per te è importante fare un lavoro che ti piace?
+- Pensi di continuare a studiare l'italiano?
+- Secondo te, cosa devi fare per realizzare i tuoi sogni?
+- In quale paese ti piacerebbe vivere?
