@@ -11,7 +11,8 @@ class HailoExaminer : public InterfaceExaminer { //inheritance
 public:
     explicit HailoExaminer(std::string ollama_url);
 
-    std::string respond(const std::vector<Turn>& history) override;
+    std::string respond(const std::vector<Turn>& history,
+                        const std::string& gemini_key_name) override;
     //override pure virtual respond method of base class
 
 private:

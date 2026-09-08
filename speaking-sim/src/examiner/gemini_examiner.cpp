@@ -1,5 +1,9 @@
 #include "sim/examiner/gemini_examiner.hpp"
 
+#include "sim/topics.hpp"
+
+#include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <ctime>
 #include <iostream>
@@ -27,12 +31,22 @@ constexpr time_t kConnectTimeoutSeconds = 10;
 constexpr time_t kReadTimeoutSeconds = 60;
 constexpr time_t kWriteTimeoutSeconds = 10;
 
-// Sole user turn when the history is system-prompt-only: generateContent
-// rejects an absent or empty contents array, so the opener failed with 400.
+
+// generateContent rejects an empty contents array, so the opening turn needs a
+// user message of its own. This is that message and nothing more.
+//
+// It deliberately carries NO instructions. It used to spell out how long the
+// opening question should be and what it could contain, which made it a fourth
+// place competing with the prompt files over the same rule - and the one place
+// nobody thinks to look, because it is compiled in rather than sitting in
+// prompts/. All of that now lives in prompts/examiner_first.txt, which
+// Session hands over as the System turn for exactly this request.
 constexpr const char* kOpeningTurnText = "Inizia l'esame.";
 
 // Left unset this runs to the model's 65536 ceiling, which is the 8K output
-// spike. A reply is 30-35 tokens; the headroom covers billed thought tokens.
+// spike. A reply is 50-70 tokens now that they run to two-to-four sentences,
+// up from the 30-35 of the one-clause era; the headroom covers billed thought
+// tokens, so this stays where it is.
 constexpr int kMaxOutputTokens = 512;
 
 // 3.x takes thinkingLevel (enum), not the 2.5-series thinkingBudget integer.
@@ -42,6 +56,9 @@ constexpr const char* kThinkingLevel = "minimal";
 // Under the 1.0 default to tighten prompt adherence, but not to 0: a varied
 // opening question is better practice. 0.5 dumps exactly, 0.6 does not.
 constexpr double kTemperature = 0.5;
+
+
+constexpr double kOpeningTemperature = 1.0;
 
 // Operator-side only; the student still sees the server's fixed string. Names
 // the failure in the log so nobody has to decode a status by hand.
@@ -72,6 +89,56 @@ std::int64_t usage_field(const crow::json::rvalue& usage, const char* key) {
     // rvalue::operator[] throws on a missing key rather than returning null
 }
 
+// One keep-alive Client per worker thread: httplib defaults keep_alive_ to
+// false, and releases socket_mutex_ before send/recv so one cannot be shared.
+// Hoisted out of respond() so prewarm() warms the very same connection - a
+// second client here would open a second socket and warm nothing.
+httplib::Client& client() {
+    thread_local httplib::Client cli = [] {
+        httplib::Client c(kHost);
+        c.set_keep_alive(true);
+        c.set_connection_timeout(kConnectTimeoutSeconds);
+        c.set_read_timeout(kReadTimeoutSeconds);
+        c.set_write_timeout(kWriteTimeoutSeconds);
+        return c;
+    }();
+    return cli;
+}
+
+// The tag is an enum the API enforces, so the model cannot invent one of its
+// own and no amount of prompt drift can widen the set.
+void apply_response_schema(crow::json::wvalue& body) {
+    crow::json::wvalue& schema = body["generationConfig"]["responseSchema"];
+    schema["type"] = "OBJECT";
+    schema["properties"]["reply"]["type"] = "STRING";
+    schema["properties"]["topic"]["type"] = "STRING";
+    for (unsigned i = 0; i < kTopicTags.size(); ++i) {
+        schema["properties"]["topic"]["enum"][i] =
+            std::string(kTopicTags[i]);
+    }
+    schema["required"][0] = "reply";
+    schema["required"][1] = "topic";
+    schema["propertyOrdering"][0] = "reply";
+    schema["propertyOrdering"][1] = "topic";
+    //reply first, so the Italian is generated before the tag rather than after
+
+    body["generationConfig"]["responseMimeType"] = "application/json";
+}
+
+// Back into the text-plus-tag shape the rest of the program reads, so
+// server.cpp's topic_tag() and the Hailo path stay as they are.
+std::string flatten_structured_reply(const std::string& text) {
+    crow::json::rvalue parsed = crow::json::load(text);
+    if (!parsed || !parsed.has("reply") || !parsed.has("topic") ||
+        parsed["reply"].t() != crow::json::type::String ||
+        parsed["topic"].t() != crow::json::type::String) {
+        return text;
+        //a schema hiccup degrades to the free-text path rather than throwing
+    }
+    return std::string(parsed["reply"].s()) + "\n[topic: " +
+           std::string(parsed["topic"].s()) + "]";
+}
+
 const char* gemini_role(Role role) {
     // Gemini's contents array knows only "user" and "model".
     // A System turn is handled separately and never reaches here.
@@ -80,10 +147,54 @@ const char* gemini_role(Role role) {
 
 }  // namespace
 
-GeminiExaminer::GeminiExaminer(std::string api_key)
-    : api_key_(std::move(api_key)) {} // constructor
+GeminiExaminer::GeminiExaminer(std::vector<GeminiKeyOption> keys)
+    : keys_(std::move(keys)) {} // constructor
 
-std::string GeminiExaminer::respond(const std::vector<Turn>& history) {
+const std::string& GeminiExaminer::key_for(const std::string& gemini_key_name) const {
+    if (!gemini_key_name.empty()) {
+        for (const GeminiKeyOption& option : keys_) {
+            if (option.name == gemini_key_name) return option.key;
+        }
+        //an unrecognised name (stale client, edited .env) falls through to the
+        //default below rather than failing the whole request
+    }
+    static const std::string empty;
+    return keys_.empty() ? empty : keys_.front().key;
+}
+
+void GeminiExaminer::prewarm() {
+    // DNS, the TCP connect and the TLS handshake together measure 150-490ms
+    // against this host, and every one of those milliseconds used to land on
+    // the first turn a worker thread served. Doing it here spends them while
+    // nobody is waiting.
+    //
+    // A models-list GET rather than a generateContent POST, deliberately: it
+    // sits in a different quota bucket, so warming the socket costs nothing
+    // against the 20/day request cap that the real calls are rationed by.
+    const auto started = std::chrono::steady_clock::now();
+    const httplib::Headers headers = {{"x-goog-api-key", key_for("")}};
+    const httplib::Result res = client().Get("/v1beta/models", headers);
+
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - started).count();
+
+    if (!res) {
+        std::cerr << "examiner prewarm: NETWORK - "
+                  << httplib::to_string(res.error())
+                  << ", first turn will pay the handshake" << std::endl;
+        return;
+        //never throws. A cold connection is a slow turn, not a broken server,
+        //and startup must not hinge on the network being up
+    }
+    std::cerr << "examiner prewarm: HTTP " << res->status << " in " << ms
+              << "ms, connection open" << std::endl;
+    //the status is logged rather than checked: even a 4xx completed a full
+    //handshake, which is the only thing this call was ever after
+}
+
+std::string GeminiExaminer::respond(const std::vector<Turn>& history,
+                                     const std::string& gemini_key_name) {
+    const std::string& api_key = key_for(gemini_key_name);
     crow::json::wvalue body;
     std::string system_text;
     unsigned content_index = 0;
@@ -101,9 +212,11 @@ std::string GeminiExaminer::respond(const std::vector<Turn>& history) {
         ++content_index;
     }
 
+    bool synthesised_opener = false;
     if (content_index == 0) {
         body["contents"][0]["role"] = "user";
         body["contents"][0]["parts"][0]["text"] = kOpeningTurnText;
+        synthesised_opener = true;
         // The Start turn's history is [System] alone, so the loop emitted no
         // contents. Gemini requires a non-empty contents array.
     }
@@ -113,25 +226,19 @@ std::string GeminiExaminer::respond(const std::vector<Turn>& history) {
     }
 
     body["generationConfig"]["maxOutputTokens"] = kMaxOutputTokens;
-    body["generationConfig"]["temperature"] = kTemperature;
+    body["generationConfig"]["temperature"] =
+        synthesised_opener ? kOpeningTemperature : kTemperature;
+    //synthesised_opener, not a count: it is set on exactly the one path that
+    //has no real conversation behind it, which is the whole condition
     body["generationConfig"]["thinkingConfig"]["thinkingLevel"] = kThinkingLevel;
+    apply_response_schema(body);
 
-    // One keep-alive Client per worker thread: httplib defaults keep_alive_ to
-    // false, and releases socket_mutex_ before send/recv so one cannot be shared.
-    thread_local httplib::Client cli = [] {
-        httplib::Client c(kHost);
-        c.set_keep_alive(true);
-        c.set_connection_timeout(kConnectTimeoutSeconds);
-        c.set_read_timeout(kReadTimeoutSeconds);
-        c.set_write_timeout(kWriteTimeoutSeconds);
-        return c;
-    }();
     const std::string path =
         std::string("/v1beta/models/") + kModel + ":generateContent";
-    const httplib::Headers headers = {{"x-goog-api-key", api_key_}};
+    const httplib::Headers headers = {{"x-goog-api-key", api_key}};
 
     httplib::Result res =
-        cli.Post(path, headers, body.dump(), "application/json");
+        client().Post(path, headers, body.dump(), "application/json");
 
     // Nothing below is retried, by policy: a retry costs another request
     // against a 20/day cap and a 4xx cannot differ for a byte-identical body.
@@ -205,7 +312,7 @@ std::string GeminiExaminer::respond(const std::vector<Turn>& history) {
         throw std::runtime_error("Gemini part carried no text");
     }
 
-    return std::string(part["text"].s());
+    return flatten_structured_reply(std::string(part["text"].s()));
     // .s() points into the buffer owned by `parsed`; converting to std::string
     // copies it out before that buffer dies with this frame.
 }
