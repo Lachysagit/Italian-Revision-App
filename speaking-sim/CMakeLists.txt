@@ -183,8 +183,12 @@ add_executable(speaking-sim
     src/main.cpp
     src/config.cpp
     src/protocol.cpp
+    src/question_bank.cpp
     src/server.cpp
     src/session.cpp
+    src/text_clean.cpp
+    src/topics.cpp
+    src/translate.cpp
     src/worker.cpp
     src/examiner/gemini_examiner.cpp
     src/examiner/hailo_examiner.cpp
@@ -248,7 +252,7 @@ if(WIN32 AND SIM_NATIVE_LIBS AND CMAKE_VERSION VERSION_GREATER_EQUAL 3.21)
     )
 endif()
 
-# web(frontend)/index.html and prompts/examiner_system.txt are opened by relative path, so
+# web(frontend)/index.html and the files under prompts/ are opened by relative path, so
 # the binary has to be started from the project root. Pinning the output
 # directory keeps ./build/speaking-sim predictable across generators.
 set_target_properties(speaking-sim PROPERTIES
