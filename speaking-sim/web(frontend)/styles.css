@@ -65,8 +65,48 @@ h1 {
 #transcript {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 1.25rem;
     margin-top: 1.25rem;
+    /* separates whole groups, so wider than the gap inside one */
+}
+
+/* one question, its answer, and the controls that save the two */
+.pair {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.pair-save {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding-left: 0.25rem;
+}
+
+.pair-save button {
+    padding: 0.25rem 0.6rem;
+    border: 1px solid #c3c8d0;
+    border-radius: 999px;
+    background: #fff;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+    /* quieter than the turn controls: saving must not compete with them */
+}
+
+.pair-save button:hover {
+    border-color: #8b93a0;
+    color: var(--ink);
+}
+
+/* the picked one stays picked until the export drains it */
+.pair-save button.selected {
+    border-color: var(--student-edge);
+    background: var(--student-bg);
+    color: var(--student-ink);
+    font-weight: 600;
 }
 
 /* one card per committed turn. The role is a class rather than baked into
@@ -110,3 +150,308 @@ h1 {
 
 /* the #log surface was removed from the page - addLog() writes to the console
    now - so its rules are gone rather than left styling nothing. */
+
+#settingsOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(28, 30, 33, 0.45);
+}
+
+#settingsOverlay[hidden] {
+    display: none;
+}
+
+#settingsModal {
+    width: min(24rem, calc(100vw - 2.5rem));
+    padding: 1.25rem 1.5rem 1.5rem;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+#settingsModal h2 {
+    margin: 0 0 1rem;
+    font-size: 1.1rem;
+}
+
+#settingsModal label {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+#settingsModal select,
+#settingsModal input[type="text"] {
+    width: 100%;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid #c3c8d0;
+    border-radius: 6px;
+    font: inherit;
+    font-size: 0.95rem;
+    box-sizing: border-box;
+    /* the name box shares the key picker's styling rather than repeating it.
+       box-sizing because a text input adds its border outside the 100% width
+       by default, which pushed it past the select it sits above */
+}
+
+#settingsModal input[type="text"] + label {
+    margin-top: 0.9rem;
+    /* the modal has two fields now, so the second label needs the gap the
+       single-field layout never had to provide */
+}
+
+#settingsModal input[type="text"]:disabled {
+    background: #f1f3f5;
+    color: var(--muted);
+    /* mid-session the name is already spent, and a greyed box says so */
+}
+
+#settingsActions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 1.25rem;
+}
+
+#settingsActions button {
+    padding: 0.5rem 1rem;
+    border: 1px solid #c3c8d0;
+    border-radius: 6px;
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.95rem;
+    cursor: pointer;
+}
+
+#settingsActions button:hover {
+    border-color: #8b93a0;
+}
+
+/* the exam clock, last in the sticky controls band so it scrolls with the
+   buttons it governs. margin-left:auto pushes it to the far end of the row */
+#examTimer {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+    padding: 0.3rem 1rem;
+    border: 2px solid #c3c8d0;
+    border-radius: 999px;
+    background: #fff;
+    color: var(--ink);
+    font-size: 1.6rem;
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    /* tabular so the digits do not jitter the pill's width every second */
+}
+/* no shadow now it sits in the band rather than floating over the transcript */
+
+#examTimer[hidden] {
+    display: none;
+}
+
+#examTimer.low {
+    border-color: #c0392b;
+    color: #c0392b;
+}
+
+#examTimer.expired {
+    border-color: #c0392b;
+    background: #c0392b;
+    color: #fff;
+}
+
+/* The quick lookup box, parked in the empty margin to the right of the 46rem
+   reading column. position:fixed rather than sticky so it is anchored to the
+   viewport and not to the page: it stays exactly where it is however far the
+   transcript has been scrolled, which is the point of a tool you reach for
+   mid-question. The narrow-window fallback is at the bottom of this block. */
+#translateBox {
+    position: fixed;
+    top: 1.5rem;
+    right: 1.5rem;
+    z-index: 20;
+    /* above #controls (z-index 10), so the sticky band scrolls under it rather
+       than over it when the two overlap on a mid-width window */
+
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    width: 22rem;
+    max-height: calc(100vh - 3rem);
+    overflow-y: auto;
+    /* a long translation scrolls inside the panel instead of growing it past
+       the bottom of the screen */
+
+    padding: 0.9rem;
+    border: 1px solid #dcdfe4;
+    border-radius: 10px;
+    background: #fff;
+    box-sizing: border-box;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    /* the one shadow on the page: it is the one element that genuinely floats
+       over the content rather than sitting in the flow with it */
+}
+
+#translateHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+#translateTitle {
+    margin: 0;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--muted);
+    /* a quiet label rather than a heading: it names the panel without
+       competing with the page title for attention */
+}
+
+#translateInput {
+    width: 100%;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid #c3c8d0;
+    border-radius: 6px;
+    font: inherit;
+    font-size: 0.95rem;
+    line-height: 1.4;
+    box-sizing: border-box;
+    resize: vertical;
+    /* vertical only: widening it would push the textarea past the panel.
+       The rest of the recipe matches the settings fields, since text boxes
+       were styled only inside the modal and this should not look foreign */
+}
+
+#translateCount {
+    margin-top: -0.35rem;
+    text-align: right;
+    font-size: 0.75rem;
+    color: var(--muted);
+    /* pulled up against the textarea it belongs to, and quiet until the cap is
+       close: a counter that shouts at 12 characters is just noise */
+}
+
+#translateCount.near {
+    color: #8c261b;
+}
+
+#translateBox button {
+    padding: 0.5rem 1rem;
+    border: 1px solid #c3c8d0;
+    border-radius: 6px;
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.95rem;
+    cursor: pointer;
+}
+
+#translateBox button:hover:not(:disabled) {
+    border-color: #8b93a0;
+}
+
+#translateBox button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+#translateDirection {
+    padding: 0.25rem 0.6rem;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    /* both labels are the same width, so a flip must not reflow the header */
+}
+
+#translateResult {
+    padding: 0.6rem 0.85rem;
+    border: 1px solid var(--examiner-edge);
+    border-left-width: 4px;
+    border-radius: 8px;
+    background: var(--examiner-bg);
+    color: var(--examiner-ink);
+    white-space: pre-wrap;
+    /* the examiner palette, so a translation reads as the app answering; the
+       green is the student's own voice and this is not that. pre-wrap because
+       a multi-line input comes back multi-line */
+}
+
+#translateResult[hidden] {
+    display: none;
+}
+
+#translateResult.error {
+    border-color: #c0392b;
+    background: #fdecea;
+    color: #8c261b;
+    /* the same red the expired clock uses, so a failure is never mistaken for
+       a translation that happens to look wrong */
+}
+
+/* Below this width the 46rem column plus a 22rem panel no longer both fit, and
+   a fixed panel would sit on top of the transcript. It drops back into the flow
+   where it stands in the markup - between the controls and the transcript. */
+@media (max-width: 78rem) {
+    #translateBox {
+        position: static;
+        width: auto;
+        max-height: none;
+        margin-top: 1rem;
+        box-shadow: none;
+    }
+}
+
+/* shown between the Start button and the first examiner question: that wait is
+   a Gemini call and its speech, long enough that a blank page reads as broken */
+#examLoading {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 1rem;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid var(--examiner-edge);
+    border-left-width: 4px;
+    border-radius: 8px;
+    background: var(--examiner-bg);
+    color: var(--examiner-ink);
+    font-size: 0.9rem;
+    /* dressed as an examiner turn, since it stands where that turn will land */
+}
+
+#examLoading[hidden] {
+    display: none;
+}
+
+.dots {
+    display: inline-flex;
+    gap: 0.25rem;
+}
+
+.dots i {
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 50%;
+    background: currentColor;
+    animation: dot-pulse 1.2s infinite ease-in-out;
+}
+
+.dots i:nth-child(2) { animation-delay: 0.2s; }
+.dots i:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dot-pulse {
+    0%, 80%, 100% { opacity: 0.25; }
+    40% { opacity: 1; }
+}
+
+/* a still row for anyone who has asked the OS for less motion */
+@media (prefers-reduced-motion: reduce) {
+    .dots i { animation: none; opacity: 0.6; }
+}

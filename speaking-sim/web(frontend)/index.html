@@ -13,16 +13,85 @@
         <button id="start">Start</button>
         <button id="done" disabled>Finished Response</button>
         <button id="end" disabled>End session</button>
+        <button id="export" disabled>Export session</button>
+        <!-- enabled by the save buttons below, and never disabled by the
+             session state: the document is still wanted after the exam -->
+        <button id="settings">Settings</button>
+
+        <div id="examTimer" hidden>5:00</div>
+        <!-- the exam clock, sitting with the controls it governs. Started by
+             the first examiner question rather than by the Start button, so
+             the wait for the opening call is not charged to the student. At
+             zero a reply already in flight is still delivered and spoken, and
+             the session ends after it. End session puts it back to 5:00 -->
     </div>
     <!-- sticky so the turn controls stay reachable however far the transcript
          has grown. The buttons are the turn guard as well as the display, so
          scrolling them off screen hid the only way to end a response -->
 
+    <div id="settingsOverlay" hidden>
+        <div id="settingsModal" role="dialog" aria-labelledby="settingsTitle">
+            <h2 id="settingsTitle">Settings</h2>
+
+            <label for="studentName">Your name</label>
+            <input id="studentName" type="text" autocomplete="given-name"
+                   placeholder="the examiner will use this">
+            <!-- rides on the "start" message the same way the key does, so the
+                 examiner knows the name before it asks its opening question
+                 and never has to ask "come ti chiami". Blank is allowed: the
+                 backend then simply tells the examiner nothing about a name -->
+
+            <label for="geminiKeySelect">Gemini API key</label>
+            <select id="geminiKeySelect"></select>
+            <!-- populated from /api/gemini-keys; the selected name rides on
+                 the "start" message so the backend knows which key to bill -->
+
+            <div id="settingsActions">
+                <button id="settingsClose">Close</button>
+            </div>
+        </div>
+    </div>
+    <!-- disabled while a session is running: the key choice is read once, at
+         the start message, so changing it mid-exam would have no effect -->
+
+    <div id="translateBox">
+        <div id="translateHead">
+            <h2 id="translateTitle">Quick translate</h2>
+            <button id="translateDirection" type="button">IT &rarr; EN</button>
+            <!-- a button rather than a select: reversing is the only choice
+                 there is, so it should cost one click and no menu -->
+        </div>
+
+        <textarea id="translateInput" rows="4" autocomplete="off" maxlength="1000"
+                  placeholder="type a sentence to translate&#10;&#10;Enter to translate, Shift+Enter for a new line"></textarea>
+        <!-- maxlength matches the server's kMaxTranslateChars, so a pasted
+             transcript is stopped at the box instead of at a 400 -->
+        <div id="translateCount" aria-live="polite"></div>
+        <!-- a textarea rather than an input: a sentence worth checking often
+             runs past one line, and a box you can see all of is easier to fix
+             a typo in than one that scrolls sideways -->
+
+        <button id="translateGo" type="button">Translate</button>
+        <div id="translateResult" hidden></div>
+    </div>
+    <!-- pinned to the right margin rather than sitting in the column, so it
+         stays put however far the transcript has scrolled. Deliberately never
+         disabled by setTurnState: this talks to Google Translate over plain
+         HTTP and shares nothing with the exam pipeline, and looking a word up
+         mid-question is the whole point of having it -->
+
+    <div id="examLoading" hidden>
+        <span class="dots"><i></i><i></i><i></i></span>
+        <span>Preparing your exam - waiting for the examiner's first question</span>
+    </div>
+    <!-- the gap between Start and the opening question is a Gemini call plus
+         its speech, seconds of nothing on an empty page. Removed by the first
+         painted question, which is also what starts the clock -->
+
     <div id="transcript"></div>
     <!-- student-facing conversation surface, and the only surface on the page.
-         Only real turns are appended here, so its content mirrors the session
-         history the examiner sees. Diagnostics must never be written here -
-         addLog() sends those to the browser console instead -->
+         Turns are grouped one question with its answer, so a pair can be saved
+         on its own. Diagnostics go to the console via addLog(), never here -->
 
     <script src="client.js"></script>
 </body>
