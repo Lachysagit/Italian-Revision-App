@@ -36,8 +36,11 @@ Get-Content $envFile | ForEach-Object {
 
 # Fail loudly rather than start half-configured: an empty key errors every
 # examiner turn, and an empty model path silently disables speech to text.
-if (-not $env:GEMINI_API_KEY -and $env:EXAMINER_BACKEND -ne "hailo") {
-    Write-Error "GEMINI_API_KEY is empty in .env, and EXAMINER_BACKEND is not hailo."
+# Either key variable will do: config.cpp falls back to the first entry of the
+# GEMINI_API_KEYS pool when the single GEMINI_API_KEY is unset, so requiring
+# GEMINI_API_KEY here would reject a perfectly valid pool-only .env.
+if (-not $env:GEMINI_API_KEY -and -not $env:GEMINI_API_KEYS -and $env:EXAMINER_BACKEND -ne "hailo") {
+    Write-Error "Both GEMINI_API_KEY and GEMINI_API_KEYS are empty in .env, and EXAMINER_BACKEND is not hailo."
 }
 foreach ($pair in @(@("WHISPER_MODEL_PATH", $env:WHISPER_MODEL_PATH),
                     @("PIPER_MODEL_PATH", $env:PIPER_MODEL_PATH))) {

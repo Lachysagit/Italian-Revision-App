@@ -39,12 +39,54 @@ bool parse_int_strict(const std::string& text, int& out) {
 //value taken straight from the environment is a startup-time foot-gun
 constexpr int kMaxWorkerThreads = 64;
 
+//GEMINI_API_KEYS="Personal=AIza...,Backup=AIza..." lets a settings picker
+//choose which key a session's requests are billed against. "name=key" pairs
+//separated by commas; a pair missing "=" or with an empty name/key is skipped
+//rather than failing startup, since one bad entry should not take the rest down
+std::vector<GeminiKeyOption> parse_gemini_keys(const std::string& text) {
+    std::vector<GeminiKeyOption> options;
+    std::size_t start = 0;
+    while (start <= text.size()) {
+        std::size_t comma = text.find(',', start);
+        const std::string pair = text.substr(
+            start, comma == std::string::npos ? std::string::npos : comma - start);
+
+        const std::size_t equals = pair.find('=');
+        if (equals != std::string::npos) {
+            std::string name = pair.substr(0, equals);
+            std::string key = pair.substr(equals + 1);
+            if (!name.empty() && !key.empty()) {
+                options.push_back({std::move(name), std::move(key)});
+            }
+        }
+
+        if (comma == std::string::npos) break;
+        start = comma + 1;
+    }
+    return options;
+}
+
 }  // namespace
 
 Config load_config() {
     Config config;
 
     config.gemini_api_key = get_env("GEMINI_API_KEY", "");
+    config.gemini_api_keys = parse_gemini_keys(get_env("GEMINI_API_KEYS", ""));
+    if (config.gemini_api_keys.empty() && !config.gemini_api_key.empty()) {
+        config.gemini_api_keys.push_back({"Default", config.gemini_api_key});
+        //no named pool configured, fall back to the single legacy key so the
+        //picker still has exactly one option rather than an empty list
+    }
+    if (!config.gemini_api_keys.empty()) {
+        config.gemini_api_key = config.gemini_api_keys.front().key;
+        //keep the singular field in step: it is what main.cpp hands to the
+        //constructor default, so it must name a key that is actually in the pool
+    }
+    config.translate_api_key = get_env("TRANSLATE_API_KEY", "");
+    //empty is allowed: the translate box is optional, and /api/translate says so
+    //itself rather than the server refusing to start over a side feature
+
     config.hailo_ollama_url = get_env("HAILO_OLLAMA_URL", "http://localhost:11434");
     config.whisper_model_path = get_env("WHISPER_MODEL_PATH", "");
     config.piper_model_path = get_env("PIPER_MODEL_PATH", "");
