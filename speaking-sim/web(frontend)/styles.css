@@ -839,34 +839,59 @@ body.gated { overflow: hidden; }
 #authCard h2 { margin: 0 0 0.5rem; }
 #authBlurb { margin: 0 0 1.25rem; opacity: 0.8; }
 
-#authGoogle {
-    display: inline-block;
-    padding: 0.6rem 1.2rem;
-    border-radius: 6px;
-    font-weight: 600;
+/* The two ways in. Both are full width cards rather than a button and a link,
+   so neither reads as the secondary option. */
+#authChoice { display: flex; flex-direction: column; gap: 0.75rem; }
+
+/* [hidden] is only display:none at the browser's default weight, which a
+   display:flex rule on the same element beats. Both panels are flex, so both
+   need saying explicitly or the sign-up form shows beside the two buttons. */
+#authChoice[hidden],
+#authDetails[hidden] { display: none; }
+
+.authOption {
+    display: block;
+    width: 100%;
+    padding: 0.85rem 1rem;
+    font: inherit;
+    text-align: left;
     text-decoration: none;
-    color: #fff;
-    background: #1a73e8;
+    cursor: pointer;
+    color: inherit;
+    background: var(--panel, #fff);
+    border: 1px solid var(--line, #d9d4cc);
+    border-radius: 8px;
 }
 
-#authGoogle:hover { background: #1765cc; }
+.authOption:hover { border-color: #1a73e8; }
 
-#authSignup { display: flex; flex-direction: column; gap: 0.35rem; }
+.authOptionLabel { display: block; font-weight: 600; }
 
-#authSignup label {
+.authOptionNote {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.85rem;
+    opacity: 0.7;
+}
+
+#authDetails { display: flex; flex-direction: column; gap: 0.35rem; }
+
+#authDetails label {
     margin-top: 0.6rem;
     font-size: 0.9rem;
     font-weight: 600;
 }
 
-#authSignup select {
+#authDetails select {
     font: inherit;
-    padding: 0.4rem;
+    padding: 0.45rem;
+    color: inherit;
+    background: var(--panel, #fff);
     border: 1px solid var(--line, #d9d4cc);
     border-radius: 4px;
 }
 
-#authSubmit {
+#authNext {
     margin-top: 1.1rem;
     padding: 0.6rem 1.2rem;
     font: inherit;
@@ -878,10 +903,25 @@ body.gated { overflow: hidden; }
     border-radius: 6px;
 }
 
-#authSubmit:disabled { opacity: 0.6; cursor: default; }
+#authNext:disabled { opacity: 0.6; cursor: default; }
+
+#authBack {
+    margin-top: 0.5rem;
+    padding: 0.4rem;
+    font: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
+    color: inherit;
+    background: none;
+    border: none;
+    opacity: 0.7;
+}
+
+#authBack:hover { opacity: 1; }
+#authBack[hidden] { display: none; }
 
 #authError {
-    margin: 0.75rem 0 0;
+    margin: 0.9rem 0 0;
     color: #b3261e;
     font-size: 0.9rem;
 }
