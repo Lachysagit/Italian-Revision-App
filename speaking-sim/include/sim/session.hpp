@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "sim/examiner.hpp"
+#include "sim/language.hpp"
 #include "sim/question_bank.hpp"
 
 namespace sim {
@@ -16,15 +17,17 @@ namespace sim {
 class Session {
 public:
     Session();
-    void set_prompts(std::string first, std::string ongoing);
-    //the opening question and every later turn get one file each, and the
-    //snapshot carries whichever applies. Nothing merges them: two prompts in
-    //one request is how the length rule ended up contradicting itself before
+    void set_language(const LanguagePack* pack);
+    //the exam's language, and with it the two prompt files, the syllabus
+    //questions and every per-language string the program itself writes. Sets
+    //the prompts too, filling {{TOPICS}} from this session's own draw: the
+    //opening question and every later turn get one file each, and the snapshot
+    //carries whichever applies. Nothing merges them, because two prompts in one
+    //request is how the length rule ended up contradicting itself before.
+    //Called once on open with the default and again from Start if the browser
+    //named a language, so a client that never names one still runs an exam
 
-    void set_question_bank(std::shared_ptr<const QuestionBank> bank);
-    //the syllabus questions, shared read-only by every session. Only questions
-    //for the topic already running are ever shown, and only on a turn that is
-    //staying on it
+    const LanguagePack& language() const;
 
     void set_student_name(std::string name);
     //taken from the Start message alongside the key, and folded into every
@@ -69,13 +72,27 @@ private:
     std::atomic<bool> job_in_flight_{false};
 
 
+    const LanguagePack* language_ = nullptr;
+    //a bare pointer on purpose: the registry is a member of Server, is const
+    //once loaded and outlives every session, so there is no ownership to share.
+    //Null only between construction and the set_language() that Server's onopen
+    //makes before the socket can carry a message
+
     std::shared_ptr<const QuestionBank> question_bank_;
+    //copied out of the pack by set_language(), so a turn does not chase two
+    //pointers to reach the questions
     static constexpr std::size_t kExampleQuestions = 6;
     //enough to set a register, few enough that the examiner still reacts to
     //the student rather than working down a list
 
     std::string first_prompt_;
     std::string ongoing_prompt_;
+    //the pack's prompts with this session's topic order filled in, so they
+    //cannot be read straight from the shared pack
+    std::string opening_topic_;
+    //the group that order put first. The opening turn draws its sample
+    //questions from this one group and is told to open on it, which is what
+    //makes the shuffle reach the question actually asked
     std::string last_question_;
     std::string last_answer_;
     std::string gemini_key_name_;

@@ -34,7 +34,8 @@ int draw_opinion_target(std::mt19937& rng) {
     return pick(rng);
 }
 
-bool asks_opinion(const std::string& reply) {
+bool asks_opinion(const std::string& reply,
+                  const std::vector<std::string>& openers) {
     std::string lowered;
     lowered.reserve(reply.size());
     for (const char ch : reply) {
@@ -42,27 +43,48 @@ bool asks_opinion(const std::string& reply) {
             std::tolower(static_cast<unsigned char>(ch))));
     }
 
-    for (const char* opener : {"secondo te", "cosa ne pensi", "che ne pensi",
-                               "sei d'accordo"}) {
+    for (const std::string& opener : openers) {
         if (lowered.find(opener) != std::string::npos) {
             return true;
         }
     }
     return false;
-    //ASCII substrings only, so accented text folds past untouched
+    //ASCII substrings only, so accented text folds past untouched. The openers
+    //each language ships are chosen to be ASCII for exactly that reason: a
+    //German "was haeltst du" written with its real umlaut would never match
+    //here, and the only symptom would be an exam that quietly never asks for
+    //an opinion
+}
+
+// The per-language strings carry {0} where a value the program knows goes.
+std::string fill_slot(std::string text, const std::string& value) {
+    const std::size_t at = text.find("{0}");
+    if (at != std::string::npos) {
+        text.replace(at, 3, value);
+    }
+    return text;
+    //first occurrence only, and a string without the marker comes back whole:
+    //a mistyped pack string costs the substitution, not the turn
 }
 
 // The prompt files carry this where their topic list used to sit.
 constexpr std::string_view kTopicMarker = "{{TOPICS}}";
 
-std::string fill_topics(std::string text, std::mt19937& rng) {
+// The filled prompt, and the group the draw put first. Both prompts are filled
+// from one draw per session, so the opening turn's samples and the menu the
+// examiner reads name the same topic.
+struct FilledPrompt {
+    std::string text;
+    std::string first_topic;
+};
+
+FilledPrompt fill_topics(std::string text, const TopicMenu& menu) {
     std::size_t at = text.find(kTopicMarker);
     while (at != std::string::npos) {
-        const std::string menu = topic_menu(rng);
-        text.replace(at, kTopicMarker.size(), menu);
-        at = text.find(kTopicMarker, at + menu.size());
+        text.replace(at, kTopicMarker.size(), menu.text);
+        at = text.find(kTopicMarker, at + menu.text.size());
     }
-    return text;
+    return FilledPrompt{std::move(text), menu.first};
     //a file with no marker comes back untouched, so an out-of-date prompt on
     //disk still runs an exam rather than stopping the server
 }
@@ -76,18 +98,35 @@ Session::Session()
     opinion_target_ = draw_opinion_target(rng_);
 }
 
-void Session::set_prompts(std::string first, std::string ongoing) {
-    first_prompt_ = fill_topics(std::move(first), rng_);
-    ongoing_prompt_ = fill_topics(std::move(ongoing), rng_);
+void Session::set_language(const LanguagePack* pack) {
+    if (pack == nullptr) {
+        return;
+        //keeps whatever was set before rather than leaving the session without
+        //a language. Server passes the default on open, so there is always one
+    }
+
+    language_ = pack;
+    const TopicMenu menu = topic_menu(rng_);
+    first_prompt_ = fill_topics(pack->first_prompt, menu).text;
+    ongoing_prompt_ = fill_topics(pack->ongoing_prompt, menu).text;
+    opening_topic_ = menu.first;
+    //one draw for both files, so the menu the opening turn reads and the menu
+    //every later turn reads are the same list in the same order
     //the examiner only sees build_examiner_input(), so a prompt has to lead
     //the snapshot. The snapshot is rebuilt per call, so prompts cannot stack
     //the topic list is drawn here rather than per turn: the order holds for the
     //whole exam, so the examiner never sees the topics reshuffle under it
+    //filled from the pack's copy into this session's own, so the draw is per
+    //session while the file on disk is read once for the whole run
+
+    question_bank_ = pack->question_bank;
+    //shared_ptr to const, so every session reads the one copy loaded at startup
 }
 
-void Session::set_question_bank(std::shared_ptr<const QuestionBank> bank) {
-    question_bank_ = std::move(bank);
-    //shared_ptr to const, so every session reads the one copy loaded at startup
+const LanguagePack& Session::language() const {
+    return *language_;
+    //never null in practice: Server sets the default on open, before the socket
+    //can deliver a message that would reach this
 }
 
 void Session::set_student_name(std::string name) {
@@ -111,7 +150,8 @@ void Session::record_question(std::string question) {
     last_question_ = std::move(question);
     ++questions_asked_;
 
-    if (!opinion_done_ && asks_opinion(last_question_)) {
+    if (!opinion_done_ && language_ != nullptr &&
+        asks_opinion(last_question_, language_->opinion_openers)) {
         opinion_done_ = true;
         //an opinion asked without being told to still discharges the debt
     }
@@ -183,8 +223,10 @@ std::string Session::change_topic_directive() const {
 std::string Session::opinion_directive() const {
     std::string directive =
         "This question must ask the student for an opinion rather than for a "
-        "fact. Open it with \"Secondo te\" or an equivalent, and ask what the "
-        "student thinks";
+        "fact. Open it with \"" + language_->opinion_opener_label +
+        "\" or an equivalent, and ask what the student thinks";
+    //the surrounding instruction stays English, as the rest of the directives
+    //here do; only the phrase being quoted back is the exam's own language
 
     directive += has_visible_text(current_topic_)
                      ? " about \"" + current_topic_ + "\"."
@@ -203,7 +245,8 @@ std::vector<Turn> Session::build_examiner_input() const {
     std::vector<Turn> input;
     input.reserve(6);
     //at most prompt + name + samples + opinion + question + answer, so one
-    //allocation
+    //allocation. The opening turn's own user line fits inside the same six:
+    //it only appears when question and answer are both absent
 
     input.push_back(
         Turn{Role::System, opening_turn ? first_prompt_ : ongoing_prompt_});
@@ -215,9 +258,8 @@ std::vector<Turn> Session::build_examiner_input() const {
 
     if (has_visible_text(student_name_)) {
         input.push_back(Turn{Role::System,
-                             "Lo studente si chiama " + student_name_ +
-                                 ". Sai gia come si chiama, quindi non "
-                                 "chiedere mai il suo nome."});
+                             fill_slot(language_->student_name_sentence,
+                                       student_name_)});
         //a second System turn rather than an edit to system_prompt_: the file
         //on disk is shared by every session and must stay one student short of
         //complete. GeminiExaminer joins System turns with a blank line, and
@@ -239,18 +281,29 @@ std::vector<Turn> Session::build_examiner_input() const {
     if (changing_topic) {
         input.push_back(Turn{Role::System, change_topic_directive()});
         //the examiner only ever sees the last exchange, so the count lives here
-    } else if (!opening_turn && question_bank_) {
-        std::string examples = question_bank_->examples_for(
-            current_topic_, kExampleQuestions, rng_);
+    } else if (question_bank_) {
+        const std::string& group =
+            opening_turn ? opening_topic_ : current_topic_;
+        std::string examples =
+            opening_turn
+                ? question_bank_->openers_for(
+                      group, kExampleQuestions, rng_,
+                      language_->sample_question_header,
+                      language_->opening_sample_footer)
+                : question_bank_->examples_for(
+                      group, kExampleQuestions, rng_,
+                      language_->sample_question_header,
+                      language_->sample_question_footer);
         if (!examples.empty()) {
             input.push_back(Turn{Role::System, std::move(examples)});
         }
     }
     //never both. The samples are for the topic running, and the directive is
     //an order to leave it, so a turn carrying the two would contradict itself.
-    //Nothing is sampled on the opening turn either: no reply has been tagged
-    //yet, so there is no topic to draw from, and examiner_first.txt stands
-    //alone as it did before
+    //The opening turn samples too, from the group this session's shuffle put
+    //first rather than from a tag no reply has carried yet. Without them the
+    //examiner had only examiner_first.txt to go on and opened on the same
+    //memorised question every exam, whatever the temperature
     //the first-turn instruction that used to sit here is gone: it repeated
     //examiner_first.txt in slightly different words, and the two drifted. The
     //only System turns the program still adds are the ones a file cannot
@@ -262,6 +315,15 @@ std::vector<Turn> Session::build_examiner_input() const {
         //this shapes the one question
     }
 
+    if (opening_turn) {
+        input.push_back(Turn{Role::Student, language_->opening_turn_text});
+        //the exam has to start with a user turn: an examiner backend has only
+        //the System prompt at this point, and Gemini rejects a request whose
+        //contents array is empty. GeminiExaminer used to synthesise an Italian
+        //line of its own here, which put one language inside a backend that
+        //should not know about any. It belongs in the pack instead
+    }
+
     if (has_visible_text(last_question_)) {
         input.push_back(Turn{Role::Examiner, last_question_});
     }
@@ -269,7 +331,8 @@ std::vector<Turn> Session::build_examiner_input() const {
         input.push_back(Turn{Role::Student, last_answer_});
     }
     //strings with no visible characters are skipped rather than sent as blank
-    //turns. On the opening turn the examiner runs on the prompt alone
+    //turns. Only one of these branches runs: opening_turn is defined as having
+    //no last_question_, so the opener above never sits beside a real exchange
 
     return input;
     //by value. NRVO elides the copy, and even if it did not this would move

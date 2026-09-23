@@ -33,15 +33,16 @@ constexpr time_t kWriteTimeoutSeconds = 10;
 
 
 // generateContent rejects an empty contents array, so the opening turn needs a
-// user message of its own. This is that message and nothing more.
+// user message of its own. Session supplies it, from the exam language's own
+// LanguagePack: the text used to be a compiled-in Italian constant here, which
+// put one language inside a backend that should not know about any, and made
+// the opening turn the one place a second language could not reach.
 //
-// It deliberately carries NO instructions. It used to spell out how long the
-// opening question should be and what it could contain, which made it a fourth
-// place competing with the prompt files over the same rule - and the one place
-// nobody thinks to look, because it is compiled in rather than sitting in
-// prompts/. All of that now lives in prompts/examiner_first.txt, which
-// Session hands over as the System turn for exactly this request.
-constexpr const char* kOpeningTurnText = "Inizia l'esame.";
+// It still deliberately carries NO instructions. It once spelled out how long
+// the opening question should be, which made it a fourth place competing with
+// the prompt files over the same rule - and the one place nobody thinks to
+// look. All of that lives in each language's examiner_first.txt, which Session
+// hands over as the System turn for exactly this request.
 
 // Left unset this runs to the model's 65536 ceiling, which is the 8K output
 // spike. A reply is 50-70 tokens now that they run to two-to-four sentences,
@@ -59,6 +60,16 @@ constexpr double kTemperature = 0.5;
 
 
 constexpr double kOpeningTemperature = 1.0;
+
+// The floor for the opening question. Reasoning collapses the sampling
+// distribution: the model thinks its way to the one canonical
+// easiest-beginner-question and temperature then only picks between wordings of
+// it, which is why 1.0 above was not buying any variety. Nothing on the opening
+// turn needs thought - there is no answer to respond to - and the floor also
+// takes latency off the turn the student waits through before the exam starts.
+// The API has no "none": the levels are minimal/low/medium/high, and a value
+// outside that set is a 400 on every opening turn.
+constexpr const char* kOpeningThinkingLevel = "minimal";
 
 // Operator-side only; the student still sees the server's fixed string. Names
 // the failure in the log so nobody has to decode a status by hand.
@@ -201,25 +212,28 @@ std::string GeminiExaminer::respond(const std::vector<Turn>& history,
     // crow wvalue::operator[] takes unsigned; std::size_t narrowed 64 bits to
     // 32 (MSVC C4267). History is three turns, so unsigned is the honest type.
 
+    bool examiner_has_spoken = false;
+
     for (const Turn& turn : history) {
         if (turn.role == Role::System) {
             if (!system_text.empty()) system_text += "\n\n";
             system_text += turn.text;
             continue;
         }
+        examiner_has_spoken = examiner_has_spoken || turn.role == Role::Examiner;
         body["contents"][content_index]["role"] = gemini_role(turn.role);
         body["contents"][content_index]["parts"][0]["text"] = turn.text;
         ++content_index;
     }
 
-    bool synthesised_opener = false;
-    if (content_index == 0) {
-        body["contents"][0]["role"] = "user";
-        body["contents"][0]["parts"][0]["text"] = kOpeningTurnText;
-        synthesised_opener = true;
-        // The Start turn's history is [System] alone, so the loop emitted no
-        // contents. Gemini requires a non-empty contents array.
-    }
+    const bool opening_turn = !examiner_has_spoken;
+    // No examiner turn in the history means nothing has been asked yet, so this
+    // request is the opening question. It used to be detected as "the loop
+    // emitted no contents", because Session sent the System prompt alone and
+    // this function bolted on a hardcoded Italian user turn to satisfy Gemini's
+    // non-empty contents rule. Session now sends that opening turn itself, in
+    // the exam's own language, so the count is never zero and the old test
+    // would silently never fire - taking kOpeningTemperature with it.
 
     if (!system_text.empty()) {
         body["system_instruction"]["parts"][0]["text"] = system_text;
@@ -227,10 +241,11 @@ std::string GeminiExaminer::respond(const std::vector<Turn>& history,
 
     body["generationConfig"]["maxOutputTokens"] = kMaxOutputTokens;
     body["generationConfig"]["temperature"] =
-        synthesised_opener ? kOpeningTemperature : kTemperature;
-    //synthesised_opener, not a count: it is set on exactly the one path that
-    //has no real conversation behind it, which is the whole condition
-    body["generationConfig"]["thinkingConfig"]["thinkingLevel"] = kThinkingLevel;
+        opening_turn ? kOpeningTemperature : kTemperature;
+    //the opening turn, not a count: it is the one request with no real
+    //conversation behind it, which is the whole condition
+    body["generationConfig"]["thinkingConfig"]["thinkingLevel"] =
+        opening_turn ? kOpeningThinkingLevel : kThinkingLevel;
     apply_response_schema(body);
 
     const std::string path =
