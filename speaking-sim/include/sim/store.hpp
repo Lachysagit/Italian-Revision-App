@@ -58,12 +58,40 @@ public:
     Store(const Store&) = delete;
     Store& operator=(const Store&) = delete;
 
-    //Phase 0 opens the database and creates the schema; nothing calls it yet.
-    //The accessors that follow arrive with the phases that need them: users and
-    //cookie sessions with OAuth, attempts and turns with exam history.
+    // ---- exam attempts ---------------------------------------------------
+    //the accessors for users, classes and cookie sessions arrive with the
+    //phases that need them. These are the ones exam history needs.
+
+    std::int64_t begin_attempt(std::optional<std::int64_t> user_id,
+                               const std::string& language_id,
+                               const std::string& gemini_key_name);
+    //user_id is nullopt until sign-in exists. Returns 0 if the row could not be
+    //written, which every caller below treats as "do not persist this attempt"
+    //rather than as an error worth failing the exam over
+
+    void record_turn(std::int64_t attempt_id,
+                     int turn_index,
+                     const std::string& role,
+                     const std::string& text,
+                     const std::string& topic,
+                     long long stt_ms,
+                     long long examiner_ms,
+                     long long tts_ms);
+    //also bumps the attempt's turn_count, so a dashboard does not have to count
+    //rows to show how long an exam ran
+
+    void note_examiner_call(std::int64_t attempt_id,
+                            const std::string& gemini_key_name);
+    //per call rather than per attempt: this is what least-used-today key
+    //selection will read once pools exist
+
+    void end_attempt(std::int64_t attempt_id, const std::string& reason);
+    //WHERE ended_at IS NULL, so a disconnect arriving after a timer has already
+    //closed the attempt cannot overwrite the more specific reason
 
 private:
     void exec(const char* sql);
+    void exec(const std::string& sql) { exec(sql.c_str()); }
     void migrate();
     void reconcile_crashed_attempts();
 

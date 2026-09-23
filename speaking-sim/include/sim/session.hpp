@@ -41,6 +41,16 @@ public:
     void record_answer(std::string answer);
     void record_question(std::string question);
 
+    void set_attempt_id(std::int64_t id);
+    std::int64_t attempt_id() const;
+    //the exam_attempts row this session's turns are written against, opened by
+    //Server when the exam starts. Zero means "not being recorded": the insert
+    //failed, and a turn that cannot be stored still has to be answered
+
+    int next_turn_index();
+    //monotonic per session, handed to each stored turn. Not atomic on purpose -
+    //the one-job latch already means a single thread touches a Session at a time
+
     void note_question_topic(const std::string& topic);
     //from the [topic: ...] tag the student never sees. Two or three questions
     //per topic, then build_examiner_input tells the examiner it is finished.
@@ -117,6 +127,12 @@ private:
     std::vector<std::int16_t> audio_buffer_;
     std::string partial_byte_;
 
+
+    std::int64_t attempt_id_ = 0;
+    int turn_index_ = 0;
+    //plain data, deliberately: Session holds no pointer to the Store. The
+    //registry it does point at is const after startup, the Store is not, and
+    //keeping the I/O in Server is what stops a state object growing a database
 
     std::vector<std::string> fact_store_;
     //STUB for now

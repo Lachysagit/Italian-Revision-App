@@ -248,4 +248,138 @@ void Store::reconcile_crashed_attempts() {
     }
 }
 
+std::int64_t Store::begin_attempt(std::optional<std::int64_t> user_id,
+                                  const std::string& language_id,
+                                  const std::string& gemini_key_name) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_,
+            "INSERT INTO exam_attempts "
+            "(user_id, language_id, gemini_key_name, started_at) "
+            "VALUES (?, ?, ?, CAST(strftime('%s','now') AS INTEGER))",
+            -1, &stmt, nullptr) != SQLITE_OK) {
+        throw std::runtime_error(std::string("begin_attempt prepare: ") +
+                                 sqlite3_errmsg(db_));
+    }
+
+    if (user_id.has_value()) {
+        sqlite3_bind_int64(stmt, 1, *user_id);
+    } else {
+        sqlite3_bind_null(stmt, 1);
+        //anonymous until sign-in lands. The column is nullable for exactly this
+        //phase, and tightens once every attempt has a user behind it
+    }
+    sqlite3_bind_text(stmt, 2, language_id.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, gemini_key_name.c_str(), -1, SQLITE_TRANSIENT);
+
+    const int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) {
+        throw std::runtime_error(std::string("begin_attempt step: ") +
+                                 sqlite3_errmsg(db_));
+    }
+    return sqlite3_last_insert_rowid(db_);
+}
+
+void Store::record_turn(std::int64_t attempt_id,
+                        int turn_index,
+                        const std::string& role,
+                        const std::string& text,
+                        const std::string& topic,
+                        long long stt_ms,
+                        long long examiner_ms,
+                        long long tts_ms) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_,
+            "INSERT INTO attempt_turns "
+            "(attempt_id, turn_index, role, text, topic, "
+            " stt_ms, examiner_ms, tts_ms, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, "
+            "        CAST(strftime('%s','now') AS INTEGER))",
+            -1, &stmt, nullptr) != SQLITE_OK) {
+        throw std::runtime_error(std::string("record_turn prepare: ") +
+                                 sqlite3_errmsg(db_));
+    }
+
+    sqlite3_bind_int64(stmt, 1, attempt_id);
+    sqlite3_bind_int(stmt, 2, turn_index);
+    sqlite3_bind_text(stmt, 3, role.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, text.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, topic.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 6, stt_ms);
+    sqlite3_bind_int64(stmt, 7, examiner_ms);
+    sqlite3_bind_int64(stmt, 8, tts_ms);
+
+    const int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) {
+        throw std::runtime_error(std::string("record_turn step: ") +
+                                 sqlite3_errmsg(db_));
+    }
+
+    exec("UPDATE exam_attempts SET turn_count = turn_count + 1 "
+         "WHERE id = " + std::to_string(attempt_id));
+    //attempt_id is an integer this process generated, never client input, so
+    //there is nothing here for a bind to protect against
+}
+
+void Store::note_examiner_call(std::int64_t attempt_id,
+                               const std::string& gemini_key_name) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    exec("UPDATE exam_attempts SET examiner_calls = examiner_calls + 1 "
+         "WHERE id = " + std::to_string(attempt_id));
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_,
+            "INSERT INTO key_usage_daily (day, gemini_key_name, call_count) "
+            "VALUES (date('now','localtime'), ?, 1) "
+            "ON CONFLICT(day, gemini_key_name) "
+            "DO UPDATE SET call_count = call_count + 1",
+            -1, &stmt, nullptr) != SQLITE_OK) {
+        throw std::runtime_error(std::string("note_examiner_call prepare: ") +
+                                 sqlite3_errmsg(db_));
+    }
+    //localtime rather than UTC: a daily cap has to roll over at the student's
+    //midnight, not at whatever hour UTC lands on
+
+    sqlite3_bind_text(stmt, 1, gemini_key_name.c_str(), -1, SQLITE_TRANSIENT);
+    const int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) {
+        throw std::runtime_error(std::string("note_examiner_call step: ") +
+                                 sqlite3_errmsg(db_));
+    }
+}
+
+void Store::end_attempt(std::int64_t attempt_id, const std::string& reason) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_,
+            "UPDATE exam_attempts "
+            "SET ended_at = CAST(strftime('%s','now') AS INTEGER), "
+            "    end_reason = ? "
+            "WHERE id = ? AND ended_at IS NULL",
+            -1, &stmt, nullptr) != SQLITE_OK) {
+        throw std::runtime_error(std::string("end_attempt prepare: ") +
+                                 sqlite3_errmsg(db_));
+    }
+    //ended_at IS NULL makes this idempotent: the socket closing after the timer
+    //already ended the exam must not relabel a clean finish as a disconnect
+
+    sqlite3_bind_text(stmt, 1, reason.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 2, attempt_id);
+
+    const int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) {
+        throw std::runtime_error(std::string("end_attempt step: ") +
+                                 sqlite3_errmsg(db_));
+    }
+}
+
 }  // namespace sim

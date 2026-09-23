@@ -58,6 +58,23 @@ crow::response json_error(int status, const std::string& message) {
     //path instead of guessing whether a body is text or JSON by status code
 }
 
+template <typename F>
+void persist_quietly(const char* what, F&& write) {
+    try {
+        write();
+    } catch (const std::exception& e) {
+        std::cerr << "persist " << what << " failed, turn continues: "
+                  << e.what() << '\n';
+    } catch (...) {
+        std::cerr << "persist " << what << " failed with a non-std exception, "
+                     "turn continues\n";
+    }
+}
+//the exam is the product and the record is bookkeeping, so a database that
+//cannot be written must never cost a student their turn. The same split the
+//examiner's own failures use: the detail goes to the operator's log and
+//nothing about it reaches the student
+
 }  // namespace
 
 Server::Server(Config config,
@@ -238,6 +255,7 @@ void Server::run()
         
         {
             std::shared_ptr<ConnHandle> handle;
+            std::shared_ptr<Session> closing_session;
 
             {
                 std::lock_guard<std::mutex> lock(sessions_mutex_);
@@ -248,9 +266,25 @@ void Server::run()
                     conn_handles_.erase(it);
                 }
                 //lifted out before the erase so the handle survives the map entry
-                sessions_.erase(&conn);
-                //erase the conn key in the sessions map
+                auto session_it = sessions_.find(&conn);
+                if (session_it != sessions_.end()) {
+                    closing_session = std::move(session_it->second);
+                    sessions_.erase(session_it);
+                }
+                //lifted out the same way the handle is: the attempt has to be
+                //closed below, and that must not happen under the map mutex
             } //mutex is unlocked as the lock variable goes out of scope
+
+            if (closing_session && closing_session->attempt_id() != 0) {
+                persist_quietly("attempt end (disconnect)", [&] {
+                    store_->end_attempt(closing_session->attempt_id(),
+                                        "disconnect");
+                });
+            }
+            //end_attempt only touches rows where ended_at IS NULL, so a socket
+            //closing after the timer already ended the exam cannot relabel a
+            //clean finish as a disconnect. A turn still in flight on a worker
+            //may insert after this, which is harmless: the row is already closed
 
             //the two scopes are sequential and never nested, deliberately.
             //Holding one while reaching for the other is exactly the deadlock
@@ -606,11 +640,26 @@ void Server::handle_control(crow::websocket::connection& conn,
         //exam. Set before the job is enqueued, because build_examiner_input()
         //reads the pack's prompts the moment the opening question is queued
 
-        session->set_gemini_key_name(message.gemini_key);
+        session->set_gemini_key_name(
+            message.gemini_key.empty() && !config_.gemini_api_keys.empty()
+                ? config_.gemini_api_keys.front().name
+                : message.gemini_key);
+        //an absent name is resolved to the key the examiner would fall back to
+        //anyway, so the attempt and the usage counter name the key actually
+        //spent rather than recording an empty string against every default turn
         session->set_student_name(message.student_name);
         //all three picked once, before the first job, and reused by every later
         //turn - Stop messages carry none of these fields of their own. Set
         //before the job is enqueued, so even the opening question knows them
+
+        persist_quietly("attempt start", [&] {
+            session->set_attempt_id(store_->begin_attempt(
+                std::nullopt, session->language().id, session->gemini_key_name()));
+        });
+        //opened here rather than on connect: the language is not known until
+        //Start names one, and an attempt row that cannot say which exam it was
+        //is worth less than the turn it delays. user_id is nullopt until
+        //sign-in exists, which is what the nullable column is for
 
         std::shared_ptr<Session> claim(session.get(), [session](Session* s) { s->end_job(); });
         //not an owner, just an RAII handle whose deleter releases the claim
@@ -618,6 +667,19 @@ void Server::handle_control(crow::websocket::connection& conn,
 
         enqueue_pipeline_job(std::move(handle), session, {}, false, std::move(claim));
         return;
+    }
+
+    if (message.type == MessageType::End) {
+        if (session->attempt_id() != 0) {
+            persist_quietly("attempt end (student)", [&] {
+                store_->end_attempt(session->attempt_id(), "student_end");
+            });
+        }
+        return;
+        //deliberately does not take the job latch: a student may press end
+        //while a turn is still in flight, and refusing that as "busy" would
+        //leave the attempt to be closed as a disconnect a moment later. The
+        //update is idempotent, so a turn finishing afterwards changes nothing
     }
 
     if (message.type != MessageType::Stop) {
@@ -711,6 +773,17 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                     job_input.push_back(Turn{Role::Student, transcript});
                     //onto the owned snapshot, STT had not run when it was built
 
+                    if (session->attempt_id() != 0) {
+                        persist_quietly("student turn", [&] {
+                            store_->record_turn(session->attempt_id(),
+                                                session->next_turn_index(),
+                                                "student", transcript, "",
+                                                stt_ms, 0, 0);
+                        });
+                    }
+                    //before the move below, not after: record_answer takes the
+                    //string by value and leaves the local empty
+
                     session->record_answer(std::move(transcript));
                     //write-through so the NEXT turn's snapshot can see this answer
                 } else {
@@ -734,6 +807,11 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
             }
 
             if (answer_only) {
+                if (session->attempt_id() != 0) {
+                    persist_quietly("attempt end (timer)", [&] {
+                        store_->end_attempt(session->attempt_id(), "timer");
+                    });
+                }
                 send_status(handle, "ended");
                 return;
                 //the exam clock ran out before this answer was submitted. It
@@ -770,6 +848,22 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
             const auto tts_started = clock::now();
             speech = tts_->synthesize(reply, language->piper_voice_path);
             tts_ms = ms_since(tts_started);
+
+            if (session->attempt_id() != 0) {
+                persist_quietly("examiner turn", [&] {
+                    store_->record_turn(session->attempt_id(),
+                                        session->next_turn_index(),
+                                        "examiner", reply, topic,
+                                        0, examiner_ms, tts_ms);
+                    store_->note_examiner_call(session->attempt_id(),
+                                               session->gemini_key_name());
+                });
+            }
+            //written here rather than beside record_question, so the row carries
+            //the tts cost as well: the same three numbers the log prints below.
+            //A worker is already blocked on network I/O for seconds by this
+            //point, so a sub-millisecond insert to a local WAL file buys nothing
+            //by being made asynchronous - and an async writer could lose turns
 
             std::cerr << "turn timings: audio " << (job_audio.size() / 16000.0)
                       << "s, stt " << stt_ms << "ms, examiner " << examiner_ms

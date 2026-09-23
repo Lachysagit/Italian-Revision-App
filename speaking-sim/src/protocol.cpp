@@ -10,6 +10,7 @@ std::string type_to_string(MessageType type) {
     switch (type) {
         case MessageType::Start:        return "start";
         case MessageType::Stop:         return "stop";
+        case MessageType::End:          return "end";
         case MessageType::Status:       return "status";
         case MessageType::Transcript:   return "transcript";
         case MessageType::ExaminerText: return "examiner_text";
@@ -21,6 +22,7 @@ std::string type_to_string(MessageType type) {
 MessageType type_from_string(const std::string& text) {
     if (text == "start")         return MessageType::Start;
     if (text == "stop")          return MessageType::Stop;
+    if (text == "end")           return MessageType::End;
     if (text == "status")        return MessageType::Status;
     if (text == "transcript")    return MessageType::Transcript;
     if (text == "examiner_text") return MessageType::ExaminerText;

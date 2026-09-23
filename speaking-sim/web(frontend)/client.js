@@ -1021,6 +1021,13 @@ doneButton.onclick = () => { //the student has finished this answer
 
 endButton.onclick = () => {
     addLog("session ended");
+
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: "end", payload: "" }));
+        //so the record says the student ended the exam rather than that the
+        //socket dropped. Sent before teardown, which closes the socket
+    }
+
     resetExamTimer();
     //before teardown, so its setTurnState("idle") re-enables Start against the
     //cleared latch. Only this button resets: an expiry that reset itself could

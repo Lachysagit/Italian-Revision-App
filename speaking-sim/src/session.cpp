@@ -141,6 +141,18 @@ const std::string& Session::gemini_key_name() const {
     return gemini_key_name_;
 }
 
+void Session::set_attempt_id(std::int64_t id) {
+    attempt_id_ = id;
+}
+
+std::int64_t Session::attempt_id() const {
+    return attempt_id_;
+}
+
+int Session::next_turn_index() {
+    return turn_index_++;
+}
+
 void Session::record_answer(std::string answer) {
     last_answer_ = std::move(answer);
     //single destination, so the parameter is moved straight in

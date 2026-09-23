@@ -9,6 +9,7 @@ namespace sim {
 enum class MessageType {
     Start, //from browser
     Stop, //from browser
+    End, //from browser: the student pressed end rather than running out of time
     Status, //from server
     Transcript, //from server
     ExaminerText, //from server
