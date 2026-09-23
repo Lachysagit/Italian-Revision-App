@@ -1,10 +1,12 @@
 #include "sim/examiner/gemini_examiner.hpp"
 
+#include "sim/audio_encode.hpp"
 #include "sim/topics.hpp"
 
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <ctime>
 #include <iostream>
 #include <stdexcept>
@@ -47,8 +49,14 @@ constexpr time_t kWriteTimeoutSeconds = 10;
 // Left unset this runs to the model's 65536 ceiling, which is the 8K output
 // spike. A reply is 50-70 tokens now that they run to two-to-four sentences,
 // up from the 30-35 of the one-clause era; the headroom covers billed thought
-// tokens, so this stays where it is.
-constexpr int kMaxOutputTokens = 512;
+// tokens.
+//
+// Raised from 512 when the transcript joined the schema: a 40-second answer is
+// well over a hundred tokens of it, and it is now written before the reply, so
+// a cap that only fitted the reply would truncate the turn before reaching it.
+// Thought tokens are charged against the same budget - watch thoughtsTokenCount
+// in the usage line below rather than guessing.
+constexpr int kMaxOutputTokens = 1024;
 
 // Deprecated on 3.x: the guidance is to leave temperature at its 1.0 default,
 // and Google warn that lowering it can cause looping or degraded output. Kept
@@ -122,7 +130,13 @@ httplib::Client& client() {
 
 // The tag is an enum the API enforces, so the model cannot invent one of its
 // own and no amount of prompt drift can widen the set.
-void apply_response_schema(crow::json::wvalue& body) {
+//
+// with_transcript adds a field for the student's own words, used when the
+// answer arrived as audio. It is ordered FIRST, ahead of the reply: the model
+// writes down what it heard before it composes an answer to it, which is both
+// the order the student wants to see and the order that makes the reply a
+// response to a settled transcript rather than to an impression of one.
+void apply_response_schema(crow::json::wvalue& body, bool with_transcript) {
     crow::json::wvalue& schema = body["generationConfig"]["responseSchema"];
     schema["type"] = "OBJECT";
     schema["properties"]["reply"]["type"] = "STRING";
@@ -131,27 +145,48 @@ void apply_response_schema(crow::json::wvalue& body) {
         schema["properties"]["topic"]["enum"][i] =
             std::string(kTopicTags[i]);
     }
-    schema["required"][0] = "reply";
-    schema["required"][1] = "topic";
-    schema["propertyOrdering"][0] = "reply";
-    schema["propertyOrdering"][1] = "topic";
-    //reply first, so the Italian is generated before the tag rather than after
+
+    unsigned field = 0;
+    if (with_transcript) {
+        schema["properties"]["transcript"]["type"] = "STRING";
+        schema["required"][field] = "transcript";
+        schema["propertyOrdering"][field] = "transcript";
+        ++field;
+    }
+    schema["required"][field] = "reply";
+    schema["propertyOrdering"][field] = "reply";
+    ++field;
+    schema["required"][field] = "topic";
+    schema["propertyOrdering"][field] = "topic";
+    //the tag last either way, so the Italian is generated before it
 
     body["generationConfig"]["responseMimeType"] = "application/json";
 }
 
 // Back into the text-plus-tag shape the rest of the program reads, so
-// server.cpp's topic_tag() and the Hailo path stay as they are.
-std::string flatten_structured_reply(const std::string& text) {
+// server.cpp's topic_tag() and the Hailo path stay as they are. The transcript
+// comes out as its own field rather than being folded into that string: it is
+// the student's words, and everything downstream treats the tagged string as
+// the examiner's.
+ExaminerReply parse_structured_reply(const std::string& text) {
     crow::json::rvalue parsed = crow::json::load(text);
     if (!parsed || !parsed.has("reply") || !parsed.has("topic") ||
         parsed["reply"].t() != crow::json::type::String ||
         parsed["topic"].t() != crow::json::type::String) {
-        return text;
+        return {"", text};
         //a schema hiccup degrades to the free-text path rather than throwing
     }
-    return std::string(parsed["reply"].s()) + "\n[topic: " +
-           std::string(parsed["topic"].s()) + "]";
+
+    std::string transcript;
+    if (parsed.has("transcript") &&
+        parsed["transcript"].t() == crow::json::type::String) {
+        transcript = std::string(parsed["transcript"].s());
+    }
+    //absent on a text turn, where the schema never asked for one
+
+    return {std::move(transcript),
+            std::string(parsed["reply"].s()) + "\n[topic: " +
+                std::string(parsed["topic"].s()) + "]"};
 }
 
 const char* gemini_role(Role role) {
@@ -210,7 +245,22 @@ void GeminiExaminer::prewarm() {
 
 std::string GeminiExaminer::respond(const std::vector<Turn>& history,
                                      const std::string& gemini_key_name) {
+    return call(history, SpokenAnswer{}, gemini_key_name).text;
+    //no audio, so the schema asks for no transcript and the reply is the whole
+    //of what comes back
+}
+
+ExaminerReply GeminiExaminer::respond_to_audio(
+    const std::vector<Turn>& history, const SpokenAnswer& answer,
+    const std::string& gemini_key_name) {
+    return call(history, answer, gemini_key_name);
+}
+
+ExaminerReply GeminiExaminer::call(const std::vector<Turn>& history,
+                                   const SpokenAnswer& answer,
+                                   const std::string& gemini_key_name) {
     const std::string& api_key = key_for(gemini_key_name);
+    const bool with_audio = !answer.bytes.empty();
     crow::json::wvalue body;
     std::string system_text;
     unsigned content_index = 0;
@@ -240,6 +290,23 @@ std::string GeminiExaminer::respond(const std::vector<Turn>& history,
     // the exam's own language, so the count is never zero and the old test
     // would silently never fire - taking kOpeningTemperature with it.
 
+    if (with_audio) {
+        body["contents"][content_index]["role"] = "user";
+        body["contents"][content_index]["parts"][0]["inlineData"]["mimeType"] =
+            answer.mime_type;
+        body["contents"][content_index]["parts"][0]["inlineData"]["data"] =
+            base64_encode(answer.bytes);
+        body["contents"][content_index]["parts"][1]["text"] =
+            "The audio above is the student's spoken answer. Write down what "
+            "they actually said in \"transcript\", word for word and in their "
+            "own language, including any mistakes: it is shown to them as a "
+            "record of their own speech, so do not correct, complete or tidy "
+            "it. Then answer as the examiner in \"reply\".";
+        ++content_index;
+        //audio part first, instruction second: the model has the recording in
+        //hand before it is told what to do with it
+    }
+
     if (!system_text.empty()) {
         body["system_instruction"]["parts"][0]["text"] = system_text;
     }
@@ -252,7 +319,41 @@ std::string GeminiExaminer::respond(const std::vector<Turn>& history,
     body["generationConfig"]["thinkingConfig"]["thinkingLevel"] =
         opening_turn ? settings_.opening_thinking_level
                      : settings_.thinking_level;
-    apply_response_schema(body);
+    apply_response_schema(body, with_audio);
+
+    if (std::getenv("GEMINI_DRY_RUN") != nullptr) {
+        std::string dump = body.dump();
+
+        // The base64 audio and the prompt files are both enormous and neither
+        // is what anyone is reading this for. Cut the payloads out and leave
+        // the structure: roles, part shapes, mime type and generationConfig.
+        const auto elide = [&dump](const std::string& after, std::size_t keep) {
+            std::size_t at = 0;
+            while ((at = dump.find(after, at)) != std::string::npos) {
+                const std::size_t start = at + after.size();
+                const std::size_t end = dump.find('"', start);
+                if (end == std::string::npos) break;
+                if (end - start > keep) {
+                    dump.replace(start + keep, end - start - keep,
+                                 "...<" + std::to_string(end - start - keep) +
+                                     " more>");
+                }
+                at = start + keep;
+            }
+        };
+        elide("\"data\":\"", 24);
+        elide("\"text\":\"", 90);
+
+        std::cerr << "gemini dry run: POST /v1beta/models/" << settings_.model
+                  << ":generateContent (" << body.dump().size()
+                  << " bytes on the wire)\n"
+                  << dump << '\n';
+        return {with_audio ? "[dry run transcript]" : "",
+                "[dry run reply]\n[topic: family]"};
+        //no request is sent and no key is spent. The point is to see the shape
+        //of the body - a malformed inlineData part is a 400 that says very
+        //little, and this shows the whole thing before it costs anything
+    }
 
     const std::string path =
         "/v1beta/models/" + settings_.model + ":generateContent";
@@ -333,7 +434,7 @@ std::string GeminiExaminer::respond(const std::vector<Turn>& history,
         throw std::runtime_error("Gemini part carried no text");
     }
 
-    return flatten_structured_reply(std::string(part["text"].s()));
+    return parse_structured_reply(std::string(part["text"].s()));
     // .s() points into the buffer owned by `parsed`; converting to std::string
     // copies it out before that buffer dies with this frame.
 }

@@ -16,6 +16,7 @@
 #include <utility>
 #include <vector>
 
+#include "sim/audio_encode.hpp"
 #include "sim/protocol.hpp"
 #include "sim/question_bank.hpp"
 #include "sim/static_files.hpp"
@@ -753,13 +754,28 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
         };
         const auto turn_started = clock::now();
         long long stt_ms = 0;
+        long long encode_ms = 0;
         long long examiner_ms = 0;
         long long tts_ms = 0;
         //stage timings on stderr, so a slow turn names one backend. Declared
         //out here so the send below still runs after a failure
 
+        // The examiner listens to the recording itself when it can, and this
+        // job is a real answer rather than the opening question. It transcribes
+        // and replies in one call, which is both one network round trip instead
+        // of a local model plus a call, and a transcription made with the
+        // question it just asked for context - something whisper never sees.
+        //
+        // answer_only turns are deliberately excluded: the exam clock has run
+        // out and no question will be asked, so there is nothing for the
+        // examiner to reply to and whisper is the cheaper way to get the words.
+        const bool examiner_listens = transcribe_first && !answer_only &&
+                                      examiner_->accepts_audio() &&
+                                      config_.audio_input == AudioInput::Gemini &&
+                                      !job_audio.empty();
+
         try {
-            if (transcribe_first) {
+            if (transcribe_first && !examiner_listens) {
                 const auto stt_started = clock::now();
                 std::string transcript =
                     stt_->transcribe(job_audio, language->whisper_code);
@@ -820,11 +836,79 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                 //time left to hear
             }
 
+            SpokenAnswer spoken;
+            if (examiner_listens) {
+                const auto encode_started = clock::now();
+                const EncodedAudio encoded = encode_audio(
+                    job_audio, static_cast<int>(Session::kCaptureSampleRate),
+                    config_.audio_codec);
+                encode_ms = ms_since(encode_started);
+                spoken = SpokenAnswer{encoded.bytes, encoded.mime_type};
+                //encoded here rather than on the socket thread: it is the one
+                //stage that is pure CPU, and the pool is where that belongs
+            }
+
             const auto examiner_started = clock::now();
-            const std::string raw =
-                examiner_->respond(job_input, session->gemini_key_name());
+            ExaminerReply answer;
+            try {
+                answer = examiner_->respond_to_audio(
+                    job_input, spoken, session->gemini_key_name());
+            } catch (const std::exception& e) {
+                if (!examiner_listens) throw;
+                //a text turn has no second path to fall back to
+
+                std::cerr << "examiner failed on audio, falling back to local "
+                             "transcription: " << e.what() << '\n';
+                const auto stt_started = clock::now();
+                answer.transcript =
+                    stt_->transcribe(job_audio, language->whisper_code);
+                stt_ms = ms_since(stt_started);
+                //the student still sees their own words, which is most of what
+                //the turn owed them. The reply is lost, and the catch below
+                //sends the fixed failure string in its place
+                if (!answer.transcript.empty()) {
+                    send_transcript(handle, answer.transcript);
+                    session->record_answer(answer.transcript);
+                }
+                throw;
+            }
             examiner_ms = ms_since(examiner_started);
 
+            if (examiner_listens) {
+                if (answer.transcript.empty()) {
+                    std::cerr << "examiner returned no transcript, falling back "
+                                 "to local transcription\n";
+                    const auto stt_started = clock::now();
+                    answer.transcript =
+                        stt_->transcribe(job_audio, language->whisper_code);
+                    stt_ms = ms_since(stt_started);
+                    //a schema hiccup costs the student their transcript but not
+                    //the turn: the reply below is still good
+                }
+
+                if (!answer.transcript.empty()) {
+                    send_transcript(handle, answer.transcript);
+                    //before the reply, exactly as the whisper path does: a
+                    //misheard answer should be visible as itself rather than
+                    //only as a reply that makes no sense
+
+                    if (session->attempt_id() != 0) {
+                        persist_quietly("student turn", [&] {
+                            store_->record_turn(session->attempt_id(),
+                                                session->next_turn_index(),
+                                                "student", answer.transcript,
+                                                "", stt_ms, 0, 0);
+                        });
+                    }
+                    //stt_ms is 0 unless whisper was the one that produced this,
+                    //which is the honest figure: the examiner's own listening
+                    //is not separable from examiner_ms
+
+                    session->record_answer(answer.transcript);
+                }
+            }
+
+            const std::string& raw = answer.text;
             const std::string topic = topic_tag(raw);
             const std::string group = topic_group(topic);
             //logged only; Session maps the tag itself
@@ -865,8 +949,11 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
             //point, so a sub-millisecond insert to a local WAL file buys nothing
             //by being made asynchronous - and an async writer could lose turns
 
-            std::cerr << "turn timings: audio " << (job_audio.size() / 16000.0)
-                      << "s, stt " << stt_ms << "ms, examiner " << examiner_ms
+            std::cerr << "turn timings: audio "
+                      << (job_audio.size() /
+                          static_cast<double>(Session::kCaptureSampleRate))
+                      << "s, stt " << stt_ms << "ms, encode " << encode_ms
+                      << "ms, examiner " << examiner_ms
                       << "ms, tts " << tts_ms << "ms, total "
                       << ms_since(turn_started) << "ms, topic "
                       << (topic.empty() ? "(untagged)" : topic) << ", group "
