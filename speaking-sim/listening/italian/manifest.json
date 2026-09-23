@@ -1,0 +1,755 @@
+{
+  "2015": {
+    "familiarisation": {
+      "clip_path": "clips/2015/familiarisation.mp3",
+      "transcript": "Male: Ciao Roberta! Da quanto tempo che non ci vediamo… Dove vai?\nRoberta (female): Ehh Francesco! Sono stata in America per sei mesi… Vado a mangiare una pizza al solito posto con Loredana. Vuoi venire?\nMale: Certo, ma prima devo andare all’ufficio postale. Ci vediamo in pizzeria fra trenta minuti.\nRoberta (female): Benissimo!",
+      "duration_seconds": 26.44
+    },
+    "questions": [
+      {
+        "question_number": 1,
+        "clip_path": "clips/2015/q01.mp3",
+        "transcript": "Male: Federica, vedi la targa di quella macchina?\nFederica (female): Quale? Ah Sì, la macchina verde. Perché?\nMale: Forse è nostro cugino che guida.\nFederica (female): Sì, è la sua targa.\nMale: Allora è proprio nostro cugino.",
+        "duration_seconds": 18.75
+      },
+      {
+        "question_number": 2,
+        "clip_path": "clips/2015/q02.mp3",
+        "transcript": "Female: Papà, mi regali un cane per Natale?\nPapà (male): Ma Sara, lo sai che il nostro appartamento è troppo piccolo.\nFemale: Ma possiamo scegliere un cane molto piccolo.\nPapà (male): E a chi lo lasciamo quando andiamo in vacanza?",
+        "duration_seconds": 18.31
+      },
+      {
+        "question_number": 3,
+        "clip_path": "clips/2015/q03.mp3",
+        "transcript": "Female: Dai, sono qui sul divano pronta per vedere il film.\nMale: Va bene, arrivo. Ma no, non mi piace quello.\nFemale: No, io ho già deciso che vediamo questo qui perché c’è il mio attore preferito … e io lo adoro!\nMale: Ma io preferirei guardare il nuovo film sulla Formula Uno. Tutti a scuola dicono che è bellissimo.\nFemale: No, l’ultima volta hai scelto tu. Oggi tocca a me.\nMale: Va bene. Vado in cucina a prendere le patatine. Tu vuoi bere qualcosa?\nFemale: Sì, un bicchiere d’acqua per favore.",
+        "duration_seconds": 44.86
+      },
+      {
+        "question_number": 4,
+        "clip_path": "clips/2015/q04.mp3",
+        "transcript": "Male: Ah, sì, buona sera, sono il Signor Rossi. Non potrò venire domani pomeriggio a prendere il computer. Verrò, invece, venerdì mattina. Grazie e arrivederci.",
+        "duration_seconds": 15.91
+      },
+      {
+        "question_number": 5,
+        "clip_path": "clips/2015/q05.mp3",
+        "transcript": "Male: Pizza Pazza, buona sera.\nFemale: Sì, buona sera. Ecco, volevo ordinare sette pizze, cinque margherite e due capricciose.\nMale: Benissimo. Saranno pronte fra due ore circa.\nFemale: Cosa?! Ma io ho ospiti, non possiamo aspettare due ore! È assurdo!\nMale: Mi dispiace, ma abbiamo tantissimi ordini stasera.\nFemale: Ma io e i miei amici abbiamo fame adesso, non possiamo aspettare così tanto per mangiare!",
+        "duration_seconds": 33.32
+      },
+      {
+        "question_number": 6,
+        "clip_path": "clips/2015/q06.mp3",
+        "transcript": "Female: Buongiorno.Vorrei fare un viaggio in Italia.\nMale: Certo, signorina Danieli. Ha un programma in mente?\nFemale: Allora, mi piacerebbe partire in settembre perché non ci sono troppi turisti. Il viaggio deve durare tre settimane.\nMale: Ci sono cose particolari che vuole fare?\nFemale: Beh, fare un giro a piedi in campagna.\nMale: Ah benissimo. Altro?\nFemale: E naturalmente visitare mercati e provare formaggio locale in più posti possibili.\nMale: OK.",
+        "duration_seconds": 35.03
+      },
+      {
+        "question_number": 7,
+        "clip_path": "clips/2015/q07.mp3",
+        "transcript": "Male: Mamma, non dimenticare che giovedì devo andare a fare gli allenamenti di calcio.\nMamma (female): Ma, Marco tesoro, io devo lavorare fino a tardi, non ti posso portare. Devi chiedere a tuo padre se lui può.\nMale: Ma tu lo sai che papà va in palestra ogni giovedì sera, neanche lui mi può portare.\nMamma (female): Perché non chiedi un passaggio a uno dei tuoi compagni di squadra?\nMale: Non dire stupidaggini mamma, tu sai che non vado d’accordo con nessuno nella mia squadra. Preferirei camminare per cinque ore piuttosto che chiedere un passaggio a uno di quei cretini!",
+        "duration_seconds": 45.45
+      },
+      {
+        "question_number": 8,
+        "clip_path": "clips/2015/q08.mp3",
+        "transcript": "Female: Se ti senti sempre stressato regalati questo corso di meditazione. È anche perfetto per quelli che vogliono semplicemente rilassarsi immersi nella natura e nell’aria pura delle Alpi. Offriamo inoltre un corso di yoga per anziani che vogliono provare quest’attività. Iscriviti adesso! I posti sono limitati!",
+        "duration_seconds": 29.39
+      },
+      {
+        "question_number": 9,
+        "clip_path": "clips/2015/q09.mp3",
+        "transcript": "Male: Studenti, buongiorno. Sono molto orgoglioso di essere il preside di questa scuola. Oggi facciamo quest’assemblea speciale per congratulare un gruppo di studenti che hanno dedicato il loro tempo libero ad andare in ospedale per giocare con bambini malati. Come premio, il liceo offrirà a questi studenti una gita. Prima al cinema e dopo un pranzo insieme e io manderò un articolo e foto ai giornali locali per far vedere a tutti quanto la nostra comunità scolastica è orgogliosa di tutti voi. Inoltre, molte persone entusiaste mi hanno contattato per chiedere di partecipare la prossima volta che la scuola organizzerà una cosa simile.",
+        "duration_seconds": 63.51
+      },
+      {
+        "question_number": 10,
+        "clip_path": "clips/2015/q10.mp3",
+        "transcript": "Female: Oggi abbiamo Stefano Di Pietro qui con noi a Radiogiovani che ci parlerà della proposta di costruire un parco per skateboard nel quartiere Primo.\nStefano (male): Sono felice di potervi presentare la mia opinione su questo progetto. Questo parco per skateboard finalmente offrirà un luogo ai giovani dove fare un po’ di attività fisica all’aperto. Qui vicino non ci sono altri posti dove noi ragazzi possiamo andare e non ci sono abbastanza opportunità per lo svago senza dover pagare. Non tutti sono ricchi! E poi, non è pericoloso se si usa l’attrezzatura giusta. È anche importante che noi giovani abbiamo un luogo in cui possiamo stare insieme, chiacchierare… Insomma, socializzare con uno scopo, invece di stare in strada a fare i delinquenti.\nFemale: Grazie mille, Stefano.",
+        "duration_seconds": 77.44
+      },
+      {
+        "question_number": 11,
+        "clip_path": "clips/2015/q11.mp3",
+        "transcript": "Lorenzo (male): Ciao Francesca, come va?\nFrancesca (female): Bene. Faccio la barista ora. E tu, Lorenzo, stai lavorando?\nLorenzo (male): No, comincio l’università fra poco, ma ho fatto qualche domanda di lavoro e mi hanno offerto un posto ben pagato in un supermercato.\nFrancesca (female): Bravo!\nLorenzo (male): Eh, ma il giorno dopo mi ha chiamato la società sportiva per offrirmi un lavoro come allenatore di tennis.\nFrancesca (female): Wow! Due offerte! E adesso quale sceglierai?\nLorenzo (male): Eh, non lo so ancora… Il supermercato è vicino casa e la paga, come ti dicevo, è molto buona: dodici euro all’ora!\nFrancesca (female): Fantastico!\nLorenzo (male): Sì, però gli orari non sono flessibili.\nFrancesca (female): E l’altro?\nLorenzo (male): Beh, ai campi da tennis lavorerei solo quindici ore a settimana, la paga è ok, circa nove euro all’ora e poi, il tennis è la mia passione.\nFrancesca (female): Sì, lo sappiamo tutti quanto ami il tennis, ma è lontano da casa…\nLorenzo (male): Sì, è vero, ma è vicino all’università e forse studierei di più!\nFrancesca (female): Hai molto da considerare. Pensaci bene! © 2015 Board of Studies, Teaching and Educational Standards NSW",
+        "duration_seconds": 91.17
+      }
+    ]
+  },
+  "2016": {
+    "familiarisation": {
+      "clip_path": "clips/2016/familiarisation.mp3",
+      "transcript": "Male: Ciao Roberta! Da quanto tempo che non ci vediamo … Dove vai?\nRoberta (female): Ehh Francesco! Sono stata in America per sei mesi … Vado a mangiare una pizza al solito posto con Loredana. Vuoi venire?\nMale: Certo, ma prima devo andare all’ufficio postale. Ci vediamo in pizzeria fra trenta minuti.\nRoberta (female): Benissimo!",
+      "duration_seconds": 26.56
+    },
+    "questions": [
+      {
+        "question_number": 1,
+        "clip_path": "clips/2016/q01.mp3",
+        "transcript": "Male: Buongiorno, Signora Delloca. Davide non risponde al cellulare. Posso lasciare un messaggio?\nFemale: Certo.\nMale: Riguarda la festa di Sonia.\nFemale: Ok, dimmi.\nMale: Allora è sabato sera alle 8 alla discoteca Sole Nero.",
+        "duration_seconds": 20.44
+      },
+      {
+        "question_number": 2,
+        "clip_path": "clips/2016/q02.mp3",
+        "transcript": "Female: Gentili Clienti, il centro commerciale chiude tra dieci minuti. Se dovete pagare, andate alla cassa immediatamente. Grazie.",
+        "duration_seconds": 11.9
+      },
+      {
+        "question_number": 3,
+        "clip_path": "clips/2016/q03.mp3",
+        "transcript": "Male: Ciao Lina, allora come va il nuovo lavoro?\nLina (female): Una vera tragedia! Il mio turno comincia alle 6 di mattina …\nMale: E quindi? Dovresti essere felice di avere un lavoro!\nLina (female): Beh, insomma, non se devo svegliarmi così presto … preferirei dormire più a lungo!\nMale: Ma sei una dormigliona!",
+        "duration_seconds": 26.86
+      },
+      {
+        "question_number": 4,
+        "clip_path": "clips/2016/q04.mp3",
+        "transcript": "Female: Allora, Silvano, stasera devi andare a prendere il mio amico Enzo all’aeroporto.\nSilvano (male): Ma dai, mamma, io non lo conosco, non l’ho mai visto prima.\nFemale: Guarda, è facile: Enzo è molto anziano, molto basso e ha una lunghissima barb bianca. Lo riconoscerai.\nSilvano (male): Ma devo uscire con la mia ragazza stasera …\nFemale: Senti, Silvano, niente scuse!\nSilvano (male): Ok … ci vado! a",
+        "duration_seconds": 34.34
+      },
+      {
+        "question_number": 5,
+        "clip_path": "clips/2016/q05.mp3",
+        "transcript": "Female: Ciao Gianni, allora per domani …\nGianni (male): Sì Katia, non vedo l’ora di pranzare nella tranquillità della campagna … Partiamo presto la mattina?\nFemale: Ma, Gianni, non hai visto le previsioni del tempo?\nGianni (male): No, perché?\nFemale: Ci saranno temporali e la pioggia continuerà per tutta la mattina.\nGianni (male): Oh, no!\nFemale: Non ti preoccupare, verso mezzogiorno il bel tempo tornerà e farà caldo.\nGianni (male): Ok, partiamo nel pomeriggio e facciamo un bel pic-nic per cena. Sarà bellissimo.\nFemale: Dunque, tempo permettendo, ci vediamo domani pomeriggio.",
+        "duration_seconds": 44.51
+      },
+      {
+        "question_number": 6,
+        "clip_path": "clips/2016/q06.mp3",
+        "transcript": "Female: Se volete migliorare la vostra conoscenza della lingua e della cultura italiana, allora perché non farlo in un romantico casale in Toscana? Imparerete a cucinare specialità toscane e ascolterete tanti pezzi musicali. Questo sarà un fantastico modo per praticare la lingua e di vivere in un casale in questa meravigliosa regione. Se siete interessati trovate tutti i nostri dettagli sul sito web www.corsintoscana.it",
+        "duration_seconds": 39.48
+      },
+      {
+        "question_number": 7,
+        "clip_path": "clips/2016/q07.mp3",
+        "transcript": "Male: Buonasera a tutti. Volevo informarvi che l’associazione Sempreverde ha organizzato la raccolta di batterie usate. Le persone che hanno vecchie batterie possono portarle alla biblioteca comunale. Qui dalle due alle sette un gruppo di volontari le raccoglierà. Abbiamo inoltre bisogno di altre persone che ci possano aiutare. Se siete liberi una volta a settimana e amate l’ambiente, vi chiedo di diventare uno dei nostri volontari.",
+        "duration_seconds": 38.4
+      },
+      {
+        "question_number": 8,
+        "clip_path": "clips/2016/q08.mp3",
+        "transcript": "Male: Pronto, Roberta? Ho sentito che diventerai capitano della squadra di pallavolo, è vero?\nRoberta (female): Esatto! Ma c’è un problema …\nMale: Che problema?\nRoberta (female): In aprile i miei genitori vogliono andare a vivere in quel villaggio sulla costa dove andiamo ogni estate.\nMale: Ma perché?\nRoberta (female): Papà ha accettato un lavoro lì e potremmo avere una casa molto più grande.\nMale: Ma tua madre potrebbe portarti agli allenamenti, no?\nRoberta (female): No, solo alle partite nel weekend e se non mi alleno, non gioco!\nMale: E allora perché non stai da me?\nRoberta (female): Veramente? Beh, sarebbe solo per qualche mese, ma non voglio deludere i miei genitori.",
+        "duration_seconds": 50.71
+      },
+      {
+        "question_number": 9,
+        "clip_path": "clips/2016/q09.mp3",
+        "transcript": "Alessia (female): Uffa, Fabrizio, devo leggere questo libro di Jane Austen perché la professoressa ci darà un test. Io non capisco perché dobbiamo studiare questi classici.\nFabrizio (male): Ma, Alessia, cosa dici? La letteratura classica è importantissima, è una forma d’arte, è come la musica, la pittura …\nAlessia (female): M’annoio a leggere questi vecchi libri in un inglese antico. Preferirei studiare solo qualche romanzo moderno.\nFabrizio (male): Leggere testi più vecchi è un modo divertente per capire come è cambiato il mondo e come sono cambiate le persone.\nAlessia (female): E non posso semplicemente vedere il film?\nFabrizio (male): Quindi tu preferiresti che un film decida per te come devono essere i personaggi, come parlano, i colori dei loro vestiti?\nAlessia (female): Beh, ma il film dura solo due ore, non 500 pagine!\nFabrizio (male): Quando leggi un libro per giorni e giorni diventi parte della scena … La tua mente può viaggiare, i personaggi rimangono con te.\nAlessia (female): Non lo so, Fabrizio …\nFabrizio (male): Dai, leggiamo questo libro insieme e ti faccio vedere!",
+        "duration_seconds": 98.83
+      },
+      {
+        "question_number": 10,
+        "clip_path": "clips/2016/q10.mp3",
+        "transcript": "Papà (male): Sofia, cosa hai in mente per l’anno prossimo?\nSofia (female): Non so cosa fare, Papà – viaggiare per sei mesi per l’Europa oppure in un solo paese.\nPapà (male): Non hai tanti soldi e dato che hai studiato tanto l’italiano a scuola, perché non fai un bel giro dell’Italia e poi ti fermi tre mesi in una città?\nSofia (female): Per esempio?\nPapà (male): Per me Verona è davvero una splendida città italiana tipica. Non è troppo grande e c’è il vantaggio che i tuoi zii abitano lì. Potresti stare da loro mentre vivi la vita locale e praticare il tuo italiano.\nSofia (female): Ci sono cose interessanti a Verona?\nPapà (male): C’è una bellissima arena romana dove puoi andare a vedere gli spettacoli di opera lirica.\nSofia (female): L’opera mi piacerebbe molto perché, come sai, adoro la musica.\nPapà (male): Inoltre, ci sono piazze con mercati, ristoranti, bar. Qui si può osservare la vita della gente di Verona, magari mentre bevi un caffé.\nSofia (female): Mi piace tanto guardare come si vive in altri paesi …\nPapà (male): E non dimenticare che c’è anche la Casa di Giulietta! È obbligatorio firmare il muro come tantissimi giovani prima di te.\nSofia (female): Che bell’idea. Ho studiato Giulietta e Romeo di Shakespeare l’anno scorso. Grazie, Papà. © 2016 Board of Studies, Teaching and Educational Standards NSW",
+        "duration_seconds": 93.4
+      }
+    ]
+  },
+  "2017": {
+    "familiarisation": {
+      "clip_path": "clips/2017/familiarisation.mp3",
+      "transcript": "Male: Ciao Roberta! Da quanto tempo che non ci vediamo … Dove vai?\nRoberta (female): Ehh Francesco! Sono stata in America per sei mesi … Vado a mangiare una pizza al solito posto con Loredana. Vuoi venire?\nMale: Certo, ma prima devo andare all’ufficio postale. Ci vediamo in pizzeria fra trenta minuti.\nRoberta (female): Benissimo!",
+      "duration_seconds": 28.47
+    },
+    "questions": [
+      {
+        "question_number": 1,
+        "clip_path": "clips/2017/q01.mp3",
+        "transcript": "Female: Buongiorno, vorrei ordinare una cioccolata calda da portar via.\nMale: Altro?\nFemale: No, grazie, basta così.",
+        "duration_seconds": 10.41
+      },
+      {
+        "question_number": 2,
+        "clip_path": "clips/2017/q02.mp3",
+        "transcript": "Male: Ciao Gemma, sono Daniele. Complimenti per la patente! E congratulazioni anche per la macchina nuova che hai comprato! Andiamo a festeggiare?",
+        "duration_seconds": 13.7
+      },
+      {
+        "question_number": 3,
+        "clip_path": "clips/2017/q03.mp3",
+        "transcript": "Silvia (female): Bruno, ma tu prendi il treno per venire a scuola?\nBruno (male): No, Silvia, prendo l’autobus.\nSilvia (female): Anch’io, ma non ti vedo mai.\nBruno (male): Lo prendo alle 7.45.\nSilvia (female): Ah no, io molto prima e a volte vado a piedi.",
+        "duration_seconds": 21.8
+      },
+      {
+        "question_number": 4,
+        "clip_path": "clips/2017/q04.mp3",
+        "transcript": "Fabio (male): Pronto? Ciao Melina, allora usciamo con la mia nuova ragazza, sabato sera?\nMelina (female): Sì, Fabio, sono proprio curiosa, voglio conoscere questa ragazza misteriosa! Andiamo tutti a cantare al karaoke.\nFabio (male): Bello . . . ma forse la musica sarà troppo forte e non riusciamo a parlare bene. Che ne dici se andiamo al ristorante giapponese? Lì non c’è rumore.\nMelina (female): Sì, sì, cosí le posso fare tutte le domande che voglio!",
+        "duration_seconds": 41.77
+      },
+      {
+        "question_number": 5,
+        "clip_path": "clips/2017/q05.mp3",
+        "transcript": "Female: Ma come Gianluca, hai perso il cellulare nuovo! Non te ne compro un altro. Basta!\nGianluca (male): Ma Mamma, tutti i miei amici ne hanno uno . . .\nFemale: No, Gianluca, non te lo meriti!\nGianluca (male): Ma mi serve per sapere dei compiti di scuola e poi come faccio a chiamarti se faccio tardi?\nFemale: Usi quello vecchio di tuo padre.\nGianluca (male): Dai, ti prometto che se mi compri un telefonino nuovo non lo perdo e che tengo sempre la mia camera in ordine!",
+        "duration_seconds": 38.55
+      },
+      {
+        "question_number": 6,
+        "clip_path": "clips/2017/q06.mp3",
+        "transcript": "Female: Ma dov’è il Professor Buonora? Dobbiamo cominciare l’esame . . .\nMale: Come sempre è in ritardo!\nFemale: Ci dice che dobbiamo essere pazienti, che la sua macchina è vecchia e che abita lontano, però . . . !\nMale: Non è proprio giusto, la classe della Professoressa Rossi ha già iniziato a scrivere e noi avremo meno tempo per finire. E poi potrebbe partire più presto la mattina!\nFemale: Infatti! . . . ah, eccolo finalmente! Arriva.",
+        "duration_seconds": 41.72
+      },
+      {
+        "question_number": 7,
+        "clip_path": "clips/2017/q07.mp3",
+        "transcript": "Female: Ripetiamo il messaggio! Due ore fa abbiamo trovato un bambino molto piccolo nel reparto giocattoli. Indossa un berretto blu. Il bambino piange molto e non sa dirci come si chiama. I genitori sono pregati di venire subito all’ufficio informazioni.",
+        "duration_seconds": 30.1
+      },
+      {
+        "question_number": 8,
+        "clip_path": "clips/2017/q08.mp3",
+        "transcript": "Male: Grazie per avermi invitato a venire alla vostra scuola oggi a parlare della mia professione. Allora, sono Cristoforo Polo e faccio l’agente di viaggio. Molti pensano che questo lavoro non sia più necessario, perché si possono prenotare viaggi on-line. Ma la verità è che molto spesso i viaggiatori preferiscono parlare con una persona dal vivo e fare domande. Per esempio, io posso aiutare a scegliere alloggi, trovare prezzi più bassi o semplicemente posso consigliare ai miei clienti le destinazioni più adatte a loro. Quindi, io organizzo un pacchetto completo; il cliente non deve fare niente, solo pagare. E poi, se ci sono problemi, un agente ha sempre i contatti disponibili. Inoltre, io sono molto contento di aver scelto questa carriera perché incontro tante persone interessanti e qualche volta riesco anch’io ad andare in vacanza e a visitare tanti posti nuovi. Insomma, questa è una professione fantastica e spero che alcuni di voi la prenderanno in considerazione.",
+        "duration_seconds": 93.17
+      },
+      {
+        "question_number": 9,
+        "clip_path": "clips/2017/q09.mp3",
+        "transcript": "Liliana (female): Ciao, Stefano. Come va?\nStefano (male): Bene, grazie Liliana. Sembri un po’ emozionata. Che succede?\nLiliana (female): Scusa, ma non sai che giorno è domani?\nStefano (male): Perché? È una giornata importante?\nLiliana (female): Cretino! È il trentuno ottobre! È Halloween! Vuoi venire a fare dolcetto o scherzetto con noi?\nStefano (male): Liliana, io odio Halloween! Non è una vera tradizione italiana. È solo un altro evento che abbiamo importato dagli Stati Uniti. Non dobbiamo fare tutto quello che fanno loro.\nLiliana (female): Ma, Stefano, sarà una serata divertente. Ci darà una scusa per metterci maschere, costumi strani, andare da una casa all’altra a fare scherzi e soprattutto ci farà stare in compagnia di amici. Dai, vieni!\nStefano (male): No, non vengo! Non voglio aiutare l’Italia ad adottare questa tradizione americana! Se vogliamo metterci in maschera aspettiamo fino a febbraio per il Carnevale che è una bellissima tradizione italiana.\nLiliana (female): Sono d’accordo con te, ma noi italiani siamo sempre pronti a festeggiare per qualsiasi ragione.\nStefano (male): Non mi hai convinto . . .\nLiliana (female): OK. Tu rimani a casa da solo e noi altri andremo fuori a fare dolcetto o scherzetto insieme. Tanto lo so chi si divertirà di più!",
+        "duration_seconds": 108.88
+      },
+      {
+        "question_number": 10,
+        "clip_path": "clips/2017/q10.mp3",
+        "transcript": "Female: Buongiorno. Sono Margherita Campana e oggi abbiamo con noi un giovane studente con una passione particolare. Allora, Ettore, parlaci del tuo hobby.\nEttore (male): Buongiorno. Eh sì, colleziono monete . . .\nFemale: E come è iniziata questa collezione?\nEttore (male): A 9 anni mio nonno mi ha regalato una piccola moneta del Vietnam e l’ho trovata così bella. Poi, mio nonno ogni Natale me ne regalava un’altra e così mi sono appassionato.\nFemale: Ma che bello. E adesso la collezione è grande?\nEttore (male): Moltissimo. Ne ho di tutte le nazioni del mondo. Trovare monete antiche è un modo interessante per studiare la storia di tutti quei paesi e infatti, adesso studio storia e geografia all’università.\nFemale: Wow, ma deve essere costoso . . .\nEttore (male): Un po’ sì, ma ho trovato un lavoretto proprio per potermi comprare altri pezzi. E poi ne vale veramente la pena.\nFemale: In che senso?\nEttore (male): Perché ogni volta che aggiungo una moneta alla mia collezione penso a mio nonno e a quei bellissimi pomeriggi passati insieme.",
+        "duration_seconds": 85.7
+      }
+    ]
+  },
+  "2018": {
+    "familiarisation": {
+      "clip_path": "clips/2018/familiarisation.mp3",
+      "transcript": "Silvia (female): Bruno, ma tu prendi il treno per venire a scuola?\nBruno (male): No, Silvia, prendo l’autobus.\nSilvia (female): Anch’io, ma non ti vedo mai.\nBruno (male): Lo prendo alle 7.45.\nSilvia (female): Ah no, io molto prima e a volte vado a piedi.",
+      "duration_seconds": 20.12
+    },
+    "questions": [
+      {
+        "question_number": 1,
+        "clip_path": "clips/2018/q01.mp3",
+        "transcript": "Alessia (female): Ciao, Nino. Cosa fai domani?\nNino (male): Ah, Alessia, vado al cinema. Vuoi venire?\nAlessia (female): Sì, bello! E poi andiamo a mangiare una pizza?\nNino (male): Va bene.",
+        "duration_seconds": 14.79
+      },
+      {
+        "question_number": 2,
+        "clip_path": "clips/2018/q02.mp3",
+        "transcript": "Patrizia (female): Sei pronto per la spiaggia, Marco?\nMarco (male): Ma che dici, Patrizia? Piove!\nPatrizia (female): Non importa, andiamo, dai!\nMarco (male): Ma piove forte e fa troppo freddo.",
+        "duration_seconds": 15.84
+      },
+      {
+        "question_number": 3,
+        "clip_path": "clips/2018/q03.mp3",
+        "transcript": "Female: Attenzione! Questo pomeriggio, dopo le lezioni, la biblioteca è aperta fino alle cinque per i ragazzi che vogliono aiuto con i compiti, usare i computer o trovare libri per la ricerca.",
+        "duration_seconds": 19.74
+      },
+      {
+        "question_number": 4,
+        "clip_path": "clips/2018/q04.mp3",
+        "transcript": "Male: Cari ascoltatori, buongiorno. La ricetta di oggi è torta classica. Gli ingredienti che dovete avere sono: Trecento grammi di farina, due uova, una tazza di zucchero e tre limoni. Mescolate tutto e cucinate nel forno per mezz’ora. Buon appetito!",
+        "duration_seconds": 28.23
+      },
+      {
+        "question_number": 5,
+        "clip_path": "clips/2018/q05.mp3",
+        "transcript": "Male: Aiutami, Lucia! Non so proprio cosa indossare alla festa sabato sera. Mi metto la camicia bianca o la maglietta nuova che mi ha comprato mamma?\nFemale: Ma Giovanni, perché è così importante? È solo una festa!\nMale: Ma ci sarà Monica e tu sai quanto mi piace.\nFemale: E allora?\nMale: Non voglio fare brutta figura davanti a lei. Se sono vestito bene Monica mi dovrà notare e vorrà passare tutta la serata con me.\nFemale: Che fratello romantico che ho!",
+        "duration_seconds": 42.4
+      },
+      {
+        "question_number": 6,
+        "clip_path": "clips/2018/q06.mp3",
+        "transcript": "Vanessa (female): Sono Vanessa. Lasciate un messaggio.\nMale: Buongiorno, Vanessa. Sono il signor Giostro. Ti chiamo perché abbiamo deciso di offrirti il lavoro qui al Luna Park. Ci sono piaciute le tue qualità personali e la tua esperienza è proprio perfetta per questa posizione. Dobbiamo sapere se puoi cominciare lunedì prossimo alle nove. Per favore, telefonami al più presto per confermare.",
+        "duration_seconds": 32.51
+      },
+      {
+        "question_number": 7,
+        "clip_path": "clips/2018/q07.mp3",
+        "transcript": "Female: La settimana prossima apre la nostra futuristica sala giochi. Amate essere trasportati nel mondo virtuale? Vi piace essere immersi nella tecnologia più avanzata del ventunesimo secolo? Allora venite qui. Noi offriamo un’opportunità a tutti, dai più giovani ai meno giovani, per divertirvi con i videogiochi più recenti. E, inoltre, se volete festeggiare il vostro compleanno in modo diverso e super moderno la nostra sala fa per voi. Siamo in Via del Castello. Venite a giocare presto!",
+        "duration_seconds": 49.79
+      },
+      {
+        "question_number": 8,
+        "clip_path": "clips/2018/q08.mp3",
+        "transcript": "Angelica: Bentornato, Tommaso. Ti sei divertito in vacanza?\nTommaso: Veramente no. È stato un disastro dal primo momento fino alla fine.\nAngelica: Ma cos’è successo?\nTommaso: Per cominciare, papà ha deciso di arrivare all’aeroporto con cinque ore di anticipo. Assurdo! Poi l’aereo ha fatto un ritardo di due ore. Che perdita di tempo!\nAngelica: Ma com’era l’albergo?\nTommaso: Su internet sembrava meraviglioso, ma in realtà la camera era troppo piccola per me e mia sorella. Il mio letto era duro e scomodo e non ho dormito bene.\nAngelica: Ma c’erano molte attività, vero?\nTommaso: Sì, certo, ma erano da fare all’aperto e, dato che tirava un vento fortissimo ogni giorno, era necessario stare dentro.\nAngelica: Ma c’era altro da fare?\nTommaso: No, niente! E poi tutti gli ospiti erano vecchi!\nAngelica: Quindi, non hai fatto amici?\nTommaso: No, ero sempre solo.",
+        "duration_seconds": 76.18
+      },
+      {
+        "question_number": 9,
+        "clip_path": "clips/2018/q09.mp3",
+        "transcript": "Female: Dai Riccardo, vieni con noi…\nRiccardo (male): No, mamma, veramente non posso. Quest’anno ho gli esami di maturità…\nFemale: Ma andiamo solo per pochi giorni. Fare una pausa è importante.\nRiccardo (male): Devo studiare. Voglio fare medicina all’università e se non prendo un voto molto alto sarà impossibile.\nFemale: Riccardo, non puoi sempre studiare. Sai che ci sono ancora 5 mesi prima degli esami?\nRiccardo (male): Sì, questo è vero. Ma ho paura, sono nervoso. Come faccio?\nFemale: Sei troppo stressato. Io e tuo padre vogliamo portarti con noi al lago dove ti puoi riposare.\nRiccardo (male): Lo so che è importante distrarmi, ma posso andare in vacanza quando ho finito la scuola.\nFemale: Ma, Riccardo, sei sempre seduto. Non fai abbastanza attività fisica.\nRiccardo (male): Sí, è vero… Se vado, potrei portare i libri in riva al lago dove posso studiare e anche nuotare.\nFemale: Sì, è un posto tranquillo dove puoi ritrovare la tua energia. E poi, veramente, ho già comprato il tuo biglietto aereo…\nRiccardo (male): Mamma…! Beh, ci penso…",
+        "duration_seconds": 99.1
+      },
+      {
+        "question_number": 10,
+        "clip_path": "clips/2018/q10.mp3",
+        "transcript": "(Radio interview)\nMale: Oggi qui con noi su Radio ABT abbiamo Vittoria Forti, la nuova giocatrice della squadra australiana di calcio. Buongiorno, Vittoria. Allora, dimmi, hai sempre giocato a calcio?\nVittoria (female): Veramente, no. Mi sono sempre piaciuti vari sport e ne ho praticati tantissimi. Da piccola giocavo a tennis, a pallavolo, a basket, ma il mio preferito era il surf. Fare questi sport differenti mi ha permesso di sviluppare abilità che mi aiutano adesso.\nMale: Ed i tuoi genitori ti hanno sempre dato supporto?\nVittoria (female): Sì, sono sempre stati i miei più grandi tifosi. Mi portavano all’allenamento, alle partite e, inoltre, hanno pagato per le mie lezioni private. Io apprezzo moltissimo quello che hanno fatto per me.\nMale: Dunque, quando hai cominciato a giocare a calcio?\nVittoria (female): Quando avevo tredici anni la mia amica del cuore insisteva che avevo talento e mi ha convinto a giocare nella sua squadra. Sarò sempre grata alla mia amica per questo.\nMale: Ma come hai fatto ad arrivare a giocare nella squadra nazionale?\nVittoria (female): Quando ho capito che il calcio era lo sport per me, ho iniziato a fare allenamento per ore e ore prima e dopo scuola ogni giorno. Volevo essere la più brava. Inoltre, sono stata molto fortunata con i miei allenatori e can le mie compagne di squadra. Senza di loro, la squadra australiana non mi avrebbe mai scelto.\nMale: Brava! In bocca al lupo per il futuro.",
+        "duration_seconds": 127.5
+      }
+    ]
+  },
+  "2019": {
+    "familiarisation": {
+      "clip_path": "clips/2019/familiarisation.mp3",
+      "transcript": "Alessia (female): Ciao, Nino. Cosa fai domani?\nNino (male): Ah, Alessia, vado al cinema. Vuoi venire?\nAlessia (female): Sì, bello! E poi andiamo a mangiare una pizza?\nNino (male): Va bene.",
+      "duration_seconds": 12.12
+    },
+    "questions": [
+      {
+        "question_number": 1,
+        "clip_path": "clips/2019/q01.mp3",
+        "transcript": "Male: Marisa, hai sentito che il Professor Rossi non è a scuola oggi?\nMarisa (female): Fantastico! Quindi non c’è l’esame di francese e possiamo andare a casa presto!",
+        "duration_seconds": 14.52
+      },
+      {
+        "question_number": 2,
+        "clip_path": "clips/2019/q02.mp3",
+        "transcript": "Female: Matteo ma lo sai che non ci sono i treni stamattina?\nMale: Oh no, come vado al lavoro, allora? Gli autobus sono sempre in ritardo!\nFemale: Forse puoi andare in bicicletta . . .\nMale: Buon’idea!",
+        "duration_seconds": 15.41
+      },
+      {
+        "question_number": 3,
+        "clip_path": "clips/2019/q03.mp3",
+        "transcript": "Male: Ciao Laura. Sono Gianni. Mi dispiace moltissimo ma non posso venire a prenderti stasera. La mia mamma ha bisogno della macchina per portare mio padre all’aeroporto perché va a Melbourne per lavoro. A dopo. Ciao.",
+        "duration_seconds": 20.15
+      },
+      {
+        "question_number": 4,
+        "clip_path": "clips/2019/q04.mp3",
+        "transcript": "Female: La nostra scuola d’arte è aperta dal mercoledì alla domenica da mezzogiorno alle 10 di sera. Ci sono grandi sconti per studenti se vi iscrivete prima della fine del mese. Venite a scoprire i nuovi corsi di pittura e di scultura.",
+        "duration_seconds": 23.93
+      },
+      {
+        "question_number": 5,
+        "clip_path": "clips/2019/q05.mp3",
+        "transcript": "Male: Ciao Chiara, ci vediamo stasera in pizzeria?\nChiara (female): Come, scusa?\nMale: Stasera per il diciottesimo compleanno di Giulia.\nChiara (female): Chi? Io non ne so niente.\nMale: Ma come? Giulia dice che ha invitato tutti per festeggiare insieme.\nChiara (female): Ma io non ho ricevuto nessun invito e comunque io non conosco nessuna Giulia.\nMale: Che strano. Vabbe, non fa niente. Vieni lo stesso con me alla festa.\nChiara (female): Va bene, io adoro le feste! Ma prima mi devi spiegare chi è questa Giulia.",
+        "duration_seconds": 41.66
+      },
+      {
+        "question_number": 6,
+        "clip_path": "clips/2019/q06.mp3",
+        "transcript": "Male: Cari ascoltatori, buongiorno. Sono qui per informare gli abitanti della nostra zona che il municipio ha deciso di chiudere la biblioteca. Io sono sicuro che questo sarà un disastro per la nostra comunità. La biblioteca è utile ed importante per tutti noi per tante ragioni diverse. Vogliamo comunicare al municipio che noi residenti non siamo d’accordo per niente con la chiusura della biblioteca, quindi abbiamo organizzato un’importante protesta. Questa protesta inizierà domani mattina alle undici nella piazza centrale. Vorremmo la partecipazione di numerose persone per far vedere quanto siamo arrabbiati!",
+        "duration_seconds": 61.5
+      },
+      {
+        "question_number": 7,
+        "clip_path": "clips/2019/q07.mp3",
+        "transcript": "Papà (male): Valeria, perché stai ascoltando la musica invece di studiare per gli esami?\nValeria (female): Papà, è una perdita di tempo, odio la scuola. Io amo solo la musica.\nPapà (male): Ancora con questa storia?! La scuola è importante!\nValeria (female): No, papà, ho deciso, voglio diventare una rock star e la scuola non mi serve per niente.\nPapà (male): Ma che dici???\nValeria (female): Voglio partecipare a uno spettacolo in TV. Sì, un programma per persone con talento come me.\nPapà (male): Ma scherzi? Vuoi andare a cantare in TV invece di finire la scuola?\nValeria (female): Papà, non capisci. È la mia passione, e so che avrò successo. I giudici dello spettacolo riconosceranno il mio talento e diventerò ricca e famosa!\nPapà (male): Ricca e famosa senza studiare? Valeria, non ti permetto di partecipare a questa stupida competizione! È assurdo!",
+        "duration_seconds": 73.77
+      },
+      {
+        "question_number": 8,
+        "clip_path": "clips/2019/q08.mp3",
+        "transcript": "Mario (male): Allora, Sandra, che facciamo quest’estate? Dobbiamo decidere.\nSandra (female): Hai ragione, Mario. Io pensavo che potremmo andare in campeggio come abbiamo fatto l’anno scorso.\nMario (male): Ma sei matta??? Ti ricordi quanti insetti c’erano? La tenda era piena di formiche e ragni.\nSandra (female): Che drammatico! È stato bellissimo. Le lunghe passeggiate in montagna, la cioccolata calda sul fuoco . . .\nMario (male): Mi sono bruciato i capelli su quel fuoco!\nSandra (female): Ma solo pochi . . . E poi abbiamo visto uccelli, farfalle, un lupo . . .\nMario (male): Eh sì, un lupo! E io mi sono rotto una gamba per scappare via!\nSandra (female): Sí, lo so, ma non ti ricordi quella bellissima valle con tutti quei fiori, l’aria così pura, l’acqua fresca del fiume?\nMario (male): Beh, hai ragione, quella valle era stupenda, il resto però . . .",
+        "duration_seconds": 73.97
+      },
+      {
+        "question_number": 9,
+        "clip_path": "clips/2019/q09.mp3",
+        "transcript": "Female: Adesso che Mamma e Papà sono in vacanza, ho fatto una lista di cose da fare in casa.\nAlberto (male): Sì, l’ho vista la tua stupida e lunghissima lista di faccende di casa! Ma chi sei tu per decidere cosa dobbiamo fare?\nFemale: Io sono la più grande, quindi sono io il capo della casa questa settimana! Per cominciare, tu devi portare fuori la spazzatura e tagliare l’erba.\nAlberto (male): Allora, innanzitutto, tu NON sei il capo, e poi, l’erba non cresce in una settimana. Tagliala tu se vuoi, io non la taglio!\nFemale: Sei proprio pigro! Comunque, devi pulire ogni giorno la tua camera perché fa schifo!\nAlberto (male): Ma scherzi? Io non metto mai in ordine la mia camera sennò non trovo niente. Che t’importa a te? Pensa invece alla tua camera che sembra il palazzo di una noiosa principessa. Almeno le cose in camera mia sono interessanti.\nFemale: Alberto, non parlare così delle mie cose. E poi, ogni giorno dobbiamo lavare i piatti, pulire il bagno, insomma dobbiamo mantenere la casa in ordine.\nAlberto (male): Ma Vittoria, che cretina che sei, possiamo fare tutto una volta sola il giorno prima che Mamma e Papà ritornano a casa e non lo sapranno mai!",
+        "duration_seconds": 109.21
+      },
+      {
+        "question_number": 10,
+        "clip_path": "clips/2019/q10.mp3",
+        "transcript": "Luca (male): Dimmi, Alessia. Hai deciso come festeggiare l’anniversario dei tuoi genitori?\nAlessia (female): Sì, Luca, ci ho pensato molto. Ecco il mio piano. Ho affittato una casa per il fine settimana. È la stessa casa dove hanno passato la loro luna di miele venticinque anni fa.\nLuca (male): Che idea romantica!\nAlessia (female): I miei genitori, mio fratello ed io partiremo presto sabato mattina e ci fermeremo a fare un picnic sulla riva del grande lago che amano tanto.\nLuca (male): Questo piacerà ai tuoi perché loro adorano quel lago.\nAlessia (female): Sì, infatti, e lì possiamo pescare e nuotare come facevamo spesso tutti insieme tanti anni fa. Questo era il passatempo preferito della mia famiglia.\nLuca (male): Ah! Una giornata piena di attività e di ricordi.\nAlessia (female): Poi continueremo il nostro viaggio e nel pomeriggio arriveremo alla casa.\nLuca (male): E domenica?\nAlessia (female): La mattina ci riposiamo. Mamma e papà potranno dormire fino a tardi se vogliono. Ma la grande sorpresa sarà il pranzo. Ho invitato tutti gli zii e i cugini per festeggiare l’anniversario.\nLuca (male): Che bello! I tuoi genitori saranno molto sorpresi di vedere tutti lì e sono sicuro che saranno felicissimi di passare questa giornata importante con la loro grande famiglia. I tuoi apprezzeranno molto tutti i tuoi sforzi. Ben fatto!",
+        "duration_seconds": 107.34
+      }
+    ]
+  },
+  "2020": {
+    "familiarisation": {
+      "clip_path": "clips/2020/familiarisation.mp3",
+      "transcript": "Alessia (female): Ciao, Nino. Cosa fai domani?\nNino (male): Ah, Alessia, vado al cinema. Vuoi venire?\nAlessia (female): Sì, bello! E poi andiamo a mangiare fuori?\nNino (male): Va bene.",
+      "duration_seconds": 15.04
+    },
+    "questions": [
+      {
+        "question_number": 1,
+        "clip_path": "clips/2020/q01.mp3",
+        "transcript": "Olivia (female): Ciao Papà, senti stasera non torno a casa dopo scuola.\nPapà (male): Olivia, torni per cena o no?\nOlivia (female): No, vado in pizzeria con gli amici.",
+        "duration_seconds": 14.07
+      },
+      {
+        "question_number": 2,
+        "clip_path": "clips/2020/q02.mp3",
+        "transcript": "Female: Allora Giorgio che ti metti per andare al concerto domani?\nGiorgio (male): Mi metto una camicia e dei pantaloni.\nFemale: Ma farà caldo!\nGiorgio (male): Allora indosso una maglietta e dei pantaloncini.\nFemale: E non dimenticare di portare un cappello!\nGiorgio (male): Certo!",
+        "duration_seconds": 26.11
+      },
+      {
+        "question_number": 3,
+        "clip_path": "clips/2020/q03.mp3",
+        "transcript": "Male: Ciao Luisa, oggi pomeriggio andiamo in biblioteca a studiare per l’esame di matematica?\nLuisa (female): Sei matto? Domani abbiamo il test di geografia!\nMale: Ma la matematica è più difficile…\nLuisa (female): Lo so, ma scusa oggi pomeriggio dobbiamo studiare la geografia.",
+        "duration_seconds": 25.8
+      },
+      {
+        "question_number": 4,
+        "clip_path": "clips/2020/q04.mp3",
+        "transcript": "Female: Paolo la tua camera da letto è sempre sporca e disordinata! Sono davvero frustrata con te!\nMale: Uffà! Mi ripeti sempre le stesse cose . . .\nFemale: Sì, ti devo sempre ricordare di pulire la stanza perché non mi ascolti mai!\nMale: Che noia, Mamma.\nFemale: E perché devo anche sempre ricordarti di portare il cane al parco?",
+        "duration_seconds": 32.94
+      },
+      {
+        "question_number": 5,
+        "clip_path": "clips/2020/q05.mp3",
+        "transcript": "Female: Venite alla nostra magnifica fiera delle fragole il primo fine settimana di giugno! Ci saranno tante bellissime attività, per esempio potete preparare e cucinare le deliziose crostate di frutta fresca. Ci saranno anche musica, giostre e potete anche comprare il nostro famoso gelato alla fragola. Vi aspettiamo!",
+        "duration_seconds": 36.37
+      },
+      {
+        "question_number": 6,
+        "clip_path": "clips/2020/q06.mp3",
+        "transcript": "Papà (male): Mi piacciono i tuoi capelli oggi Serena.\nFemale: Grazie Papà, ma sono arrabbiatissima!\nPapà (male): Perché?\nFemale: Io e Claudio siamo andati insieme dalla stessa parrucchiera.\nPapà (male): Ok, e allora?\nFemale: Ci credi che ho pagato $30 più di Claudio per lo stesso taglio di capelli? Non è giusto!\nPapà (male): Assurdo! La stessa parrucchiera e due prezzi diversi?!",
+        "duration_seconds": 36.04
+      },
+      {
+        "question_number": 7,
+        "clip_path": "clips/2020/q07.mp3",
+        "transcript": "Male: Cari studenti, stiamo cercando attori, cantanti e ballerini per il prossimo spettacolo di fine anno. Volete imparare a recitare, ballare e cantare davanti a un pubblico? Avete una fantastica opportunità. Lo spettacolo sarà un’occasione per diventare più forti e resilienti. Partecipare in questa performance significa imparare tutto ciò che crea un grande spettacolo con le luci, la musica, i costumi, il trucco e tutto il resto. Spero di vedervi tutti a teatro martedì!",
+        "duration_seconds": 54.51
+      },
+      {
+        "question_number": 8,
+        "clip_path": "clips/2020/q08.mp3",
+        "transcript": "Roberto (male): Uffa Sabrina, sono triste . . . Mi manca molto l’Italia.\nFemale: Davvero? A me no . . . La mia famiglia di scambio non era simpatica.\nRoberto (male): Invece la mia famiglia era fantastica!\nFemale: Che fortuna, Roberto! A me, poi, non piaceva per niente andare in piazza dopo scuola. Avrei preferito visitare i musei o fare qualche altra attività culturale.\nRoberto (male): No. Non sono d’accordo. Era bellissimo uscire con gli amici in piazza.\nFemale: L’unica cosa che mi è piaciuta tantissimo è stato passare un bianco Natale, con tanta neve.\nRoberto (male): A me no, faceva troppo freddo. Però hai ragione la neve è bellissima. E poi i mercati di Natale erano davvero favolosi.",
+        "duration_seconds": 67.47
+      },
+      {
+        "question_number": 9,
+        "clip_path": "clips/2020/q09.mp3",
+        "transcript": "Female: Pronto?\nMale: Sì, pronto sono Francesco sono uno studente interessato al Vostro progetto ‘Salviamo gli animali’.\nFemale: Ah bene e dove studi?\nMale: Studio alla scuola superiore di arte e fotografia, ma adesso sono in vacanza per sei settimane.\nFemale: Perfetto, allora potresti aiutare perché il nostro progetto dura quattro settimane. Abbiamo bisogno di tanti volontari per aiutare a salvare gli animali vittime degli incendi e degli incidenti stradali.\nMale: Beh io non ho mai avuto un animale, ma li adoro e voglio veramente aiutare.\nFemale: Fantastico! Stiamo anche organizzando una raccolta di fondi. Vendiamo foto e sculture per avere i soldi per curare gli animali.\nMale: Che bello, io ho tantissime foto che posso donare!",
+        "duration_seconds": 74.04
+      },
+      {
+        "question_number": 10,
+        "clip_path": "clips/2020/q10.mp3",
+        "transcript": "Mamma (female): Giulio, stai ancora studiando? È tardi.\nGiulio (male): Certo! Ma lo sai che l’anno prossimo voglio andare all’università a studiare economia.\nMamma (female): Economia?! Tu ami scrivere. Potresti diventare un giornalista.\nGiulio (male): È vero, però una laurea in economia è molto più utile perché posso trovare un buon lavoro. Il giornalismo non ti fa diventare ricco.\nMamma (female): Pensaci bene, i soldi non sono tutto. E poi, secondo me potresti prenderti un anno di pausa e viaggiare. Potresti andare all’estero e imparare un’altra lingua.\nGiulio (male): Non posso lasciare la mia ragazza per un anno!\nMamma (female): Ascoltami, Giulio, fare un’esperienza all’estero, magari scrivendo per un giornale o una rivista, ti darà tanta soddisfazione. E imparare un’altra lingua ti offrirà tante opportunità.\nGiulio (male): Mamma, non ho voglia di studiare una lingua! Però forse hai ragione, sarebbe bello prendermi una pausa e scrivere.\nMamma (female): Bene . . .\nGiulio (male): Ma ho paura che se smetto di studiare per un anno sarà difficile ricominciare a studiare.\nMamma (female): Ti capisco.\nGiulio (male): E poi sono anche preoccupato che se vado all’estero la mia ragazza si dimenticherà di me!\nMamma (female): Beh, se la tua ragazza ti vuole bene davvero, ti aspetterà!",
+        "duration_seconds": 116.28
+      }
+    ]
+  },
+  "2021": {
+    "familiarisation": {
+      "clip_path": "clips/2021/familiarisation.mp3",
+      "transcript": "Alessia (female): Ciao, Nino. Cosa fai domani?\nNino (male): Ah, Alessia, vado al cinema. Vuoi venire?\nAlessia (female): Sì, bello! E poi andiamo a mangiare fuori?\nNino (male): Va bene.",
+      "duration_seconds": 13.95
+    },
+    "questions": [
+      {
+        "question_number": 1,
+        "clip_path": "clips/2021/q01.mp3",
+        "transcript": "Female: Buongiorno ragazzi. Ecco un annuncio della mensa scolastica: Non è possibile comprare le patatine oggi. Sfortunatamente sono finite. Ma potete provare una bella insalata fresca per pranzo.",
+        "duration_seconds": 21.19
+      },
+      {
+        "question_number": 2,
+        "clip_path": "clips/2021/q02.mp3",
+        "transcript": "Male: Andiamo al negozio di souvenir a comprare una cartolina della torre per mamma?\nFemale: La torre? Prendiamo una con l’immagine della spiaggia o con i delfini nel mare.\nMale: Ma no! Mamma adora i monumenti.\nFemale: Hai ragione. Va bene.",
+        "duration_seconds": 24.11
+      },
+      {
+        "question_number": 3,
+        "clip_path": "clips/2021/q03.mp3",
+        "transcript": "Female: Ciao, Sono Benedetta. Lasciate un messaggio.\nMale: Sono Mario. Scusami ma non posso venire a prenderti alla fine dell’allenamento. Hanno chiuso tutte le strade a causa della neve. Prendi il treno per tornare.",
+        "duration_seconds": 20.42
+      },
+      {
+        "question_number": 4,
+        "clip_path": "clips/2021/q04.mp3",
+        "transcript": "Matteo (male): Grazia, che dici papà ci prende un altro gatto?\nGrazia (female): Vuoi un altro gatto?! Matteo, ma tu non dai da mangiare al gatto che hai adesso e non gli cambi nemmeno l’acqua! Un gatto basta.\nMatteo (male): Ma dai, sarò più responsabile!\nGrazia (female): Poi casa nostra è troppo piccola per due animali.\nMatteo (male): Peccato . . .",
+        "duration_seconds": 32.06
+      },
+      {
+        "question_number": 5,
+        "clip_path": "clips/2021/q05.mp3",
+        "transcript": "Female: Cari telespettatori, mercoledì prossimo sarà trasmesso alle 21 il bellissimo film ‘Non ci resta che ridere’. Se volete un film per tutta la famiglia, non perdetelo. Grandi e piccoli rideranno insieme mentre guardano questa divertentissima commedia.",
+        "duration_seconds": 28.7
+      },
+      {
+        "question_number": 6,
+        "clip_path": "clips/2021/q06.mp3",
+        "transcript": "Papà (male): Allora, Loretta, sei pronta a trasferirti?\nLoretta (female): Sì, anche se sono un po’ preoccupata all’idea di cambiare città.\nPapà (male): Vedrai che farai subito amicizie nuove.\nLoretta (female): Speriamo, Papà. Lo sai che sono timida.\nPapà (male): Devi trovare dei nuovi hobby per conoscere gente. Forse potresti fare un corso di teatro? Recitare ti aiuterà anche a diventare più estroversa.\nLoretta (female): Che bella idea, Papà!\nPapà (male): Certo Loretta. Magari iscriviti anche in palestra, adori lo sport. Lo sai che io ho conosciuto tua madre in palestra.\nLoretta (female): Forse trovo anch’io l’amore! Un altro bel consiglio. Grazie.",
+        "duration_seconds": 55.05
+      },
+      {
+        "question_number": 7,
+        "clip_path": "clips/2021/q07.mp3",
+        "transcript": "Male: Buongiorno Signore e Signori, Sono il Ministro del Turismo e oggi voglio incoraggiarvi a considerare una vacanza a casa. Invece di sognare vacanze in altri continenti o posti esotici, perché non fare il turista nella vostra città per conoscerla meglio e scoprire le bellezze che ci sono dietro l’angolo? Rimanendo a casa potete rilassarvi veramente ed essere tranquilli senza tutte le preoccupazioni di un viaggio stressante e stancante. Per chi vuole risparmiare, una vacanza trascorsa a casa senza comprare biglietti aerei e prenotare camere d’albergo è più economica e comoda.",
+        "duration_seconds": 63.25
+      },
+      {
+        "question_number": 8,
+        "clip_path": "clips/2021/q08.mp3",
+        "transcript": "Male: Buongiorno, vorrei comprare una bicicletta.\nFemale: Bene, che tipo?\nMale: Ho bisogno di una bici leggera adatta alle salite e alle lunghe distanze. Il mio budget è di circa 200 euro.\nFemale: Ok. Ha mai pensato a una e-bike?\nMale: Una che?\nFemale: Una bicicletta elettrica. La bicicletta si carica con l’elettricità e con questa bici può pedalare per molti km.\nMale: È perfetta per me. È proprio quello che voglio, però non sono bravo con le cose tecnologiche. Quanto costa?\nFemale: La bici costa 300 euro.\nMale: Ci devo pensare.",
+        "duration_seconds": 59.52
+      },
+      {
+        "question_number": 9,
+        "clip_path": "clips/2021/q09.mp3",
+        "transcript": "Female: Allora Tommaso. Hai pensato a quale lavoro vorresti fare?\nTommaso (male): Sono così confuso, signora Bianchi. Vorrei poter aiutare gli altri e salvare la vita alle persone ma, non so se voglio fare il vigile del fuoco oppure l’infermiere.\nFemale: Che bello! Ma lo sai che entrambi i lavori richiedono di essere flessibili?\nTommaso (male): Sí, lo so che a volte bisogna lavorare la notte, ma a me non dispiace anche perché si guadagna di più.\nFemale: E i weekend . . .\nTommaso (male): È vero . . . Ogni domenica vado da nonna a pranzo. Adoro la sua lasagna e mi dispiacerebbe non andare a casa sua.\nFemale: E cosa ti piace di più della professione del vigile del fuoco?\nTommaso (male): Mi piace il lavoro fisico e dinamico. Ma ho paura delle altezze . . . Che terrore! Non posso nemmeno prendere l’aereoplano.\nFemale: E perché invece vuoi essere un infermiere? Hai studiato biologia?\nTommaso (male): Veramente no. Però amo l’idea di lavorare in un ospedale anche se odio la vista del sangue. Che schifo il sangue!\nFemale: Forse è meglio cercare ancora per trovare qualcosa di più adatto alla tua personalità.",
+        "duration_seconds": 100.02
+      },
+      {
+        "question_number": 10,
+        "clip_path": "clips/2021/q10.mp3",
+        "transcript": "Female: Giacomo, hai fatto un graffito sul muro della scuola?\nGiacomo (male): Flavia! SShhh! Non urlare! Silenzio!\nFemale: Ma sei scemo?! Finirai nei guai! Il preside si arrabbierà tantissimo.\nGiacomo (male): Ma l’ho fatto per amore! Amore per la mia squadra del cuore! La finale di calcio è questo mercoledì. Lo sai che sono un grandissimo tifoso. Non m’importa se il preside si arrabbia, ne valeva la pena.\nFemale: È un atto di vandalismo, i graffiti sono illegali a scuola!\nGiacomo (male): Non è vandalismo perché non è un graffito, è un messaggio!\nFemale: E non potevi scrivere questo messaggio d’amore da un’altra parte? Che ne so su un poster o su uno striscione allo stadio invece di sporcare il muro?\nGiacomo (male): Veramente non c’avevo pensato. Sono stato impulsivo.\nFemale: Secondo me se vuoi sostenere la tua squadra basta andare allo stadio. Non c’è bisogno di scrivere sui muri per mostrare la tua passione.\nGiacomo (male): Beh . . .\nFemale: E poi sporcare il muro della nostra scuola non è giusto.\nGiacomo (male): Non ti preoccupare, ho usato della pittura che si pulisce facilmente, non è permanente.\nFemale: E allora andiamo a pulire il muro subito. Non voglio che finisci nell’ufficio del preside!\nGiacomo (male): Forse hai ragione, non dovevo farlo, ma Forza Giallo Rossi! . . .",
+        "duration_seconds": 119.38
+      }
+    ]
+  },
+  "2022": {
+    "familiarisation": {
+      "clip_path": "clips/2022/familiarisation.mp3",
+      "transcript": "Alessia (female): Ciao, Nino. Cosa fai domani?\nNino (male): Ah, Alessia, vado al cinema. Vuoi venire?\nAlessia (female): Sì, bello! E poi andiamo a mangiare fuori?\nNino (male): Va bene.",
+      "duration_seconds": 15.21
+    },
+    "questions": [
+      {
+        "question_number": 1,
+        "clip_path": "clips/2022/q01.mp3",
+        "transcript": "Sabrina (female): Matteo, che stress!\nMatteo (male): Che cosa c’è Sabrina?\nSabrina (female): Il mio telefonino è rotto, non funziona.\nMatteo (male): E qual è il problema?\nSabrina (female): Devo chiamare mia madre subito o si arrabbia.\nMatteo (male): Tranquilla, usa il mio telefonino.\nSabrina (female): Grazie mille, Matteo.",
+        "duration_seconds": 26.36
+      },
+      {
+        "question_number": 2,
+        "clip_path": "clips/2022/q02.mp3",
+        "transcript": "Male: Lorena, perché non hai la divisa scolastica? Come ti sei vestita? Sembri Pinocchio!\nLorena (female): Professore, sono Pinocchio! Mi sono vestita per la settimana del libro!\nMale: Ma no, la settimana del libro è il mese prossimo!\nLorena (female): Oh, no che imbarazzo! Oh mamma mia! Che brutta figura!",
+        "duration_seconds": 32.04
+      },
+      {
+        "question_number": 3,
+        "clip_path": "clips/2022/q03.mp3",
+        "transcript": "Male: Le previsioni del tempo per Napoli. Domani mattina ci sarà cielo sereno, un sole forte e circa 30 gradi. Attenzione però perché nel pomeriggio il tempo cambierà e ci sarà tanta pioggia e un possibile temporale.",
+        "duration_seconds": 26.57
+      },
+      {
+        "question_number": 4,
+        "clip_path": "clips/2022/q04.mp3",
+        "transcript": "Female: Franco, sai che sabato è l’anniversario di matrimonio di mamma e papà?\nFranco (male): Oddio manca pochissimo! Dobbiamo comprare un regalo.\nFemale: L’anniversario è un’occasione speciale. Bisogna comprare proprio un bel regalo.\nFranco (male): Sì, d’accordo! Sei libera giovedì sera? Possiamo fare un giro in centro ai negozi.\nFemale: Perfetto! Perché non ci incontriamo davanti alla stazione centrale alle sei?\nFranco (male): Sì, va benissimo. A giovedì!",
+        "duration_seconds": 40.5
+      },
+      {
+        "question_number": 5,
+        "clip_path": "clips/2022/q05.mp3",
+        "transcript": "Female: Per il podcast di oggi, vi proponiamo una ricetta facile per fare un profumo fatto in casa. Un profumo buonissimo alle rose e lavanda. Allora, servono questi ingredienti: 6 tazze di petali di rosa, 10 gocce di olio di lavanda, 400 ml di acqua. Mescolate tutti gli ingredienti e fate cuocere lentamente per due ore. Ecco a voi un buonissimo profumo da regalare a Natale!",
+        "duration_seconds": 47.45
+      },
+      {
+        "question_number": 6,
+        "clip_path": "clips/2022/q06.mp3",
+        "transcript": "Female: Vincenzo, andiamo!\nVincenzo (male): Dove mamma? Cosa succede?\nFemale: Come non ti ricordi? Oggi ti insegno io a guidare invece di papà.\nVincenzo (male): Uffa! Oh no. Che peccato! Non mi piace quando mi insegni tu a guidare!\nFemale: E perché?\nVincenzo (male): Perché ti arrabbi sempre quando faccio un piccolo errore e poi mi stresso!\nFemale: E tuo padre invece?\nVincenzo (male): Papà è un istruttore molto più calmo e non mi sgrida mai.",
+        "duration_seconds": 39.11
+      },
+      {
+        "question_number": 7,
+        "clip_path": "clips/2022/q07.mp3",
+        "transcript": "Ottavio (male): Pronto Monica come stai?\nMonica (female): Insomma, così così…\nOttavio (male): Perché?\nMonica (female): Non posso andare in discoteca perché ho solo diciassette anni e io adoro ballare.\nOttavio (male): Non c’è problema! Anche tu puoi andare a ballare!\nMonica (female): Ma come Ottavio? Le discoteche sono vietate a chi ha meno di 18 anni.\nOttavio (male): Hanno aperto una discoteca qui vicino anche per i minori di 18 anni.\nMonica (female): Bello! Ma i miei genitori non mi fanno uscire di sera!\nOttavio (male): Questo posto è aperto di giorno, dalla mattina fino al pomeriggio.\nMonica (female): Fantastico! Allora mamma e papà mi daranno il permesso di andare. Non vedo l’ora!\nOttavio (male): Vengo con te!",
+        "duration_seconds": 59.99
+      },
+      {
+        "question_number": 8,
+        "clip_path": "clips/2022/q08.mp3",
+        "transcript": "Male: Claudia, ti piace il nuovo istruttore di nuoto?\nClaudia (female): Sì, è simpaticissimo. Scherza sempre.\nMale: Insomma a me non piace. È proprio antipatico, non sorride mai!\nClaudia (female): Cosa dici?\nMale: Sì, è troppo severo.\nClaudia (female): Non è vero, è così gentile.\nMale: Non è gentile anzi, dà un sacco di ordini e ci fa fare il doppio allenamento.\nClaudia (female): Valentino non capisci proprio niente, lui ci fa fare tanti esercizi in piscina perché è un bravo allenatore che vuole ottenere buoni risultati.\nMale: Beh, hai ragione è un insegnante capace.\nClaudia (female): Siamo tutti nuotatori più forti grazie a lui.\nMale: Vero!",
+        "duration_seconds": 61.23
+      },
+      {
+        "question_number": 9,
+        "clip_path": "clips/2022/q09.mp3",
+        "transcript": "Male: Buongiorno Luisa, grazie per essere venuta qui nel mio ufficio.\nLuisa (female): Buongiorno, Signor Preside.\nMale: Volevo parlarti.\nLuisa (female): Oh no, cosa è successo? Cosa ho fatto?\nMale: No, no…\nLuisa (female): Allora sono nei guai! Che cosa ho fatto questa volta?\nMale: Veramente…\nLuisa (female): Ho una punizione? Ho risposto male a un professore?\nMale: Ma no, Luisa, niente di tutto questo. Sei stata scelta come capitano della scuola per l’anno prossimo.\nLuisa (female): Capitano? Oh che bello! Ma è una notizia fantastica.\nMale: E infatti volevo dirtelo subito.\nLuisa (female): Grazie!\nMale: L’unica cosa però è che non puoi avere il piercing al naso\nLuisa (female): Ma come, il mio piercing? Ma non ci penso proprio!\nMale: E devi anche cambiare il colore dei capelli, non possono essere blu.\nLuisa (female): Mi piacciono i miei capelli blu. Adoro il mio look! Non è giusto!",
+        "duration_seconds": 76.65
+      },
+      {
+        "question_number": 10,
+        "clip_path": "clips/2022/q10.mp3",
+        "transcript": "Male: Jessica, la mamma mi ha detto che cerchi un lavoretto alla pizzeria qui vicino casa.\nJessica (female): Sì, papà tutti i miei amici lavorano là.\nMale: Ma tu studi veterinaria all’università quindi perché non cerchi in un negozio di animali?\nJessica (female): Non lo so.\nMale: O allo zoo così puoi fare esperienza nel settore dei tuoi studi.\nJessica (female): Forse hai ragione papà, ma io vorrei anche divertirmi al lavoro.\nMale: Devi essere seria quando lavori, non vai al lavoro per divertirti.\nJessica (female): Uffa, che stress. Sì, ma se lavoro insieme ai miei amici, sarà più bello.\nMale: Ok, ma se trovi un lavoro nel campo degli animali questo ti potrebbe dare un vantaggio quando finisci l’università.\nJessica (female): Ma io sto prendendo ottimi voti nel mio corso, sicuramente troverò lavoro facilmente quando finisco.\nMale: Mah… non lo so.\nJessica (female): Inoltre, voglio un lavoretto vicino casa. Non voglio viaggiare per ore per arrivare sul posto.\nMale: La pizzeria paga poco…\nJessica (female): Veramente la paga in pizzeria non è male e alla fine io sono un’adulta e decido io.",
+        "duration_seconds": 102.21
+      }
+    ]
+  },
+  "2023": {
+    "familiarisation": {
+      "clip_path": "clips/2023/familiarisation.mp3",
+      "transcript": "Alessia (female): Ciao, Nino. Cosa fai domani?\nNino (male): Ah, Alessia, vado al cinema. Vuoi venire?\nAlessia (female): Sì, bello! E poi andiamo a mangiare fuori?\nNino (male): Va bene.",
+      "duration_seconds": 15.6
+    },
+    "questions": [
+      {
+        "question_number": 1,
+        "clip_path": "clips/2023/q01.mp3",
+        "transcript": "Male: Studenti, l’esame di matematica comincia adesso.\nAnnalisa (female): Ma professore, non posso!\nMale: Perché no, Annalisa?\nAnnalisa (female): Non ho una penna . . .\nMale: Non hai una penna?! Ve l’ho detto tante volte, oggi c’è l’esame di matematica!\nAnnalisa (female): Mi dispiace prof.",
+        "duration_seconds": 22.6
+      },
+      {
+        "question_number": 2,
+        "clip_path": "clips/2023/q02.mp3",
+        "transcript": "Female: Pronto, Luca?\nLuca (male): Sì, mamma. Dimmi.\nFemale: Vai al supermercato a prendere il pane, per favore? Ho lasciato dei soldi in cucina.\nLuca (male): Ok, compro il pane. Posso prendere anche il gelato?\nFemale: Luca, no! Devi prendere anche un po’ di frutta e i soldi non bastano.\nLuca (male): Ok Mamma . . . che frutta vuoi? Mele, fragole, e arance. . .\nFemale: Prendi solo delle mele, niente altro. Abbiamo già fragole ed arance a casa.",
+        "duration_seconds": 42.27
+      },
+      {
+        "question_number": 3,
+        "clip_path": "clips/2023/q03.mp3",
+        "transcript": "Male: Ciao Samanta, che belle scarpe da ginnastica!\nSamanta (female): Ciao Marco, stupende, vero?\nMale: Dove le hai comprate? Le voglio anch’io.\nSamanta (female): Non lo so, me le ha regalate mio fratello.\nMale: Un regalo, perché?\nSamanta (female): Eeehhh, perché sono finalmente maggiorenne. Ieri ho festeggiato il mio diciottesimo.",
+        "duration_seconds": 28.88
+      },
+      {
+        "question_number": 4,
+        "clip_path": "clips/2023/q04.mp3",
+        "transcript": "Female: Ragazzi, come festeggerete la fine della vostra vita scolastica? Finita la maturità dove andrete? Alla solita Costa d’Oro come tutti gli altri studenti? Se rispondete “No”, perché non considerate una vacanza alternativa ed emozionante? La nostra agenzia turistica organizza vacanze in campeggio nel nord del Queensland in una foresta tropicale – perfetta per i giovani avventurosi che amano il campeggio e che vogliono esplorare la foresta. Guardate il nostro sito web.",
+        "duration_seconds": 56.4
+      },
+      {
+        "question_number": 5,
+        "clip_path": "clips/2023/q05.mp3",
+        "transcript": "Male: Oh dio, Matteo ha appena chiamato dicendo che non può lavorare domenica a pranzo!\nLorena (female): Oh no!\nMale: Un altro cameriere che non può lavorare questa domenica! Lorena, vuoi un turno in più?\nLorena (female): Vorrei aiutarti ma ho una lezione di yoga domenica pomeriggio.\nMale: Per favore, adesso non ho abbastanza personale per servire ai tavoli e abbiamo tante prenotazioni.\nLorena (female): Lo so, ma ho lavorato ogni domenica per due mesi! Non vedo l’ora di avere un giorno libero!\nMale: Sai che vieni pagata il doppio la domenica?\nLorena (female): Lo so e mi piacerebbe avere più soldi. . .\nMale: E allora?\nLorena (female): Non lo so, ma voglio davvero fare yoga questo weekend!",
+        "duration_seconds": 59.42
+      },
+      {
+        "question_number": 6,
+        "clip_path": "clips/2023/q06.mp3",
+        "transcript": "Female: Ciao Paolo!\nPaolo (male): Ehi, Sara! hai visto la partita di calcio ieri sera?\nFemale: No, com’era?\nPaolo (male): È stata fantastica! Sono andato allo stadio a vederla.\nFemale: Che bello!\nPaolo (male): La mia squadra ha vinto! Dal vivo era ancora più bello!\nFemale: A me non piace il calcio, preferisco gli sport con i motori.\nPaolo (male): Ah sì? Quali?\nFemale: Adoro le motociclette e le automobili. Sono la mia passione. Guardo tutte le gare!\nPaolo (male): Non lo sapevo! Ma tu guidi?\nFemale: Certo! Voglio diventare pilota di Formula Uno professionista.\nPaolo (male): Pilota?!\nFemale: Sì, sì. Mi alleno ogni settimana.\nPaolo (male): Incredibile!\nFemale: È difficile, ma adoro questi sport!",
+        "duration_seconds": 63.66
+      },
+      {
+        "question_number": 7,
+        "clip_path": "clips/2023/q07.mp3",
+        "transcript": "Adamo (male): Melissa, allora prenotiamo la vacanza? Pensavo a dieci giorni al mare.\nMelissa (female): Mmm . . . dieci giorni al mare . . . ma l’acqua è sempre fredda. Preferisco la campagna.\nAdamo (male): Dai, Melissa, l’acqua non è fredda in estate e lo sai quanto mi piace fare surf.\nMelissa (female): Il surf? Ma Adamo sei pazzo?\nAdamo (male): Ma che dici? Il surf è un’ottima maniera per stare in forma ed è divertente. Magari vediamo tanti pesci, le tartarughe, i delfini . . .\nMelissa (female): I delfini sì, ma se troviamo gli squali? Ho paura degli squali.\nAdamo (male): Basta, Melissa! Ma che squali? Siamo in Italia!\nMelissa (female): Adamo, la verità è che non ho mai fatto surf e non so neanche nuotare!\nAdamo (male): Va bene, allora la vacanza al mare la facciamo l’anno prossimo, quest’anno andiamo in albergo in campagna. L’importante è stare insieme.\nMelissa (female): Hai ragione, Adamo, mi piace passare il tempo con te. Forse se l’hotel ha una piscina mi puoi insegnare a nuotare.",
+        "duration_seconds": 80.74
+      },
+      {
+        "question_number": 8,
+        "clip_path": "clips/2023/q08.mp3",
+        "transcript": "Female: Giacomo, com’è andata la serata con Elisa?\nElisa (male): Un disastro!\nFemale: Oh no, perché?\nElisa (male): Ieri sera ho deciso di non mettermi gli occhiali.\nFemale: Ma tu non ci vedi senza occhiali!\nElisa (male): Lo so, ma volevo essere più bello per Elisa!\nFemale: Che è successo?\nElisa (male): Prima di tutto ho preso l’autobus sbagliato perché senza occhiali non ho visto il numero.\nFemale: Oh no! Hai chiamato Elisa?\nElisa (male): Non potevo perché quando sono uscito da casa ho preso per errore il telefono di mia madre.\nFemale: E poi?\nElisa (male): Sono entrato nel ristorante sbagliato perché non ho letto bene il nome.\nFemale: Che confusione!\nElisa (male): Mi sono seduto e ho aspettato Elisa, ma Elisa non è mai arrivata perché era in un altro ristorante.\nFemale: Povera Elisa!\nElisa (male): Mentre aspettavo ho ordinato un bicchiere di vino, ma era costosissimo!\nFemale: E Perché hai ordinato un vino costoso?\nElisa (male): Non riuscivo a leggere i prezzi sul menù!\nFemale: E Elisa?\nElisa (male): Elisa è arrabbiatissima. Mi ha detto che sono uno stupido e che a lei i ragazzi con gli occhiali piacciono tanto!",
+        "duration_seconds": 87.59
+      },
+      {
+        "question_number": 9,
+        "clip_path": "clips/2023/q09.mp3",
+        "transcript": "Male: Allora, che regaliamo a Olivia per il suo compleanno?\nFemale: Forse una bella maglietta o uno zaino nuovo? Ha bisogno di uno zaino per scuola. Che dici?\nMale: Uno zaino? Ma che noia! Io pensavo a qualcosa di più interessante!\nFemale: Per esempio?\nMale: Non so, due biglietti per il teatro o per un bel concerto! Può andare con un’amica o con suo fratello.\nFemale: Un concerto? Ma Olivia ha solo 16 anni.\nMale: 16 anni è l’età perfetta per andare a un concerto. Olivia adora la musica e il suo sogno è di andare a un concerto. Potremmo andare tutti e fare una bella serata in famiglia. Sono anni che non vado a un concerto.\nFemale: È vero, non è mai stata a un concerto e la musica rock è la sua passione.\nMale: Il suo gruppo preferito suona il mese prossimo.\nFemale: Le piacerebbe tanto vederli, ma i biglietti sono costosissimi.\nMale: Lo so, ma Olivia è così brava, si merita un bel regalo. Ha preso bei voti a scuola e aiuta sempre i suoi fratelli...\nFemale: Perfetto!",
+        "duration_seconds": 88.06
+      }
+    ]
+  },
+  "2024": {
+    "familiarisation": {
+      "clip_path": "clips/2024/familiarisation.mp3",
+      "transcript": "Alessia (female): Ciao, Nino. Cosa fai domani?\nNino (male): Ah, Alessia, vado al cinema. Vuoi venire?\nAlessia (female): Sì, bello! E poi andiamo a mangiare fuori?\nNino (male): Va bene.",
+      "duration_seconds": 13.49
+    },
+    "questions": [
+      {
+        "question_number": 1,
+        "clip_path": "clips/2024/q01.mp3",
+        "transcript": "Female: Cari studenti. Oggi la scuola finisce all’una e ci sono solo attività sportive.",
+        "duration_seconds": 9.54
+      },
+      {
+        "question_number": 2,
+        "clip_path": "clips/2024/q02.mp3",
+        "transcript": "Male: Ciao Anna. Sono Paolo. Vuoi venire a cena a casa mia domani sera? I miei genitori ti vogliono conoscere.",
+        "duration_seconds": 11.18
+      },
+      {
+        "question_number": 3,
+        "clip_path": "clips/2024/q03.mp3",
+        "transcript": "Giulio (male): Ciao Gemma, sono Giulio.\nGemma (female): Ciao Giulio, come stai? Ti piace la tua vacanza in Italia?\nGiulio (male): Sì, tutto bene, mi piace viaggiare in Italia, però voglio tornare a casa prima!\nGemma (female): Davvero? E perché?\nGiulio (male): Voglio tornare a casa perché la mia mamma non sta bene e io sono preoccupato per lei, però so che andrà tutto bene.\nGemma (female): Ah mi dispiace.\nGiulio (male): E poi… L’Italia è carissima. Tutto costa molto.\nGemma (female): Giulio, ho capito, allora ci vediamo quando torni.",
+        "duration_seconds": 40.98
+      },
+      {
+        "question_number": 4,
+        "clip_path": "clips/2024/q04.mp3",
+        "transcript": "Ilaria (female): Ciao Papà, ho una bella notizia. Mi hanno offerto il lavoro all’agenzia di viaggi.\nPapà (male): Ah brava Ilaria! Sei contenta?\nIlaria (female): Sì Papà sono felicissima. Finalmente incontrerò persone nuove e sarà una bella esperienza.\nPapà (male): Tu Ilaria? Incontrare nuova gente? Parlare con persone nuove? Nuovi amici? Veramente?\nIlaria (female): Sì… è vero Papà. Sono timida, non parlo molto. Non sarà facile all’inizio… Sono un po’ preoccupata però allo stesso tempo non vedo l’ora di iniziare una nuova avventura.\nPapà (male): Mmmm… ok… e l’ufficio? È lontano da casa?\nIlaria (female): No, Papà l’ufficio è vicinissimo… solo dieci minuti a piedi. Non devo prendere l’autobus. È fantastico!",
+        "duration_seconds": 63.47
+      },
+      {
+        "question_number": 5,
+        "clip_path": "clips/2024/q05.mp3",
+        "transcript": "Male: Buon pomeriggio, ragazzi e ragazze dell’anno 12! CONGRATULAZIONI!! Per festeggiare la fine degli esami di maturità, il preside invita voi e le vostre famiglie ad un picnic. Il picnic sarà sabato 11 dicembre dalle 12 alle 3. Venite al parco di fronte alla scuola! Ci saranno giochi e tanta musica. Dovete solo mandare un’email alla scuola per confermare la vostra presenza.",
+        "duration_seconds": 39.52
+      },
+      {
+        "question_number": 6,
+        "clip_path": "clips/2024/q06.mp3",
+        "transcript": "Mamma (female): Matteo, hai comprato un regalo per tua cugina Alessia per il suo compleanno?\nMatteo (male): No, Mamma, non ho ancora deciso cosa comprare ad Alessia per il suo compleanno.\nMamma (female): Matteo, perché non regali ad Alessia un libro? Un bel romanzo o un libro di avventura? Leggere è il suo passatempo, no?\nMatteo (male): Mamma, ma oggi nessuno più legge libri. Ad Alessia non piace leggere. Lei passa il tempo sul cellulare – gioca ai videogiochi. Non penso che un libro sia un regalo veramente adatto per una ragazza giovane. Un libro è un regalo inutile.\nMamma (female): Allora, Matteo, compra ad Alessia un biglietto per il cinema!\nMatteo (male): Il cinema? Ma che dici, Mamma? Nessuno più va al cinema! Noi ragazzi guardiamo i film online.\nMamma (female): Allora, un cellulare nuovo?\nMatteo (male): Un cellulare? Un telefonino? Ma… Sei pazza? Costa troppo!",
+        "duration_seconds": 67.91
+      },
+      {
+        "question_number": 7,
+        "clip_path": "clips/2024/q07.mp3",
+        "transcript": "Female: Buongiorno, studenti! Vorreste fare un’esperienza all’estero dopo la scuola? Vi piacerebbe abitare in un nuovo paese per qualche mese? Oggi voglio parlarvi dell’anno sabbatico. Tutti voi dovete farlo! Non ve ne pentirete! L’anno scorso io ho deciso di abitare in Cina e i vantaggi sono stati numerosi. Per me trascorrere un anno sabbatico è stata la migliore decisione della mia vita perché in Cina ho migliorato il mio cinese e adesso parlo benissimo questa lingua. Lì ho anche imparato le arti marziali che adesso adoro. Studenti! Prendete un anno sabbatico alla fine della scuola! Ve lo consiglio molto. Dopo questo viaggio io mi sento più sicura di me perché adesso posso comunicare con la gente di tutte le età. Studenti, prendete un anno sabbatico, ve lo raccomando! Se amate cucinare, potreste fare dei corsi di cucina tradizionale del posto. Io l’ho fatto, ho imparato a cucinare cibo cinese e ne sono contentissima! Ogni anno ci sono delle opportunità per andare in paesi diversi. Non perdete questa occasione! Ne vale veramente la pena.",
+        "duration_seconds": 93.48
+      },
+      {
+        "question_number": 8,
+        "clip_path": "clips/2024/q08.mp3",
+        "transcript": "Male: Ciao Isabella. Grazie per essere venuta a questo colloquio. Cerco una ragazza che possa occuparsi dei nostri animali domestici durante le vacanze di Natale per tre settimane. Allora, ti faccio qualche domanda. Studi o lavori?\nIsabella (female): Studio a tempo pieno, per diventare un veterinario. Sono specializzata in animali domestici come gatti, cani, conigli, uccelli.\nMale: Perfetto. Noi abbiamo due cani e tre gatti. Hai esperienza in questo campo?\nIsabella (female): Sì, certo. Ho molta esperienza con gli animali. Sono cresciuta con tanti animali. I miei genitori hanno sempre avuto cani e gatti in casa.\nMale: Benissimo e… hai fatto questo tipo di lavoro per altre famiglie? E quando hai iniziato?\nIsabella (female): Allora, da bambina, portavo al parco il cane del vicino di casa ogni pomeriggio dopo scuola, e adesso, da quando frequento l’università, lo faccio durante le vacanze. Inoltre, ogni fine settimana, se le persone del mio quartiere ne hanno bisogno, io sono disponibile a tenere i loro animali domestici nel mio giardino a un costo basso. Ho anche un sito web per promuovere questo mio lavoretto che infatti è una passione per me.\nMale: Benissimo allora, hai addirittura un sito web? Quindi sei proprio appassionata degli animali!\nIsabella (female): Sì sì li adoro!\nMale: Sei libera a dicembre durante le vacanze di Natale?\nIsabella (female): Sì sono liberissima!\nMale: Grazie, Isabella, ti farò sapere al più presto.",
+        "duration_seconds": 116.75
+      },
+      {
+        "question_number": 9,
+        "clip_path": "clips/2024/q09.mp3",
+        "transcript": "Alberto (male): Ehi Laura, vorrei comprare una macchina.\nLaura (female): Una macchina? Perché?\nAlberto (male): Posso usare la macchina per andare all’università. Pensa che libertà! Non sarò dipendente dai mezzi pubblici.\nLaura (female): Mmmmm… Una macchina? La macchina, la devi parcheggiare e qui in centro, vicino all’università un parcheggio costa tantissimo.\nAlberto (male): Ma Laura, io ho sempre voluto una macchina.\nLaura (female): Alberto, il parcheggio costa molto e c’è sempre traffico. Comprare una macchina non è proprio una buona idea!\nAlberto (male): Ma Laura, con una macchina io sarò autonomo.\nLaura (female): Alberto, non comprare una macchina! Perché invece non compri una bicicletta?\nAlberto (male): Una bicicletta?\nLaura (female): Sì, compra una bicicletta. La zona dove tu abiti è ben collegata e tu ci metti solo 20 minuti ad arrivare all’università da casa tua. Il parcheggio delle biciclette è gratis.\nAlberto (male): Sì è vero, ma a me la bicicletta non mi piace proprio.\nLaura (female): Pensa che se vai all’università in bicicletta ogni giorno potresti mantenerti in forma.\nAlberto (male): Laura, io vado in palestra ogni giorno, non ho bisogno di fare altro sport per mantenermi in forma.",
+        "duration_seconds": 87.08
+      }
+    ]
+  },
+  "2025": {
+    "familiarisation": {
+      "clip_path": "clips/2025/familiarisation.mp3",
+      "transcript": "Alessia (female): Ciao, Nino. Cosa fai domani?\nNino (male): Ah, Alessia, vado al cinema. Vuoi venire?\nAlessia (female): Sì, bello! E poi andiamo a mangiare fuori?\nNino (male): Va bene.",
+      "duration_seconds": 14.82
+    },
+    "questions": [
+      {
+        "question_number": 1,
+        "clip_path": "clips/2025/q01.mp3",
+        "transcript": "Marco (male): Ciao Angela, perché sei qui al parco?\nAngela (female): Marco, ho perso Coco.\nMarco (male): Oh no! Il tuo cane?\nAngela (female): No, Coco è il mio gatto! È piccolo e bianco.\nMarco (male): Ah ok… Tutto bianco?\nAngela (female): No, Coco ha le orecchie nere.",
+        "duration_seconds": 24.35
+      },
+      {
+        "question_number": 2,
+        "clip_path": "clips/2025/q02.mp3",
+        "transcript": "Male: Ciao Isabella, mi dispiace oggi non vengo in biblioteca perché fa caldo e splende il sole. Dai, vieni con me in spiaggia! Possiamo studiare domani.",
+        "duration_seconds": 13.73
+      },
+      {
+        "question_number": 3,
+        "clip_path": "clips/2025/q03.mp3",
+        "transcript": "Paolo (male): Ah Mamma sei finalmente tornata dal lavoro!\nFemale: Sì Paolo, sono stanchissima. Mmmmm… che buon odore!\nPaolo (male): Sì, ti ho preparato la cena.\nFemale: Paolo, grazie!\nPaolo (male): Ed è il tuo piatto preferito.\nFemale: Ma, che bella sorpresa!",
+        "duration_seconds": 21.99
+      },
+      {
+        "question_number": 4,
+        "clip_path": "clips/2025/q04.mp3",
+        "transcript": "Female: Scusi, devo comprare della frutta e verdura fresca, dov’è un fruttivendolo qui in zona?\nMale: Veramente non c’è. Ma il supermercato è qui vicino.\nFemale: Perfetto! Perché ho bisogno anche dello zucchero per fare una torta.\nMale: Il supermercato è in Via Manzoni accanto al cinema.\nFemale: Ah bene!\nMale: Il supermercato è all’angolo di fronte al parco.",
+        "duration_seconds": 38.09
+      },
+      {
+        "question_number": 5,
+        "clip_path": "clips/2025/q05.mp3",
+        "transcript": "Susanna (female): Mamma mia, Nicolò! Che disastro!\nNicolò (male): Susanna, non vedi che sto facendo le statue?\nSusanna (female): Le statue? Che statue? Di terracotta? Ma sei bravissimo, sei un vero artista.\nNicolò (male): Grazie.\nSusanna (female): Farai carriera e diventerai ricco.\nNicolò (male): Venderò le mie statue, ma darò i soldi in beneficenza, farò una donazione.\nSusanna (female): Donerai tutti i soldi? Sei un angelo, che bel gesto.",
+        "duration_seconds": 39.43
+      },
+      {
+        "question_number": 6,
+        "clip_path": "clips/2025/q06.mp3",
+        "transcript": "Female: Salve ragazzi e ragazze dell’anno dodici. Avete appena finito la maturità e siete stanchissimi fisicamente e mentalmente dopo tutti questi anni di studi? Venite a nutrire il vostro corpo e la vostra mente a “Anima Nuova”. Questo centro benessere offre corsi di meditazione quindi imparerete la filosofia e i principi della meditazione per poter gestire lo stress. Inoltre, “Anima Nuova” dà lezioni di cucina vegetariana dove imparerete a cucinare piatti vegetariani nutrienti.",
+        "duration_seconds": 54.02
+      },
+      {
+        "question_number": 7,
+        "clip_path": "clips/2025/q07.mp3",
+        "transcript": "Male: Attenzione viaggiatori! Benvenuti all’aeroporto di Roma. Ecco gli annunci di oggi domenica 23 marzo. Il volo ARM 827 per Napoli è in ritardo. La causa di questo ritardo è l’arrivo della squadra nazionale di pallavolo. Purtroppo, i tifosi hanno creato un grande problema. Infatti, tante persone che amano questa squadra hanno bloccato l’entrata dell’aeroporto.",
+        "duration_seconds": 43.02
+      },
+      {
+        "question_number": 8,
+        "clip_path": "clips/2025/q08.mp3",
+        "transcript": "Female: Allora, Salvatore, vai al concerto allo stadio stasera?\nSalvatore (male): Veramente non mi sento bene, ho il raffreddore.\nFemale: Ma ci devi andare! Ci sarà Rosanna al concerto, Salvatore! Tu sei innamorato perso di lei…\nSalvatore (male): Sì, lo so, adoro Rosanna. Però lo stadio è lontano da casa mia.\nFemale: Ma dai, prendi un taxi.\nSalvatore (male): Un taxi? Sei pazza? Il taxi costa tantissimo soprattutto il weekend.\nFemale: Vabbè, peccato.\nSalvatore (male): Poi è un concerto di musica rock, e lo sai che io amo solo la musica jazz.\nFemale: Oh, tu e la tua musica jazz, che fissazione!",
+        "duration_seconds": 57.2
+      },
+      {
+        "question_number": 9,
+        "clip_path": "clips/2025/q09.mp3",
+        "transcript": "Claudio (male): Ma quanti vestiti bellissimi in questo negozio, Sandra. Provati il vestito rosa, quello lungo.\nSandra (female): Oh è stupendo! Ma guarda quanto costa! Quattrocento dollari!\nClaudio (male): Mamma mia! È ridicolo perché lo indosserai solo un paio di ore alla festa di fine anno scolastico e mai più!\nSandra (female): Lo so, Claudio, ma come faccio? È la festa di fine anno e io voglio essere bella.\nClaudio (male): Ma scusa Sandra, tu e la tua amica Lisa portate la stessa taglia e vi piacciono anche gli stessi vestiti.\nSandra (female): Sì, è vero! Io e Lisa siamo tutte e due alte e magre e ci piace il color rosa, proprio come questo vestito rosa e lungo.\nClaudio (male): E andate a scuole diverse, vero?\nSandra (female): Esatto! Non frequentiamo la stessa scuola.\nClaudio (male): Ma allora ho trovato una soluzione! Tu indosserai il vestito alla tua festa di fine anno venerdì sera, poi lo lavi e Lisa lo indosserà alla sua festa la settimana dopo.\nSandra (female): Che idea geniale, Claudio!\nClaudio (male): Così vi costerà solo la metà. Figo no? Vai a provarlo. Faccio una foto per Lisa.",
+        "duration_seconds": 100.97
+      },
+      {
+        "question_number": 10,
+        "clip_path": "clips/2025/q10.mp3",
+        "transcript": "Male: Manuela, ma l’anno prossimo vai in Germania con la scuola?\nManuela (female): No Papà, non vado più in gita in Germania perché ho deciso di non studiare più il tedesco.\nMale: Ma non è la tua materia preferita?\nManuela (female): Non voglio più studiare il tedesco perché il mio nuovo professore è antipatico e severo.\nMale: Studi questa lingua da tanti anni e sei bravissima, Manuela.\nManuela (female): Veramente ho preso un brutto voto quest’anno.\nMale: Beh, forse dovresti studiare di più, sei diventata pigra a scuola. Non ti concentri abbastanza. Fai i compiti, studia per gli esami e vedi che i tuoi voti miglioreranno. Impegnati!\nManuela (female): No, ho deciso. Basta! Niente più tedesco.\nMale: È un peccato non andare in gita in Germania, era il tuo sogno visitare Berlino.\nManuela (female): Hai ragione Papà, ma posso andarci da sola quando finisco la scuola.",
+        "duration_seconds": 67.84
+      }
+    ]
+  }
+}

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beginners Listening Practice</title>
+<link rel="stylesheet" href="/fonts.css">
+<link rel="stylesheet" href="/listening.css">
+<!-- this page does not link styles.css: that sheet is written for the exam
+     page's ids and its element rules would fight the layout below -->
+</head>
+<body>
+<div class="wrap">
+  <nav id="siteNav">
+    <a href="/">Speaking</a>
+    <a href="/listening" class="current">Listening</a>
+  </nav>
+
+  <header>
+    <h1 id="pageTitle">Italian Beginners Listening Practice</h1>
+    <p>Personal study use only.</p>
+  </header>
+
+  <div class="controls">
+    <label>Language
+      <select id="language">
+        <option value="italian">Italian</option>
+        <option value="german">German</option>
+      </select>
+    </label>
+    <label>Year
+      <select id="year"></select>
+    </label>
+    <span class="hint"><kbd>Space</kbd> play/pause &nbsp; <kbd>R</kbd> replay &nbsp; <kbd>&larr;</kbd><kbd>&rarr;</kbd> seek</span>
+  </div>
+
+  <div id="out"><p class="msg">Loading&hellip;</p></div>
+
+  <div id="translateBox">
+    <div id="translateHead">
+      <h2 id="translateTitle">Quick translate</h2>
+      <button id="translateDirection" type="button">IT &rarr; EN</button>
+    </div>
+
+    <textarea id="translateInput" rows="4" autocomplete="off" maxlength="1000"
+              placeholder="type a sentence to translate&#10;&#10;Enter to translate, Shift+Enter for a new line"></textarea>
+    <div id="translateCount" aria-live="polite"></div>
+
+    <button id="translateGo" type="button">Translate</button>
+    <div id="translateResult" hidden></div>
+  </div>
+  <!-- the same markup as index.html, driven by the same translate.js. Sitting
+       in the column rather than pinned, because a transcript you are reading
+       is right above it -->
+</div>
+
+<audio id="audio" preload="none"></audio>
+
+<script src="/translate.js"></script>
+<script src="/listening.js"></script>
+</body>
+</html>

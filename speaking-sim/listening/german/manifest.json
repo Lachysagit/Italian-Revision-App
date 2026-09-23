@@ -1,0 +1,1068 @@
+{
+  "2015": {
+    "familiarisation": {
+      "clip_path": "clips/2015/familiarisation.mp3",
+      "transcript": "Female: Peter, du weißt doch, dass Onkel Hans am Wochenende kommt. Er muss in deinem Zimmer schlafen – und du im Wohnzimmer auf dem Sofa.\nPeter (male): Aber Mutti, warum muss ich immer auf das alte Sofa? Kann Onkel Hans nicht in Karins Zimmer schlafen?\nFemale: Schon – aber dein Computer ist doch kaputt, und Onkel Hans hat versprochen, ihn zu reparieren. Und das kann er besser in deinem Zimmer.",
+      "duration_seconds": 42.5
+    },
+    "questions": [
+      {
+        "question_number": 1,
+        "clip_path": "clips/2015/q01.mp3",
+        "transcript": "Paul (male): Ich bin so hungrig, Mutti!\nMutti (female): Also, Paul, ich esse nur Obst mit Yoghurt zum Frühstück, aber vielleicht möchtest du ein Ei oder ein Butterbrot?\nPaul (male): Ja, ich bestelle zwei Eier und ein Schinkenbrot.",
+        "duration_seconds": 20.64,
+        "marks": 2,
+        "stem": "What does Paul order for breakfast?"
+      },
+      {
+        "question_number": 2,
+        "clip_path": "clips/2015/q02.mp3",
+        "transcript": "Male: Susi, was ist denn los?\nSusi (female): Meine Schwester nervt mich! Sie nimmt immer meine Sachen ohne zu fragen. Heute wollte ich meinen neuen roten Pulli tragen, aber er ist schmutzig.",
+        "duration_seconds": 18.5,
+        "marks": 2,
+        "stem": "Why is Susi complaining about her sister?"
+      },
+      {
+        "question_number": 3,
+        "clip_path": "clips/2015/q03.mp3",
+        "transcript": "Female: Wir müssen einen Sport für dieses Semester wählen. Ich bin nicht sicher, ob ich einen Wassersport oder Leichtathletik nehmen soll.\nMale: Ich möchte Fussball spielen. Warum machst du nicht mit?\nFemale: Du willst immer nur mit einem Ball spielen. Aber du bist doch so ein guter Schwimmer. Vielleicht sollen wir beide Wasserball spielen?\nMale: Ja, gut. Dann haben wir beides in einem, einen Wassersport und ein Ballspiel.",
+        "duration_seconds": 38.73,
+        "marks": 1,
+        "stem": "Which sport do the friends choose?",
+        "options": [
+          "Soccer",
+          "Athletics",
+          "Swimming",
+          "Water polo"
+        ],
+        "image_path": "clips/2015/q03.png"
+      },
+      {
+        "question_number": 4,
+        "clip_path": "clips/2015/q04.mp3",
+        "transcript": "Female: Hallo Mutti. Wir haben neue Pläne. Da es jetzt regnet, schwimmen wir nicht mehr am Strand. Jetzt gehen wir ins Kino. Der Film ist erst um Viertel nach fünf zu Ende. Jetzt musst du mich auch nicht mehr abholen. Wir fahren alle zusammen mit dem Bus nach Hause. Bis später!",
+        "duration_seconds": 28.73,
+        "marks": 2,
+        "stem": "Why has the girl left the telephone message?"
+      },
+      {
+        "question_number": 5,
+        "clip_path": "clips/2015/q05.mp3",
+        "transcript": "Male: Der Erdkundelehrer ist heute krank. Die Klasse muss in die Bibliothek gehen, um dort mit Computern zu arbeiten. Das Thema ist: Wetter in Australien. Ihr sollt Informationen über dieses Thema finden.",
+        "duration_seconds": 20.36,
+        "marks": 3,
+        "stem": "What is the purpose of the announcement?"
+      },
+      {
+        "question_number": 6,
+        "clip_path": "clips/2015/q06.mp3",
+        "transcript": "Karl (male): Morgen muss ich eine lange Reise machen und ich freue mich gar nicht darauf.\nFemale: Warum sagst du das, Karl?\nKarl (male): Ich finde es ganz langweilig mit dem Bus zu fahren. Die Sitze sind immer unbequem und es dauert so lange.\nFemale: Ja, das stimmt! Aber kannst du nicht die ganze Reise lang schlafen?\nKarl (male): Im Sitzen kann ich gar nicht schlafen.",
+        "duration_seconds": 29.9,
+        "marks": 3,
+        "stem": "What concerns Karl?"
+      },
+      {
+        "question_number": 7,
+        "clip_path": "clips/2015/q07.mp3",
+        "transcript": "Female: Guten Morgen, Herr Müller. Hier ist Ihre Bordkarte. Ihre Flugnummer ist ZH55. Also heute…heute haben wir den 27. September 2015, und Sie fliegen von Hamburg nach Berlin.\nMale: Um wieviel Uhr muss ich an Bord gehen?\nFemale: Abflugszeit ist 11 Uhr, aber man muss um halb elf am Gate 9 sein, um an Bord zu gehen. Ihre Platznummer ist 12A.",
+        "duration_seconds": 44.41,
+        "marks": 3,
+        "stem": "Complete the table by filling in the boarding information in ENGLISH.",
+        "image_path": "clips/2015/q07.png"
+      },
+      {
+        "question_number": 8,
+        "clip_path": "clips/2015/q08.mp3",
+        "transcript": "Male: Hast du gehört? Katrins Online Kosmetikgeschäft ist ein großer Erfolg.\nFemale: Das ist doch erstaunlich! In der Schule hat sie immer schlechte Noten bekommen. Katrin hat selten Hausaufgaben gemacht und hat lieber ferngesehen als ein Schulbuch zu lesen.\nMale: Und dazu hatte sie nie einen festen Job. Alle zwei Monate war Katrin wieder arbeitslos.\nFemale: Unglaublich! Sie hat sich doch nie für neue Klamotten interessiert. Sie wollte nie die neuesten Handys. Sie war gar nicht materialistisch. Und jetzt hat sie ein Online Kosmetikgeschäft und denkt nur ans Geld!",
+        "duration_seconds": 54.06,
+        "marks": 4,
+        "stem": "Why are the two speakers surprised by Katrin’s success?"
+      },
+      {
+        "question_number": 9,
+        "clip_path": "clips/2015/q09.mp3",
+        "transcript": "Female: Also Peter, was willst du nächstes Jahr nach dem Abitur machen?\nMale: Also Mutti, ich plane, ein Jahr frei zu machen und möchte es in Deutschland verbringen, um meine Deutschkenntnisse zu verbessern. Um Deutschlehrer zu werden, muss ich fließend Deutsch sprechen können.\nFemale: Wie kannst du dir das leisten? Hast du genug Geld gespart?\nMale: Du weisst doch, dass meine Kusine Eva in München lebt und sie hat mich eingeladen bei ihr zu wohnen. Sie arbeitet in einem Café und es gibt dort immer Jobs als Kellner.\nFemale: Aber, was wirst du machen, wenn du nicht gut mit Eva auskommst?\nMale: Ich möchte nicht zu lange bei ihr bleiben, sonst gehen wir uns vielleicht auf die Nerven. Wenn ich ein bisschen Geld verdient habe, kann ich dann mein eigenes Zimmer mieten.\nFemale: Ja, das klingt doch ganz gut. Aber ich muss noch weiter darüber nachdenken.",
+        "duration_seconds": 76.56,
+        "marks": 5,
+        "stem": "How does Peter address his mother’s concerns?"
+      },
+      {
+        "question_number": 10,
+        "clip_path": "clips/2015/q10.mp3",
+        "transcript": "Male: Guten Morgen, Schüler und Schülerinnen. Heute stelle ich euch die neue Schülerin Lena Streimer vor. Sie ist schon seit einem Monat hier.\nFemale: Guten Morgen.\nMale: Lena kam von einem ganz kleinen Dorf auf dem Land zu uns. Lena, warum bist du zu dieser Schule gekommen?\nFemale: Ich habe gehört, dass es in Schulen in der Großstadt viele Möglichkeiten gibt. Ich sehe alles in Köln „mit großen Augen“ an. Es ist alles ganz anders hier. Alles ist so nah.\nMale: Was findest du noch anders bei uns?\nFemale: In meiner alten Schule waren nur 12 Schüler in der Klasse. Deshalb hatte ich zuerst ein wenig Angst. Alles kam mir total fremd vor. So viele Schüler, so viele Lehrer, so viele Klassenzimmer, so viele Fächer!\nMale: War das schwierig für dich?\nFemale: Zuerst doch. Aber alle waren so nett zu mir, dass ich mich bald zu Hause fühlte.\nMale: Wie findest du die Verkehrsmittel hier in Köln? Zu kompliziert?\nFemale: Nein. Kein Problem. Jetzt dauert es nur zehn Minuten mit dem Bus zur Schule. Die Dorfschule war eine Stunde von unserem Bauernhof entfernt. Ich musste jeden Tag, sogar bei schlechtem Wetter, mit dem Fahrrad in die Schule fahren. © 2015 Board of Studies, Teaching and Educational Standards NSW",
+        "duration_seconds": 109.76,
+        "marks": 5,
+        "stem": "How does Lena feel about her move to Cologne? Justify your answer\nwith reference to the text."
+      }
+    ]
+  },
+  "2016": {
+    "familiarisation": {
+      "clip_path": "clips/2016/familiarisation.mp3",
+      "transcript": "Female: Peter, du weißt doch, dass Onkel Hans am Wochenende kommt. Er muss in deinem Zimmer schlafen – und du im Wohnzimmer auf dem Sofa.\nPeter (male): Aber Mutti, warum muss ich immer auf das alte Sofa? Kann Onkel Hans nicht in Karins Zimmer schlafen?\nFemale: Schon – aber dein Computer ist doch kaputt, und Onkel Hans hat versprochen, ihn zu reparieren. Und das kann er besser in deinem Zimmer.",
+      "duration_seconds": 52.44
+    },
+    "questions": [
+      {
+        "question_number": 1,
+        "clip_path": "clips/2016/q01.mp3",
+        "transcript": "Male: Peter Schneider hier.\nFemale: Hallo Peter. Was gibt‘s?\nMale: Hast du Lust am Samstag mit mir ins Konzert zu gehen?\nFemale: Ja, Klasse! Wann und wo treffen wir uns?\nMale: Um halb acht vor dem Bahnhof.\nFemale: Prima! Bis dann. Um halb acht vor dem Bahnhof.",
+        "duration_seconds": 25.35,
+        "marks": 2,
+        "stem": "When and where are the two friends meeting on Saturday?"
+      },
+      {
+        "question_number": 2,
+        "clip_path": "clips/2016/q02.mp3",
+        "transcript": "Female: Liebe Schüler und Schülerinnen. Heute gibt es in der Kantine: Schnitzel, Frankfurter, Kartoffelsalat und Nudelsalat. Das Schnitzel ist besonders günstig, weil es nur 1,50 Euro kostet – alle anderen Speisen kosten 3,00 Euro.",
+        "duration_seconds": 28.51,
+        "marks": 1,
+        "stem": "What is particularly good value today?",
+        "options": [
+          "Schnitzel",
+          "Frankfurts",
+          "Pasta salad",
+          "Potato salad"
+        ],
+        "image_path": "clips/2016/q02.png"
+      },
+      {
+        "question_number": 3,
+        "clip_path": "clips/2016/q03.mp3",
+        "transcript": "Hier ist der Verkehrsfunk Hamburg. Vor einer Stunde ist ein grosser Baum in der Seestraße in der Stadtmitte auf ein Auto gefallen. Jetzt ist die Straße total blockiert, aber heute Nachmittag können Sie wieder zur Stadtmitte fahren.",
+        "duration_seconds": 22.63,
+        "marks": 2,
+        "stem": "What is the purpose of this announcement?"
+      },
+      {
+        "question_number": 4,
+        "clip_path": "clips/2016/q04.mp3",
+        "transcript": "Mutti, Vati, ihr wolltet mich doch morgen hier in Berlin besuchen, aber ich habe im Radio gehört, dass das Wetter am Wochenende wirklich schlecht sein wird. Es ist keine gute Idee bei solch schlechtem Wetter mit dem Auto zu fahren. Wenn ihr unbedingt kommen wollt, fahrt bitte mit der Bahn, oder wartet bis zum nächsten Wochenende und fahrt mit dem Auto.",
+        "duration_seconds": 39.83,
+        "marks": 3,
+        "stem": "Summarise the suggested changes of plan due to the weather."
+      },
+      {
+        "question_number": 5,
+        "clip_path": "clips/2016/q05.mp3",
+        "transcript": "Liebe Hörerinnen und Hörer. Am kommenden Sonntag gibt es wieder unseren Halb-Marathon durch die Innenstadt von Frankfurt. Wir laufen für das Kinderkrankenhaus in Frankfurt. Mit den Geldspenden werden neue Laptops und Computerspiele für die kleinen Patienten gekauft. Der Lauf ist für Alt und Jung. Die minimum Strecke ist nur ein Kilometer. Kommt und macht mit!",
+        "duration_seconds": 41.61,
+        "marks": 4,
+        "stem": "Why might people in Frankfurt be interested in this event?"
+      },
+      {
+        "question_number": 6,
+        "clip_path": "clips/2016/q06.mp3",
+        "transcript": "Rolf (male): Guten Tag, Frau Meyer. Warum haben Sie mir so eine schlechte Note in meiner französisch Arbeit gegeben? Ich bin immer in französisch der Beste in der Klasse gewesen. Ich bin sehr enttäuscht.\nFemale: Rolf, du hast einen sehr guten Aufsatz geschrieben und dafür hättest du eine sehr gute Note bekommen, weil deine Grammatik und Vokabeln ausgezeichnet waren. Aber das Thema war: „mein ideales Haustier“ und du hast über „mein ideales Haus“ geschrieben.\nRolf (male): Oh nein, wie schrecklich! Da habe ich die Frage nicht richtig gelesen. Wie erkläre ich das meinen Eltern? Sie werden sehr enttäuscht sein. Entschuldigung, Frau Meyer. Das war wirklich mein Fehler.",
+        "duration_seconds": 70.32,
+        "marks": 4,
+        "stem": "Explain the changes in Rolf’s feelings during the course of the\nconversation."
+      },
+      {
+        "question_number": 7,
+        "clip_path": "clips/2016/q07.mp3",
+        "transcript": "Margaret (female): Also Daniel, ich verstehe nicht, warum wir diesen Film gesehen haben. Die Schauspieler haben mindestens vierzig Jahre zu alt für ihre Rollen ausgesehen. Die ganze Liebesgeschichte hat mir gar nicht gut gefallen und ich bin fast eingeschlafen. Ich kann niemandem diesen Film empfehlen.\nMale: Du bist immer viel zu kritisch, Margaret. Ich habe den Film so spannend gefunden. Die Schauspieler sahen aus wie Teenager. Und ich habe die Liebesgeschichte sehr romantisch gefunden.\nMargaret (female): Haben wir denselben Film gesehen?",
+        "duration_seconds": 56.63,
+        "marks": 4,
+        "stem": "How do the speakers’ opinions differ?"
+      },
+      {
+        "question_number": 8,
+        "clip_path": "clips/2016/q08.mp3",
+        "transcript": "Susanne (female): Guten Morgen Herr Schmidt. Kann ich mit Ihnen über meine Probleme sprechen?\nMale: Natürlich, Susanne. Wie kann ich dir helfen?\nSusanne (female): Ich möchte eigentlich Krankenschwester werden, aber meine Noten in Biologie sind nicht so gut. Jetzt will mein Vater, dass ich nächstes Jahr in seinem Büro arbeite, nachdem ich mit der Schule fertig bin. Aber das will ich überhaupt nicht. Ich wollte immer den Kranken helfen.\nMale: Du kannst nächstes Jahr einen Abendkurs in Biologie machen. Wenn du am Ende eine bessere Note in Bio bekommst, kannst du immer noch Krankenschwester werden.\nSusanne (female): Ich habe Angst, meinen Eltern das zu erklären. Sie werden bestimmt wütend sein. Und wie werde ich für diesen Kurs selbst bezahlen?\nMale: Vielleicht kannst du ein Jahr lang für deinen Vater arbeiten. Mit dem Geld kannst du dann deinen Abendkurs bezahlen.\nSusanne (female): Vielen Dank, Herr Schmidt. Das sind sehr gute Ideen.",
+        "duration_seconds": 93.9,
+        "marks": 5,
+        "stem": "To what extent is Mr Schmidt’s advice helpful to Susanne? Support\nyour answer with reference to the text."
+      },
+      {
+        "question_number": 9,
+        "clip_path": "clips/2016/q09.mp3",
+        "transcript": "Luisa (female): Vati, darf ich jetzt Auto fahren lernen? Schließlich war ja gestern mein sechzehnter Geburtstag.\nVati (male): Oh nein, Luisa, ich finde, du bist noch viel zu jung, um den Führerschein zu machen. Und ich bin zu nervös, um mit dir zu üben.\nLuisa (female): Aber alle meine Klassenkameraden dürfen schon lernen. Ich bin die Einzige, die noch nicht Auto fahren lernt. Ich kann doch einen Kurs mit einer Fahrschule machen.\nVati (male): Du weißt doch, dass die Fahrschule sehr teuer ist. Ich kann das nicht bezahlen.\nLuisa (female): Vati, bei meinem Teilzeitjob verdiene ich genug Geld, um die Kosten der Fahrschule zu bezahlen. Und dann kann ich ja mit Onkel Norman fahren üben, er ist gar nicht nervös, sondern sehr geduldig.\nVati (male): Aber du sollst dich auf die Schule konzentrieren, in sechs Monaten machst du deine Abschlussprüfung und das ist viel wichtiger als Auto fahren zu lernen.\nLuisa (female): Vati, du hast noch nie Angst um meine Noten gehabt. Sie sind immer sehr gut.\nVati (male): Reden wir doch mit Mutti darüber, wenn sie aus Deutschland zurückkommt. © 2016 Board of Studies, Teaching and Educational Standards NSW",
+        "duration_seconds": 113.46,
+        "marks": 5,
+        "stem": "How does Luisa try to convince her father? Support your answer with\nreference to the text."
+      }
+    ]
+  },
+  "2017": {
+    "familiarisation": {
+      "clip_path": "clips/2017/familiarisation.mp3",
+      "transcript": "Female: Peter, du weißt doch, dass Onkel Hans am Wochenende kommt. Er muss in deinem Zimmer schlafen – und du im Wohnzimmer auf dem Sofa.\nPeter (male): Aber Mutti, warum muss ich immer auf das alte Sofa? Kann Onkel Hans nicht in Karins Zimmer schlafen?\nFemale: Schon – aber dein Computer ist doch kaputt, und Onkel Hans hat versprochen, ihn zu reparieren. Und das kann er besser in deinem Zimmer.",
+      "duration_seconds": 47.98
+    },
+    "questions": [
+      {
+        "question_number": 1,
+        "clip_path": "clips/2017/q01.mp3",
+        "transcript": "Achtung! Achtung! Die kleine Anna wird vermisst. Sie ist vier Jahre alt und trägt einen roten Pulli und einen blauen Rock. Sie hat blonde Haare.",
+        "duration_seconds": 16.83,
+        "marks": 2,
+        "stem": "Describe the missing girl."
+      },
+      {
+        "question_number": 2,
+        "clip_path": "clips/2017/q02.mp3",
+        "transcript": "Male: Hallo Julia, hier ist Peter. Sag mal! Was machen wir morgen?\nFemale: Also, um zehn Uhr spielen wir Fußball. Danach, so um 12 Uhr, gehen wir ins Café.\nMale: Das ist ja prima! Wann treffen wir uns mit Tim und Monika?\nFemale: Wir treffen uns um halb drei bei mir. Und dann gehen wir um vier Uhr ins Kino.\nMale: Prima! Bis morgen!",
+        "duration_seconds": 39.98,
+        "marks": 2,
+        "stem": "Complete the following table with the missing details about the time\nand the planned activities.",
+        "image_path": "clips/2017/q02.png"
+      },
+      {
+        "question_number": 3,
+        "clip_path": "clips/2017/q03.mp3",
+        "transcript": "Das Tierheim in Stuttgart sucht eine neue Familie für Rex. Rex hat lange Ohren und einen kurzen Schwanz. Sein Fell ist weiß mit schwarzen Punkten. Er ist sehr lieb und spielt gerne mit Kindern.",
+        "duration_seconds": 22.35,
+        "marks": 1,
+        "stem": "Which dog is Rex? Tick the corresponding box.",
+        "image_path": "clips/2017/q03.png"
+      },
+      {
+        "question_number": 4,
+        "clip_path": "clips/2017/q04.mp3",
+        "transcript": "Female: Guten Tag. Hier ist Susanne Mayer. Kann ich bitte mit Frau Huber sprechen?\nMale: Tut mir leid, Frau Huber ist nicht da.\nFemale: Kann ich bitte eine Nachricht hinterlassen?\nMale: Ja, natürlich.\nFemale: Frau Huber soll mich bitte auf meinem Handy anrufen. Meine Nummer ist 0175 842 953. Ich interessiere mich für den Job.\nMale: Also, bitte Susanne Mayer anrufen. Ist das M – a – y – e – r?\nFemale: Ja genau. M – a – y – e – r.\nMale: Sie interessiert sich für den Job. Ihre Nummer ist: 0175 842 953.\nFemale: Prima.",
+        "duration_seconds": 85.08,
+        "marks": 3,
+        "stem": "Complete the telephone message based on the conversation.",
+        "image_path": "clips/2017/q04.png"
+      },
+      {
+        "question_number": 5,
+        "clip_path": "clips/2017/q05.mp3",
+        "transcript": "Female: Hallo Erich! Lernen wir am Donnerstag zusammen für die Matheprüfung?\nMale: Hallo Emma! Na klar!\nFemale: Kommst du zu mir nach Hause?\nMale: Nein, du wohnst zu weit weg.\nFemale: Können wir bei dir zu Hause arbeiten?\nMale: Lieber nicht. Du weißt doch, meine Brüder sind zu laut.\nFemale: Oh ja. Sollen wir uns in der Bibliothek treffen?\nMale: Gute Idee! Donnerstag in der Bibliothek. Bis dann!",
+        "duration_seconds": 45.81,
+        "marks": 3,
+        "stem": "Explain the speakers’ decision to meet in the library."
+      },
+      {
+        "question_number": 6,
+        "clip_path": "clips/2017/q06.mp3",
+        "transcript": "Female: Hans. Wohin fahren wir dieses Jahr in Urlaub? Ich möchte so gerne nach Deutschland fahren.\nMale: Wirklich? Aber Deutschland ist doch so kalt.\nFemale: Nein. Im September ist das Wetter meistens sehr schön und wir könnten eine Busreise machen.\nMale: Eine Busreise ist so langweilig. Ich will doch nicht stundenlang im Bus sitzen.\nFemale: Es gibt eine familienfreundliche Busreise durch Bayern mit Aktivitäten für uns alle. Ich möchte die schönen Schlösser sehen. Und unsere Kinder können in den Bergen klettern.\nMale: Und was mache ich? Das alles interessiert mich nicht.\nFemale: Für dich gibt es das Oktoberfest. Mit Bier und Bratwurst und Brezeln.\nMale: Ahhh . . . Oktoberfest. Vielleicht fahren wir nach Deutschland.",
+        "duration_seconds": 81.75,
+        "marks": 4,
+        "stem": "How does the woman try to persuade her husband that the family\nshould go to Germany? Support your answer with reference to the\ntext."
+      },
+      {
+        "question_number": 7,
+        "clip_path": "clips/2017/q07.mp3",
+        "transcript": "Female: Hallo Thomas. Was machst du nächstes Jahr?\nMale: Ich gehe nach Afrika.\nFemale: Afrika? Wieso?\nMale: Ich wusste noch nicht, was ich nach der Schule machen wollte. Ich wollte schon immer einen Beruf haben, in dem ich Menschen helfen kann. Dann habe ich einen Artikel in einer Zeitschrift über Sozialarbeit in Afrika gelesen. Ich fand den Artikel sehr interessant. Und jetzt werde ich ein Jahr lang in einem Kindergarten in Afrika arbeiten.\nFemale: Wirklich? Das ist doch so weit weg!\nMale: Ich möchte so weit wie möglich von meiner Familie weg sein. Wo ich arbeiten werde, kann ich weder Computer noch Handy benutzen. Dann hab‘ ich endlich Ruhe vor meiner Familie.\nFemale: Du bist gemein. Deine Familie ist doch sehr nett. Ich wünsche dir trotzdem alles Gute.",
+        "duration_seconds": 84.2,
+        "marks": 4,
+        "stem": "Why has Thomas chosen to go to Africa next year?"
+      },
+      {
+        "question_number": 8,
+        "clip_path": "clips/2017/q08.mp3",
+        "transcript": "Female: Hallo, Paul. Wie gefällt dir das neue Café Mozart?\nPaul (male): Ohhh . . . Das Café Mozart ist jetzt mein neues Lieblingscafé. Die Torten sind super lecker und der Kaffee ist normalerweise ausgezeichnet. Nur, man muss lange auf einen Tisch warten. Aber beim Warten hier habe ich meine große Liebe kennengelernt.\nFemale: Ach wie romantisch!\nPaul (male): Na ja! Nicht ganz so romantisch. Ein Kellner hier ist der Ex-Freund von meiner neuen Freundin. Und wenn er arbeitet, bekomme ich immer kalten Kaffee.\nFemale: Wie schade! Hoffentlich hat der Kellner bald eine neue Freundin!",
+        "duration_seconds": 64.78,
+        "marks": 5,
+        "stem": "To what extent does Paul like the new café? Support your answer\nwith reference to the text."
+      },
+      {
+        "question_number": 9,
+        "clip_path": "clips/2017/q09.mp3",
+        "transcript": "Male: Mutti. Nächstes Jahr bin ich doch in der zwölften Klasse und ich möchte von Montag bis Freitag bei Oma wohnen. Ich habe Oma schon gefragt und sie findet die Idee toll.\nMutti (female): Nein, das geht absolut nicht. Ich brauche deine Hilfe mit deinen jüngeren Geschwistern.\nMale: Aber Mutti. Hier kann ich mich nicht konzentrieren, weil Klaus und Lena sich immer streiten. Bei Oma ist es immer ruhig und ich kann besser lernen und meine Hausaufgaben machen.\nMutti (female): Das kann ich verstehen. Aber wer hilft mir bei der Hausarbeit?\nMale: Meine Geschwister sind groß genug. Klaus kann den Müll rausbringen, Lena kann die Katze füttern und am Wochenende bin ich zu Hause und kann putzen und staubsaugen.\nMutti (female): Ok. Aber was passiert, wenn ich mal länger arbeiten muss?\nMale: Mutti, ich hab‘ doch ein Handy. Du kannst mich natürlich anrufen, wenn du mich brauchst.\nMutti (female): Also gut. Vielleicht können wir es einen Monat lang probieren.",
+        "duration_seconds": 102.99,
+        "marks": 6,
+        "stem": "How do the mother’s feelings change during the conversation?\nSupport your answer with reference to the text."
+      }
+    ]
+  },
+  "2018": {
+    "familiarisation": {
+      "clip_path": "clips/2018/familiarisation.mp3",
+      "transcript": "Female: Peter, du weißt doch, dass Onkel Hans am Wochenende kommt. Er muss in deinem Zimmer schlafen – und du im Wohnzimmer auf dem Sofa.\nPeter (male): Aber Mutti, warum muss ich immer auf das alte Sofa? Kann Onkel Hans nicht in Karins Zimmer schlafen?\nFemale: Schon – aber dein Computer ist doch kaputt, und Onkel Hans hat versprochen, ihn zu reparieren. Und das kann er besser in deinem Zimmer.",
+      "duration_seconds": 42.46
+    },
+    "questions": [
+      {
+        "question_number": 1,
+        "clip_path": "clips/2018/q01.mp3",
+        "transcript": "Maria (female): Hey, Peter, was ist los?\nMale: Ich will am Samstag ins Kino gehen. Willst du mitkommen, Maria?\nMaria (female): Ich kann nicht, ich habe schon Fußballtickets gekauft. Möchtest du mitkommen? Wir können dann am Samstag zum Fußballspiel gehen und am Sonntag ins Kino gehen.\nMale: Ja, das ist eine gute Idee! Samstag, Fußballspiel und Sonntag, Kino.",
+        "duration_seconds": 28.49,
+        "marks": 2,
+        "stem": "What do Maria and Peter decide to do on each day of the weekend?"
+      },
+      {
+        "question_number": 2,
+        "clip_path": "clips/2018/q02.mp3",
+        "transcript": "Tim (male): Hallo Louisa! Machst du nächstes Jahr eine Fremdsprache?\nFemale: Natürlich, Tim.\nTim (male): Was denn? Spanisch?\nFemale: Spanisch interessiert mich sehr, aber ich mag den Lehrer nicht.\nTim (male): Ich auch nicht. Was denkst du über die Französischlehrerin?\nFemale: Sie ist sehr langweilig. Also, mache ich auch kein Französich! Meine Deutschlehrerin ist fantastisch. Ich mache Deutsch.\nTim (male): Ich auch! Sie ist wirklich super! Gute Lehrer sind so wichtig.",
+        "duration_seconds": 36.53,
+        "marks": 2,
+        "stem": "What are Louisa and Tim discussing?"
+      },
+      {
+        "question_number": 3,
+        "clip_path": "clips/2018/q03.mp3",
+        "transcript": "Mama (female): Du, Niklaus, kannst du bitte einkaufen gehen?\nNiklaus (male): OK, Mama.\nMama (female): Schreib mal auf: Also, ich brauche Fleisch . . .\nNiklaus (male): Unser Hund hat auch kein Futter mehr, ich kaufe auch Hundefutter. Brauchen wir noch etwas?\nMama (female): Ja, wir brauchen auch noch Schinken und Milch. Und wie ist es mit Eiern?\nNiklaus (male): Mama! Hast du es schon vergessen? Papa hat gestern Eier gekauft.\nMama (female): Ach ja, jetzt erinnere ich mich.",
+        "duration_seconds": 33.92,
+        "marks": 3,
+        "stem": "Complete the shopping list for Niklaus.\nShopping list"
+      },
+      {
+        "question_number": 4,
+        "clip_path": "clips/2018/q04.mp3",
+        "transcript": "Male: Achtung eine Ansage von der Polizei. Gesucht wird der Fahrer des Motorrades mit dem amtlichen Kennzeichen: SN 479. Ich wiederhole: SN 479.",
+        "duration_seconds": 17.43,
+        "marks": 1,
+        "stem": "Complete the numberplate.",
+        "image_path": "clips/2018/q04.png"
+      },
+      {
+        "question_number": 5,
+        "clip_path": "clips/2018/q05.mp3",
+        "transcript": "Female: Hier ist Ihr Reisebüro „Traumreisen“. Sie wollen auf Urlaub fahren? Reisen Sie diesen Sommer mit uns. Sie haben von Anfang an keinen Stress, den Urlaub zu organisieren. Familien mit Kindern sind unsere Spezialität. Wir haben auch Kontaktpersonen, die Aktivitäten für Sie organisieren. Rufen Sie uns an, unter 030/Traumreisen.",
+        "duration_seconds": 34.31,
+        "marks": 3,
+        "stem": "Why would people choose this travel agency?"
+      },
+      {
+        "question_number": 6,
+        "clip_path": "clips/2018/q06.mp3",
+        "transcript": "Female: Berndt, kommst du mal? Ich brauche deine Hilfe. Wo bist du?\nBerndt (male): Im Wohnzimmer, ich sehe fern.\nFemale: Berndt!!!!!!!!!\nBerndt (male): Ja Mutti, ich komme.\nFemale: Hier, du kannst abwaschen.\nBerndt (male): Au, das Wasser ist zu heiß!\nFemale: Das Wasser ist doch nicht heiß! Komm mach schnell, aber pass auf. Du machst gerade dein Hemd total nass.",
+        "duration_seconds": 31.84,
+        "marks": 1,
+        "stem": "Where is Berndt’s mother?",
+        "options": [
+          "In the kitchen",
+          "In the laundry",
+          "In the bathroom",
+          "In the lounge room"
+        ],
+        "image_path": "clips/2018/q06.png"
+      },
+      {
+        "question_number": 7,
+        "clip_path": "clips/2018/q07.mp3",
+        "transcript": "Male: Tina, warum trägst du ein blaues Hemd? Du bist doch mit einem roten T-shirt ausgegangen!\nTina (female): Oh Papa! Ich habe einen so tollen Jungen auf einer Party kennengelernt.\nMale: Ach ja, wie denn?\nTina (female): Ich habe Orangensaft getrunken. Da kam ein attraktiver Junge, der Leon heißt. Er hat einen Witz erzählt.\nMale: Und weiter?\nTina (female): Naja, ich musste lachen und hatte noch Orangensaft im Mund und dann hatte ich den Saft auf meinem T-shirt!\nMale: Wie peinlich!\nTina (female): Ja, das war’s. Aber Leon hatte noch ein Hemd im Auto. Er hat mir das blaue Hemd gegeben, das ich jetzt trage.\nMale: Das war aber nett.",
+        "duration_seconds": 49.2,
+        "marks": 3,
+        "stem": "Explain why Tina came home with a blue shirt."
+      },
+      {
+        "question_number": 8,
+        "clip_path": "clips/2018/q08.mp3",
+        "transcript": "Female: Komm herein Martin, setz dich bitte hin. Wir suchen jemand, der mit unseren Hunden täglich spazierengehen möchte. Ich habe ein paar Fragen an dich. Was für Interessen hast du?\nMale: Ich bin gerne in der Natur, deshalb gehe ich oft wandern.\nFemale: Hast du schon einen Teilzeitjob gehabt?\nMale: Ja. Ich arbeite seit drei Jahren bei Frau Müller. Ich mähe jede Woche ihren Rasen.\nFemale: Ach! Du bist der Martin! Die Frau Müller hat nur Gutes über dich gesprochen. Hast du schon Erfahrung mit Hunden?\nMale: Ja, in den Ferien habe ich auf Frau Müllers Hunde aufgepasst. Ich mache das für viele Familien.\nFemale: Prima! Dann weißt du, was du machen musst.",
+        "duration_seconds": 52.84,
+        "marks": 4,
+        "stem": "Complete the table based on the interview.",
+        "image_path": "clips/2018/q08.png"
+      },
+      {
+        "question_number": 9,
+        "clip_path": "clips/2018/q09.mp3",
+        "transcript": "Finn (male): Wie geht es dir Emma? Und wie geht es Luca?\nFemale: Oh, hi Finn. Ich habe mit Luca Schluss gemacht. Er hat mir immer gesagt was ich tun soll.\nFinn (male): Das ging bestimmt nicht gut.\nFemale: Nein, ich finde es wichtig, dass Leute meine Meinung akzeptieren.\nFinn (male): Ah, kann ich verstehen. Was willst du denn nächstes Jahr machen?\nFemale: Ich weiß es noch nicht. Entweder Ingenieurin oder Automechanikerin.\nFinn (male): Deine Eltern sind beide Ärzte, sie wollen doch bestimmt, dass du studierst.\nFemale: Ja, du hast Recht. Eine Tochter, die Automechanikerin ist, ist nicht gut genug . . .\nFinn (male): So schlimm sind deine Eltern auch nicht. Denke an die vielen großen Projekte, die du als Ingenieurin leiten kannst. Zum Beispiel, Brücken und Autobahnen bauen.\nFemale: Aber ich arbeite lieber mit meinen Händen und große Projekte interessieren mich nicht so sehr. Ich habe vier Wochen in den Ferien in einer Autowerkstatt gearbeitet. Das war wirklich super.\nFinn (male): Aber deine schönen Hände! Die sind dann immer ganz schmutzig. Was würde Luca sagen?\nFemale: Es gibt einen Grund, warum er nicht mehr mein Freund ist!",
+        "duration_seconds": 86.94,
+        "marks": 5,
+        "stem": "Which career is Emma more likely to choose: motor mechanic or\nengineer? Justify your answer by making reference to Emma’s\ncomments and personality."
+      },
+      {
+        "question_number": 10,
+        "clip_path": "clips/2018/q10.mp3",
+        "transcript": "Male: Meine Herren, Mein Name ist Peter Meier und ich bin Sportlehrer hier an dieser Schule. Wir wissen alle, wie wichtig Sport für junge Leute ist. Mein Sohn spielt Fußball und trainiert sehr oft. Meine Tochter interessiert sich auch für Sport, ist aber nicht sehr aktiv. Also, was können wir Männer tun? Wir m interessieren, auch wenn wir selbst nicht so sportl Mädchen mehr Sport machen. üssen Mädchen mehr für Sport ich sind. Es fängt mit uns an, dass",
+        "duration_seconds": 37.26,
+        "marks": 1,
+        "stem": "Who is Peter Meier talking to?",
+        "options": [
+          "A group of girls",
+          "A group of fathers",
+          "A group of families",
+          "A group of sports teachers"
+        ],
+        "image_path": "clips/2018/q10.png"
+      },
+      {
+        "question_number": 11,
+        "clip_path": "clips/2018/q11.mp3",
+        "transcript": "Female: Bad Walddorf ist ein schönes Dorf im Schwarzwald. Aber, fast niemand in Deutschland kennt es. Trotzdem hat der Filmemacher Bruno Holz seinen letzten Film hier gemacht. ‚Hier passiert normalerweise nichts‘, meinte eine Schulgruppe. ‘Wir fanden es so toll, dass der Film hier gemacht wurde und alle anderen Leute in Bad Walddorf dachten das auch. Es war super als Bruno Holz mit vielen berühmten Filmstars und Kameraleuten kam. Es kamen auch viele Fans. Zum ersten Mal waren alle Hotels und Restaurants voll. Es gab mehr Arbeit und alle haben mehr Geld verdient. Die Einwohner dachten, dass ihr Dorf nach dem Film berühmt wird. Aber bei der Premiere kam es ganz anders. Man konnte fast gar nichts von ihrem schönen Dorf sehen. Bad Walddorf ist immer noch unbekannt.",
+        "duration_seconds": 71.31,
+        "marks": 5,
+        "stem": "Summarise this news item."
+      }
+    ]
+  },
+  "2019": {
+    "familiarisation": {
+      "clip_path": "clips/2019/familiarisation.mp3",
+      "transcript": "Female: Berndt, kommst du mal? Ich brauche deine Hilfe. Wo bist du?\nBerndt (male): Im Wohnzimmer, ich sehe fern.\nFemale: Berndt!!!!!!!!!\nBerndt (male): Ja Mutti, ich komme.\nFemale: Hier, du kannst abwaschen.\nBerndt (male): Au, das Wasser ist zu heiß!\nFemale: Das Wasser ist doch nicht heiß! Komm mach schnell, aber pass auf. Du machst gerade dein Hemd total nass.",
+      "duration_seconds": 41.13
+    },
+    "questions": [
+      {
+        "question_number": 1,
+        "clip_path": "clips/2019/q01.mp3",
+        "transcript": "Male: Mutti, ich gehe um 1 Uhr zum Fußballtraining.\nMutti (female): Bevor du zum Training gehst, musst du dein Bett machen.\nMale: Das mache ich gleich. Mutti, wo ist meine Sportuniform?\nMutti (female): Deine Sportuniform ist gewaschen. Sie hängt an der Wäscheleine im Garten. Bitte bring die Wäsche ins Haus. Dann kannst du zum Training gehen.",
+        "duration_seconds": 26.35,
+        "marks": 2,
+        "stem": "What is Thomas’s mother asking him to do?"
+      },
+      {
+        "question_number": 2,
+        "clip_path": "clips/2019/q02.mp3",
+        "transcript": "Female: Oh, du bist es Markus. Ich habe deine Nummer gar nicht erkannt.\nMale: Ich habe ein neues Handy und auch eine neue Nummer. 0172 788 351 musst du bitte ab sofort für mich speichern.\nFemale: 0172 788 351, kein Problem. Aber dein Handy war doch noch nicht so alt. Warum hast du dir ein neues gekauft?\nMale: Ich habe mein altes Handy meinem kleinen Bruder geschenkt, weil er nicht genug Geld hatte, sich selbst eins zu kaufen.\nFemale: Das war sehr nett von dir. : Hallo Daniela, hier ist Markus.",
+        "duration_seconds": 57.14,
+        "marks": 3,
+        "stem": "(a)\nWhat is Markus’s new mobile number?\n(b)\nExplain why he has a new number."
+      },
+      {
+        "question_number": 3,
+        "clip_path": "clips/2019/q03.mp3",
+        "transcript": "Male: Sie suchen ein gutes Hotel für Ihren nächsten Winterurlaub? Entdecken Sie das Urlaubsparadies ‘Hotel Barbarella’! Unser Hotel hat ein großes Spielzimmer nur für Kinder unter zwölf Jahren. Hier gibt es viele tolle Spiele, zum Beispiel Tischfußball und Play-Stations. Für die kleinen Gäste gibt es auch einen 3-Tage- Skipass kostenlos, wenn Mutti oder Vati einen Skipass kaufen. Das Hotel Barbarella ist perfekt für junge Familien. Im Dorf dürfen keine Autos fahren und die Kinder können ohne Gefahr überall herumlaufen.",
+        "duration_seconds": 48.22,
+        "marks": 3,
+        "stem": "How does this advertisement target young families?"
+      },
+      {
+        "question_number": 4,
+        "clip_path": "clips/2019/q04.mp3",
+        "transcript": "Female: Die neue Fernsehserie ‚Kochmeister‘ mit dem Hotelchef Johannes Müller ist sehr beliebt. Wollen Sie auch kochen wie ein Meisterkoch? Wir helfen Ihnen das zu tun. Rufen Sie uns an und wir bringen Ihnen das Fleisch, das Gemüse und das Rezept nach Hause. Sie kochen in der eigenen Küche ein Essen wie aus einem Restaurant.",
+        "duration_seconds": 28.25,
+        "marks": 1,
+        "stem": "The purpose of this advertisement is to",
+        "options": [
+          "invite people to visit a hotel kitchen.",
+          "encourage people to learn how to cook a meal.",
+          "inspire people to take part in a TV cooking show.",
+          "advise people on how to order food from an online restaurant."
+        ],
+        "image_path": "clips/2019/q04.png"
+      },
+      {
+        "question_number": 5,
+        "clip_path": "clips/2019/q05.mp3",
+        "transcript": "Male: Meine Damen, es freut mich, dass ich heute mit so vielen Kolleginnen über ein Thema sprechen kann, das uns alle sehr interessiert. Wie können wir am Besten die nächste Generation auf ihr Studium vorbereiten? Die meisten der jungen Leute hier haben im letzten Jahr die Schule verlassen und wollen jetzt etwas Neues lernen. Unsere Aufgabe ist es, ihnen dabei zu helfen.",
+        "duration_seconds": 32.91,
+        "marks": 3,
+        "stem": "How do we know that the speaker is addressing an audience of female\nuniversity lecturers?"
+      },
+      {
+        "question_number": 6,
+        "clip_path": "clips/2019/q06.mp3",
+        "transcript": "Female: Uli, du hast dein Schnitzel so schnell aufgegessen. Hast du heute im Büro gar nichts gegessen?\nMale: Ach Julia, ich hatte heute Morgen so viel zu tun, dass ich zu spät zur Kantine kam. Ich konnte mir kein Mittagessen kaufen. Deswegen war das Schnitzel ja auch so lecker. Fast wie zu Hause! Aber jetzt brauche ich ein zweites Glas Wein.\nFemale: Moment mal, Uli, weißt du eigentlich, dass es schon 10 Uhr ist? Wir haben unserem Babysitter versprochen, um halb elf zu Hause zu sein.\nMale: Und wir brauchen mindestens eine halbe Stunde, um nach Hause zu fahren.\nFemale: Wie schade, dann haben wir keine Zeit mehr für ein zweites Glas Wein.",
+        "duration_seconds": 56.36,
+        "marks": 4,
+        "stem": "(a)\nWhere is the conversation taking place?",
+        "options": [
+          "At home",
+          "In an office",
+          "In a restaurant",
+          "In a work canteen (b) Why do Julia and Uli have to leave in a hurry?"
+        ],
+        "image_path": "clips/2019/q06.png"
+      },
+      {
+        "question_number": 7,
+        "clip_path": "clips/2019/q07.mp3",
+        "transcript": "Johanna (female): Endlich bist du da! Warum bist du schon wieder soooo spät, Günther? Du kannst nie pünktlich sein. Jedesmal, wenn wir ins Kino gehen, machst du sowas. Wir haben schon wieder den Anfang des Filmes verpasst. Wo warst du denn?\nGünther (male): Wie du weißt, Johanna, besuche ich einmal die Woche meine Oma im Altenheim. Omi freut sich immer so sehr, wenn ich komme. Dieses Mal hat mein Besuch etwas länger gedauert. Omi war krank, und deswegen bin ich mehr als eine Stunde bei ihr geblieben.\nJohanna (female): Das war sehr nett von dir. Deine Oma habe ich sehr lieb. Klar musstest du dann etwas länger bei ihr bleiben. Tut mir leid, dass ich so sauer war.\nGünther (male): Schon gut, lass uns jetzt ins Kino gehen.\nJohanna (female): Aber Günther, warte mal, du besuchst doch deine Omi jeden Dienstag und heute ist es Freitag. Du bist wirklich unmöglich! Ich hätte dir fast geglaubt. Nie wieder! Also, wo warst du denn wirklich?\nGünther (male): Ahh. Verdammt.\nJohanna (female): Jetzt kannst du alleine ins Kino gehen.",
+        "duration_seconds": 83.16,
+        "marks": 4,
+        "stem": "Explain the changes in Johanna’s emotions during the conversation\nwith Günther."
+      },
+      {
+        "question_number": 8,
+        "clip_path": "clips/2019/q08.mp3",
+        "transcript": "Female: Guten Abend, hier spricht Frau Groß von der Firma Ferntex. Ich würde Ihnen gerne ein paar Fragen stellen. Haben Sie einen ‚Ferntex‘ Fernseher?\nMale: Ja, ich habe das Modell VK50 vor mehreren Monaten gekauft.\nFemale: Darf ich fragen wann genau?\nMale: Genau weiß ich es nicht mehr. Aber auf keinen Fall länger als vor einem Jahr.\nFemale: Sehen Sie viel fern?\nMale: Es ist sehr unterschiedlich, manchmal nur eine Stunde pro Tag, manchmal drei aber nie mehr als vier Stunden täglich.\nFemale: Sind Sie zufrieden mit diesem Modell?\nMale: Ich bin nicht ganz zufrieden mit der Größe, aber zu der Zeit hatte ich nur wenig Geld und konnte mir keinen größeren Fernseher kaufen.\nFemale: Möchten Sie vielleicht ein neues Modell? Wir haben jetzt ein sehr gutes Angebot. Wir verkaufen das Modell WV15 zum halben Preis. Aber nur heute.\nMale: Na ja, das klingt sehr gut aber jetzt spare ich für meine nächsten Ferien. Wenn mein VK50 kaputt geht, rufe ich Sie vielleicht an.",
+        "duration_seconds": 83.08,
+        "marks": 5,
+        "stem": "Complete the survey by ticking the correct responses and answering\nthe question.",
+        "image_path": "clips/2019/q08.png"
+      },
+      {
+        "question_number": 9,
+        "clip_path": "clips/2019/q09.mp3",
+        "transcript": "Male: Liebe Schülerinnen und Schüler, heute stellt sich Erika Schäfer vor – sie ist eine Kandidatin für den Job als Schulsprecher. Ihr wisst, dass unser Schulmotto ‚Freundlichkeit‘, ‚Hilfsbereitschaft‘ und ‚Respekt‘ ist. ‚Freundlichkeit‘, und ‚Hilfsbereitschaft‘ sind wichtig, aber Respekt ist am Wichtigsten. Ist Erika die richtige Kandidatin?\nFemale: Vielen Dank, Herr Direktor. Liebe Mitschüler, in zwei Wochen wählen wir unseren neuen Schulsprecher. Ich bin eine Kandidatin. Seit sechs Jahren bin ich in dieser Schule. Meine Freunde und Freundinnen sind in allen Klassen – von der 5. bis zur 12. Klasse. Mit fast allen Schülern verstehe ich mich sehr gut. Ich helfe meinen Freunden und manchmal auch anderen Schülern, auch wenn ich sie für doof halte. Wenn die jüngeren Schüler Probleme haben, kommen sie gleich zu mir. Sie wissen, dass sie immer mit mir reden können. Ihr kennt mich vom Basketballspielen, wo ich immer eine faire Spielerin bin. Das Team respektiert mich und hat mich zum Kapitän gewählt. Ich habe großen Respekt vor allen Lehrern, na ja fast allen – außer vor Herrn Braun, aber mit dem versteht sich keiner. Ich glaube, ich bin die richtige Kandidatin für den Job.",
+        "duration_seconds": 107.24,
+        "marks": 5,
+        "stem": "To what extent would Erika Schäfer make a good school captain?\nJustify your response by referring to the school motto."
+      }
+    ]
+  },
+  "2020": {
+    "familiarisation": {
+      "clip_path": "clips/2020/familiarisation.mp3",
+      "transcript": "Female: Berndt, kommst du mal? Ich brauche deine Hilfe. Wo bist du?\nBerndt (male): Im Wohnzimmer, ich sehe fern.\nFemale: Berndt!!!!!!!!!\nBerndt (male): Ja Mutti, ich komme.\nFemale: Hier, du kannst abwaschen.\nBerndt (male): Au, das Wasser ist zu heiß!\nFemale: Das Wasser ist doch nicht heiß! Komm mach schnell, aber pass auf. Du machst gerade dein Hemd total nass.",
+      "duration_seconds": 35.21
+    },
+    "questions": [
+      {
+        "question_number": 1,
+        "clip_path": "clips/2020/q01.mp3",
+        "transcript": "Hans (male): Hallo Petra. Ich habe mein Mittagessen vergessen und ich bin so hungrig!\nFemale: Hans, du hast Glück. Ich habe zwei Brote in meiner Tasche. Du kannst mein Käsebrot essen.\nHans (male): Und weißt du, ich habe auch meinen Deutschaufsatz noch nicht geschrieben.\nFemale: Typisch! Und wenn wir unser Brot gegessen haben, helfe ich dir mit dem Aufsatz.",
+        "duration_seconds": 29.39,
+        "marks": 2,
+        "stem": "How does Petra help Hans out?"
+      },
+      {
+        "question_number": 2,
+        "clip_path": "clips/2020/q02.mp3",
+        "transcript": "Mutti (female): Johannes, heute abend gehen wir drei wieder einmal ins Theater. Du weißt, wie ärgerlich dein Vater ist, wenn du in Jeans und T-shirt mitkommst. Kannst du dich bitte ordentlich anziehen, so dass dein Vater zufrieden ist?\nJohannes (male): Mutti, du weißt doch, dass ich außer Jeans keine anderen Hosen habe. Wenn ich meine neueste Jeans anziehe, dazu ein weißes Hemd, eine Jacke und meine Turnschuhe, geht das?\nMutti (female): Die Turnschuhe bitte nicht. Du hast schwarze Schuhe – putz sie und hoffentlich wird Vati damit glücklich sein.",
+        "duration_seconds": 38.65,
+        "marks": 3,
+        "stem": "What will Johannes wear to the theatre?"
+      },
+      {
+        "question_number": 3,
+        "clip_path": "clips/2020/q03.mp3",
+        "transcript": "Nicole (female): Du, Stefan! Was machst du denn so am Wochenende?\nStefan (male): Ich gehe mit dem Hund im Park spazieren. Hauptsache, raus aus dem Haus! Und du, Nicole?\nNicole (female): Also, mein absoluter Lieblingsplatz ist bei mir auf der Couch im Wohnzimmer. Dort kann ich stundenlang Computerspiele spielen.\nStefan (male): Wow! Bei mir ist es genau das Gegenteil! Ich muss in der Natur sein.",
+        "duration_seconds": 28.08,
+        "marks": 3,
+        "stem": "How do Nicole and Stefan differ in the way they spend their free\ntime?"
+      },
+      {
+        "question_number": 4,
+        "clip_path": "clips/2020/q04.mp3",
+        "transcript": "Male: Liebe Schülerinnen und Schüler, Ich brauche euch eigentlich unseren Gast nicht vorzustellen. Ihr kennt Herrn Schmidt von seinen Romanen, die viele von euch schon sicher gelesen haben. Aber was ihr vielleicht nicht wisst, ist, dass Herr Schmidt ein alter Schüler unserer Schule ist. Herr Schmidt wird uns heute über seine Zeit hier erzählen. Nach seiner Rede wird er eure Fragen beantworten. Bevor Herr Schmidt beginnt, macht bitte eure Handys aus.",
+        "duration_seconds": 34.21,
+        "marks": 3,
+        "stem": "What is the purpose of this announcement?"
+      },
+      {
+        "question_number": 5,
+        "clip_path": "clips/2020/q05.mp3",
+        "transcript": "Female: Brauchen Sie ein neues Auto? Ist Ihr altes Auto ein Stinker? Wollen Sie etwas für die Umwelt tun? Wir haben das Auto der Zukunft für Sie. Es ist ein Elektroauto! Das Auto ist nicht billig, aber mit der Zeit sparen Sie immer mehr Geld. Das Elektroauto ist einfach fantastisch. Alle Ihre Freunde, alle Ihre Nachbarn werden meinen „Das ist ein tolles Auto“.",
+        "duration_seconds": 29.89,
+        "marks": 3,
+        "stem": "Who would find this advertisement appealing?"
+      },
+      {
+        "question_number": 6,
+        "clip_path": "clips/2020/q06.mp3",
+        "transcript": "Sabine (female): Thomas, kommst du mit nach China oder nicht? Wir müssen es jetzt wissen.\nThomas (male): Ich würde so gerne mitkommen, aber ich habe jetzt eine Freundin, Sabine.\nSabine (female): Na und?\nThomas (male): Sie hat überhaupt kein Geld zum Reisen. Außerdem reist sie ungern.\nSabine (female): Aber du reist gern. Warum reist du nicht einfach ohne Sabine? Wir sind nur ein paar Wochen weg. Hast du jetzt das Geld für das Ticket?\nThomas (male): Ja, ich habe schon mein Motorrad verkauft. Mit dem Geld wollte ich mit euch fahren.\nSabine (female): Dein Motorrad verkauft! Warum hast du nicht einfach einen besseren Job gesucht?\nThomas (male): Das habe ich gemacht aber ich habe nichts Besseres gefunden. Jetzt weiß ich nicht, was ich machen soll.",
+        "duration_seconds": 48.84,
+        "marks": 1,
+        "stem": "What is most likely to happen next?",
+        "options": [
+          "Thomas will find a better job.",
+          "Thomas will take his girlfriend with him.",
+          "Thomas will buy a second-hand motorbike.",
+          "Thomas will join the group travelling to China."
+        ],
+        "image_path": "clips/2020/q06.png"
+      },
+      {
+        "question_number": 7,
+        "clip_path": "clips/2020/q07.mp3",
+        "transcript": "Female: Hi, Peter! Ach, du machst gerade diese Umfrage! Komm, ich helfe dir, dein Englisch ist immer noch nicht so gut. Also: Peter. Friedemann…\nPeter (male): Halt! Du schreibst meinen Familiennamen falsch - nicht „ei“ sondern „ie“…\nFemale: Ach, Entschuldigung! Also, F R I E D E M A N N. OK. Erste Frage: warst du mit deinen Schulfächern zufrieden?\nPeter (male): Hmmm. Ich wollte mit Chemie und Spanisch weitermachen, aber leider gibt es diese Fächer hier nicht.\nFemale: OK. Zweite Frage. Wie hast du das Schulleben außerhalb des Klassenzimmers gefunden?\nPeter (male): An der Schule gab es einfach so viele Möglichkeiten, andere Sachen zu machen, wie Musik oder Theater. Also, das fand ich super.\nFemale: OK. Möchtest du noch einen Kommentar dazu schreiben?\nPeter (male): Auf jeden Fall! Jedes Mal wenn ich Fragen hatte, haben mir meine Lehrer geholfen, sogar in der Mittagspause. Das fand ich echt toll.",
+        "duration_seconds": 82.52,
+        "marks": 4,
+        "stem": "Complete this form based on the conversation.",
+        "image_path": "clips/2020/q07.png"
+      },
+      {
+        "question_number": 8,
+        "clip_path": "clips/2020/q08.mp3",
+        "transcript": "Male: Letzten Sonntag sind viele Menschen nach Bonn gekommen. Sie fragen, warum? Am Sonntag wurde das größte Einkaufszentrum Europas eröffnet. Waren alle Besucher glücklich? Leider nicht. Besonders die jungen Leute, die hier früher spielten, waren sehr unglücklich darüber. Vor fünf Jahren stand hier noch ein Wald und im Wald war ein Sportplatz. Gut, man hat neue Bäume gepflanzt aber ein Parkplatz ist kein Sportplatz. Es gab auch andere Leute, die nicht glücklich waren. Frau Meier, zum Beispiel, meinte: Ich kann gut mit dem Bus nach Bonn-Nord oder mit der Straßenbahn nach Bonn-Süd zum Einkaufen fahren. Dort gibt es alles, was ich brauche. Warum noch ein neues Einkaufszentrum? Als der Wald noch stand, glaubten viele Leute, dass ein Einkaufszentrum auf diesem Platz eine Katastrophe sein würde. Letzten Sonntag sind nicht so viele Leute gekommen, wie man gehofft hatte, aber heute ist der Parkplatz fast voll. Und nächste Woche? Wer weiß…",
+        "duration_seconds": 79.02,
+        "marks": 5,
+        "stem": "Summarise the news item."
+      },
+      {
+        "question_number": 9,
+        "clip_path": "clips/2020/q09.mp3",
+        "transcript": "Female: Herzlich willkommen! Es ist schön, dass so viele Familien hier sind, besonders so kurz vor Weihnachten, wo ihr alle so viel zu tun habt. Jedes Jahr muss ich euch allen ganz herzlich danken für ein wunderbares und erfolgreiches Jahr. Hier in diesem Raum sehe ich einige neue Gesichter, aber leider auch Freundinnen, die zum letzten Mal hier sind. Eine davon ist Maria Schmidt, die gestern 18 geworden ist. Herzlichen Glückwunsch zum Geburtstag Maria. Mit 18 kann sie leider nächstes Jahr nicht mehr in unserer Mannschaft mitspielen. Aber wir sind nicht hier, um Maria „Auf Wiedersehen“ zu sagen. Na ja, ich habe jetzt lange genug geredet, aber bevor ich den Mädchen die Preise gebe, möchte ich euch allen noch mal danken, und euch ein schönes Weihnachten und ein gutes, neues Jahr wünschen.",
+        "duration_seconds": 65.99,
+        "marks": 1,
+        "stem": "At what sort of occasion is this speech most likely to be made?",
+        "options": [
+          "A birthday party",
+          "A farewell ceremony",
+          "A sports presentation",
+          "A Christmas celebration"
+        ],
+        "image_path": "clips/2020/q09.png"
+      },
+      {
+        "question_number": 10,
+        "clip_path": "clips/2020/q10.mp3",
+        "transcript": "Adam (male): Eva, freust du dich auch sehr aufs nächste Jahr, wenn wir zusammen an der Uni Sport studieren?\nEva (female): Ja, Adam, wir haben schon seit langem davon geredet. Es stimmt schon, dass wir uns schon so lange kennen. Aber, ich bin mir nicht mehr sicher, dass ich mit dir studieren will.\nAdam (male): Aber du weißt ja, dass deine Eltern immer wollten, dass wir zusammen zur Uni gehen, und wir wollten das auch! Wir wollten das!\nEva (female): Nein, du wolltest das!\nAdam (male): Du bist doch eine super Sportlerin und die Schüler werden dich bestimmt prima finden.\nEva (female): Ja, du hast recht. Aber jetzt, nach der Schule, möchte ich erst etwas ganz Anderes machen. Zum Beispiel Skilehrerin in Bayern.\nAdam (male): Aber du weißt doch, dass ich die Kälte hasse.\nEva (female): Ach, das habe ich total vergessen ... aber ich liebe den Winter.\nAdam (male): Und du verdienst nicht viel Geld und könntest dir ein Bein brechen. Und was würden deine Eltern dazu sagen?\nEva (female): Oh, meine Eltern werden mich verstehen, weil sie mich lieben!\nAdam (male): Aber ich liebe dich doch auch!",
+        "duration_seconds": 79.45,
+        "marks": 5,
+        "stem": "What is Eva most likely to do next year? Justify your answer with\nreference to the text."
+      }
+    ]
+  },
+  "2021": {
+    "familiarisation": {
+      "clip_path": "clips/2021/familiarisation.mp3",
+      "transcript": "Hans (male): Hallo Petra. Ich habe mein Mittagessen vergessen und ich bin so hungrig!\nFemale: Hans, du hast Glück. Ich habe zwei Brote in meiner Tasche. Du kannst mein Käsebrot essen.\nHans (male): Und weißt du, ich habe auch meinen Deutschaufsatz noch nicht geschrieben.\nFemale: Typisch! Und wenn wir unser Brot gegessen haben, helfe ich dir mit dem Aufsatz.",
+      "duration_seconds": 32.27
+    },
+    "questions": [
+      {
+        "question_number": 1,
+        "clip_path": "clips/2021/q01.mp3",
+        "transcript": "Tom (male): Hallo, Frau Schiller, wie geht es Ihnen? Ich habe Sie seit unserem letzten Schuljahr nicht mehr gesehen.\nFemale: Was – bist du es, Tom? Das war vor vier Jahren. Mein Gott, du bist so groß geworden! Was machst du jetzt?\nTom (male): Wie Sie wissen war Geschichte in Ihrer Klasse mein Lieblingsfach in der Schule und jetzt studiere ich Geschichte an der Uni!\nFemale: Das freut mich.\nTom (male): Noch einmal vielen Dank für Ihre Hilfe.\nFemale: Alles Gute, Tom.",
+        "duration_seconds": 33.33,
+        "marks": 2,
+        "stem": "What is the relationship between the speakers?"
+      },
+      {
+        "question_number": 2,
+        "clip_path": "clips/2021/q02.mp3",
+        "transcript": "Male: Hallo Leni! Hast du Lust, heute Nachmittag ins Café zu gehen?\nFemale: Hallo Theo, ja gerne! Wo treffen wir uns?\nMale: Es gibt ein neues Café in der Stadt? Was meinst du?\nFemale: Das klingt prima. Und wann?\nMale: Um 5 Uhr vor dem Café Stern.\nFemale: Und wenn es regnet?\nMale: Dann im Café.\nFemale: Tschüss. Bis dann.",
+        "duration_seconds": 24.57,
+        "marks": 3,
+        "stem": "What arrangements do the two friends make?"
+      },
+      {
+        "question_number": 3,
+        "clip_path": "clips/2021/q03.mp3",
+        "transcript": "Female: Stell dir vor, ich habe gestern Nachmittag Anna mit Peter aus unserer Klasse im Park gesehen.\nMale: Und was machten sie?\nFemale: Sie gingen Hand in Hand spazieren.\nMale: Was! Anna und Peter Hand in Hand? Aber Klaus ist doch Annas Freund!\nFemale: Ja das stimmt. Klaus ist ihr Freund.\nMale: Aber beide Jungs sind in unserer Klasse und sie sind gute Freunde!\nFemale: Das kann nicht gut gehen. Sowas geht nie gut! Es ist so gefährlich.\nMale: Vielleicht, aber wenn Peter nichts von Klaus weiß, dann ist doch alles OK, nicht wahr?\nFemale: Wie bitte? Gut, dass wir nicht Freund und Freundin sind!!",
+        "duration_seconds": 44.28,
+        "marks": 3,
+        "stem": "What are the two friends discussing?"
+      },
+      {
+        "question_number": 4,
+        "clip_path": "clips/2021/q04.mp3",
+        "transcript": "Female: Harald bist du das?\nMale: Ja Mutti, was ist los?\nFemale: Bist du noch im Park? Kannst du das Geschenk für Vati abholen? Das Einkaufszentrum ist ganz in der Nähe.\nMale: Jetzt nicht mehr. Wir haben Fußball gespielt und es fing an zu regnen und jetzt bin ich auf dem Weg zur Bushaltestelle. Kann ich das Geschenk nicht morgen abholen?\nFemale: Wenn es sein muss, aber . . .\nMale: Tut mir leid Mutti, hier sind so viele Leute und mein Bus fährt in zehn Minuten ab. Ich muss jetzt gehen.",
+        "duration_seconds": 33.32,
+        "marks": 1,
+        "stem": "Where is Harald?",
+        "options": [
+          "In the park",
+          "At the bus stop",
+          "On the footpath",
+          "In front of the department store"
+        ],
+        "image_path": "clips/2021/q04.png"
+      },
+      {
+        "question_number": 5,
+        "clip_path": "clips/2021/q05.mp3",
+        "transcript": "Female: Guten Morgen, setzt euch bitte. Heute machen wir als erstes Partnerarbeit über eure Aktivitäten am Wochenende. Lasst eure Kulis auf dem Tisch. Ich will keinen Kuli in euren Händen sehen. Jetzt, fragt euren Partner, was er oder sie am Wochenende gemacht hat.",
+        "duration_seconds": 24.42,
+        "marks": 3,
+        "stem": "What instructions are given to the class?"
+      },
+      {
+        "question_number": 6,
+        "clip_path": "clips/2021/q06.mp3",
+        "transcript": "Female: Eva Weber.\nMale: Ja guten Tag, hier Fischer. Ich möchte deinen Vater sprechen.\nFemale: Leider ist er im Moment nicht da. Wie spät ist es jetzt?\nMale: Es ist jetzt sechs.\nFemale: Dann ist er in ungefähr einer Stunde zu Hause.\nMale: Kannst du ihm eine Nachricht geben? Hast du etwas zu schreiben?\nFemale: Ja, einen Moment. Also, bitte schön.\nMale: Mein Name ist Fischer. Fischer schreibt man F-I-S-C-H-E-R. Ich arbeite mit deinem Vater zusammen.\nFemale: Hat er Ihre Telefonnummer?\nMale: Ja, die hat er. Mein Auto ist jetzt repariert und ich kann ihn doch morgen früh zum Flughafen fahren. Ich hole ihn um halb acht ab.\nFemale: Alles klar. Ich gebe ihm die Nachricht, wenn er nach Hause kommt. Auf Wiederhören, Herr Fischer.",
+        "duration_seconds": 64.6,
+        "marks": 4,
+        "stem": "Complete the phone message.\nPhone Message\nCaller’s name\nTime of call\nMessage"
+      },
+      {
+        "question_number": 7,
+        "clip_path": "clips/2021/q07.mp3",
+        "transcript": "Female: Guten Tag. Ich heiße Susanne Grüber und ich bin Ingenieurin. Ich leite eine Firma hier in der Stadt, die Brücken und Straßen baut. Vor 50 Jahren war es so, dass man schon als Kind wusste, welchen Beruf man haben würde, denn Großvater und Vater hatten schon den gleichen Beruf – die Zukunft war klar. Aber vielleicht ist die Zukunft nicht klar für euch. Habt ihr Angst vor der Zukunft? Was sind die Berufe von morgen? Das kann ich euch nicht sagen. Warum? Weil die Berufe noch nicht existieren! Die neuen Techniken bringen neue Jobs mit sich – das Problem ist nur, dass wir sie noch nicht kennen. Dein Großvater und dein Vater hatten nur einen Job. Das wird für dich ganz anders sein. Vielleicht beginnst du als Computerprogrammierer, dann wirst du Projektmanager und zum Schluss arbeitest du an der Uni. Viele Jobs zu haben ist heutzutage völlig normal. Ihr werdet die besten Chancen haben, wenn ihr bereit seid, etwas Neues zu lernen. Man muss offen, flexibel und dynamisch sein. Ich wünsche euch viel Glück und Erfolg.",
+        "duration_seconds": 103.33,
+        "marks": 7,
+        "stem": "(a)\nWho is Susanne Grüber?\n(b)\nSummarise the contents of the speech."
+      },
+      {
+        "question_number": 8,
+        "clip_path": "clips/2021/q08.mp3",
+        "transcript": "Male: Liebe Schüler und Schülerinnen Die Menschen meiner Generation verstehen euer Leben nicht: ihr sitzt vor dem Laptop oder habt immer das Handy in der Hand. Wacht auf und seht euch um in der Welt! Es gibt Kinder in vielen Ländern, die nicht ein mal die Chance haben, eine Schule zu besuchen. Wir suchen Schüler aus dieser Region, die uns helfen möchten. Vielleicht denkt ihr, ihr habt keine Zeit, uns zu helfen, aber wir brauchen jeden von euch. Wir wollen bis September 100,000 Euro für neue Schulen in Afrika sammeln. Ist das nicht eine tolle Idee? Ein Leben vor dem Laptop oder ein Leben, das Anderen hilft? Was sagt ihr dazu? Macht mit!",
+        "duration_seconds": 58.67,
+        "marks": 1,
+        "stem": "What is the main purpose of this announcement?",
+        "options": [
+          "To challenge",
+          "To excite",
+          "To guide",
+          "To promote"
+        ],
+        "image_path": "clips/2021/q08.png"
+      },
+      {
+        "question_number": 9,
+        "clip_path": "clips/2021/q09.mp3",
+        "transcript": "Male: Hier ist Radio Bremen, mit der Jugendstunde am Freitag. Wie ihr wisst, haben wir einen neuen Skatepark hier in der Stadt und nächsten Monat haben wir zwei Wettkämpfe für Skaters – einen für die Jungen und einen für Mädchen. Klara Neumann ist heute im Studio und sie hat damit ein Problem. Klara, was hast du gegen Skateboarder?\nKlara (female): Nichts – und können Sie bitte Sie zu mir sagen – ich kenne Sie nicht.\nMale: Tut mir leid, aber ich sage du zu allen. Jetzt zurück zum Thema: was hast du gegen diesen Wettkampf?\nKlara (female): Sie, bitte. Ich habe nichts gegen einen Wettkampf – aber warum müssen es zwei Teams sein? Können Jungen und Mädchen nicht zusammen skaten?\nMale: Das ist lächerlich. Jeder weiß, dass die Jungen besser skaten als die Mädchen – und so geben wir den Mädchen eine bessere Chance, etwas zu gewinnen.\nKlara (female): Das ist total falsch. Wer sagt sowas? Mädchen sind oft schneller als die Jungen.\nMale: Sag mal Klara, kannst du skaten?\nKlara (female): Nein aber . . .\nMale: Und wie alt bist du eigentlich? Du siehst sehr jung aus.\nKlara (female): Ist das wichtig?\nMale: Wenn du so jung bist und nicht skatest – warum bist du dann hier? Ich habe das Gefühl, dass du von diesem Thema überhaupt keine Ahnung hast.\nKlara (female): Das stimmt nicht. Ich . . .\nMale: Na ja. Das ist es für heute. Aber ich muss sagen, ich finde Skating einen sehr tollen Sport für Jungen und Mädchen. Schade, dass einige nicht so denken. Wir sollten alle dahinterstehen und diesen Sport unterstützen – auch wenn man selber den Sport nicht treibt.",
+        "duration_seconds": 115.58,
+        "marks": 6,
+        "stem": "(a)\nWhat is ,Jugendstunde‘?\n(b)\nKlara left this interview upset. Explain why."
+      }
+    ]
+  },
+  "2022": {
+    "familiarisation": {
+      "clip_path": "clips/2022/familiarisation.mp3",
+      "transcript": "Hans (male): Hallo Petra. Ich habe mein Mittagessen vergessen und ich bin so hungrig!\nFemale: Hans, du hast Glück. Ich habe zwei Brote in meiner Tasche. Du kannst mein Käsebrot essen.\nHans (male): Und weißt du, ich habe auch meinen Deutschaufsatz noch nicht geschrieben.\nFemale: Typisch! Und wenn wir unser Brot gegessen haben, helfe ich dir mit dem Aufsatz.",
+      "duration_seconds": 35.17
+    },
+    "questions": [
+      {
+        "question_number": 1,
+        "clip_path": "clips/2022/q01.mp3",
+        "transcript": "Female: Entschuldigen Sie bitte, ich kann meine Tochter Christina nicht finden! Sie ist klein, 7 Jahre alt. Sie hat lange, dunkle, lockige Haare. Sie trägt eine schwarze Hose und ein gepunktetes Hemd. Sie trägt auch eine Brille. Können Sie mir bitte helfen, sie zu finden?",
+        "duration_seconds": 28.65,
+        "marks": 1,
+        "stem": "Identify the most accurate image of Christina.",
+        "image_path": "clips/2022/q01.png"
+      },
+      {
+        "question_number": 2,
+        "clip_path": "clips/2022/q02.mp3",
+        "transcript": "Male: Mama, der Hund ist weg! Ich bin von der Schule nach Hause gekommen und die Tür im Garten war offen und der Hund ist nicht hier. Was soll ich machen? Ich habe die Nachbarn gefragt, aber er ist auch nicht da. Vielleicht ist er zu unserem Hundesitter gegangen. Kannst du mir bitte seine Telefonnummer geben?",
+        "duration_seconds": 28.08,
+        "marks": 2,
+        "stem": "What are the reasons for this call?"
+      },
+      {
+        "question_number": 3,
+        "clip_path": "clips/2022/q03.mp3",
+        "transcript": "Female: Okay, Klasse 11a, in drei Tagen ist unsere Wanderung zum See. Ihr müsst eure Schwimmklamotten, Sonnencreme und ein Badetuch mitbringen. Der Wetterbericht sagt, dass es sehr heiß wird. Es soll 35 Grad werden, aber leider soll es am Nachmittag sehr stark regnen. Deswegen den Regenschirm nicht vergessen!",
+        "duration_seconds": 32.43,
+        "marks": 3,
+        "stem": "Explain the teacher’s instructions for the excursion."
+      },
+      {
+        "question_number": 4,
+        "clip_path": "clips/2022/q04.mp3",
+        "transcript": "Male: Wollen Sie eine Pause von der Arbeit? Kommen Sie uns im Resort Paradies besuchen - die Leute sind cool und die Sonne scheint immer. Unser Resort ist nur für Leute, die älter als 21 Jahre alt sind. Endlich keine lauten und nervigen Kinder! Morgens am Strand liegen, nachmittags Golf spielen, abends ins Fitnessstudio und nachts etwas an der Bar trinken – toll, was? Es kommen die interessantesten Leute aus der ganzen Welt. Es ist einfach, neue Freunde zu finden. Finden Sie uns unter www.resortparadies.de",
+        "duration_seconds": 51.5,
+        "marks": 3,
+        "stem": "Who would find this advertisement appealing? Justify your response\nwith reference to the text."
+      },
+      {
+        "question_number": 5,
+        "clip_path": "clips/2022/q05.mp3",
+        "transcript": "Female: Hallo Felix, du bist hier? Ich dachte du bist in Deutschland!\nMale: Hi Mia, wie du siehst, bin ich hier. Ja, ich wollte ein Jahr nach Deutschland. Aber jetzt nicht mehr.\nFemale: Warum?\nMale: Ich hatte mir leider eine Woche vor meiner Reise den Arm gebrochen.\nFemale: Oh nein, wie schrecklich.\nMale: Toll war es nicht. Ich war eine Woche im Krankenhaus. Aber ich habe dort meine Freundin kennengelernt. Ich bin ja so verliebt. Ich will kein ganzes Jahr von meiner Freundin weg sein.\nFemale: Wie schön.\nMale: Ja, und jetzt möchten wir zusammen eine Wohnung mieten. Ich brauche mein Geld, um ein Sofa, Tische und Stühle und so etwas zu kaufen. Ein Jahr in Deutschland wäre einfach zu teuer.",
+        "duration_seconds": 60.01,
+        "marks": 4,
+        "stem": "What factors led to Felix’s decision?"
+      },
+      {
+        "question_number": 6,
+        "clip_path": "clips/2022/q06.mp3",
+        "transcript": "Male: Hallo Alina, was ist denn los? Du siehst traurig aus.\nAlina (female): Hi Max, ich weiß nicht, was ich machen soll. Ich möchte nächstes Jahr acht Monate nach Europa reisen, aber ich will meinem Freund nicht weh tun. Wir sind seit 3 Jahren zusammen.\nMale: Dann wird es Zeit für einen neuen Freund.\nAlina (female): Mann, bist du doof!\nMale: Alina, du möchtest doch nach Europa, um dein Italienisch und Spanisch zu verbessern. Das ist gut für deine Berufschancen. Deine Freunde in Deutschland willst du auch besuchen, oder? Das ist doch so wichtig für dich!\nAlina (female): Du hast ja Recht. Ich habe das schon lange geplant.\nMale: Vielleicht wartet dein Freund ja auf dich. Nur weil du acht Monate reisen möchtest, müsst ihr euch nicht trennen. Ich würde bestimmt auf dich warten. Hast du deinen Freund gefragt, ob er mitkommen möchte?\nAlina (female): Nein, aber das ist wirklich eine gute Idee.",
+        "duration_seconds": 73.13,
+        "marks": 4,
+        "stem": "How does the conversation with Max help Alina?"
+      },
+      {
+        "question_number": 7,
+        "clip_path": "clips/2022/q07.mp3",
+        "transcript": "Male: Hi Sophia, wie gefällt dir dein Ferienjob in der Bäckerei? Du musst doch bestimmt früh aufstehen?\nFemale: Die Arbeit gefällt mir super, aber das frühe Aufstehen ist nicht so toll. Ich arbeite von 4 bis 10 Uhr morgens, und dann habe ich den ganzen Tag frei. Das ist in den Ferien ideal.\nMale: Was? Um 4 Uhr anfangen? Das ist ja schrecklich. Nicht für alles Geld der Welt würde ich das tun!\nFemale: Für Geld vielleicht nicht, aber ich darf auch die Reste mit nach Hause nehmen. Gestern, war das eine halbe Schwarzwälder Kirschtorte, oft sind es Brötchen. Brot habe ich schon seit Wochen nicht mehr gekauft!",
+        "duration_seconds": 53.88,
+        "marks": 3,
+        "stem": "Summarise the advantages of Sophia’s new job."
+      },
+      {
+        "question_number": 8,
+        "clip_path": "clips/2022/q08.mp3",
+        "transcript": "Male: Hi Steffi, was machst du jetzt?\nFemale: Hi Rainer! Nach einer Doppelstunde Deutsch brauche ich jetzt die Pause.\nMale: Ach, wir können zusammen nach draußen gehen – heute ist es schön sonnig und warm.\nFemale: Okay, aber ich habe nur 10 Minuten Zeit. Ich muss noch etwas zum Essen kaufen, zwei Bücher zurück in die Bibliothek bringen und auch kurz mit Frau Wissmann sprechen.\nMale: Ach so! Ich muss auch zur Kantine – komm, wir gehen zusammen dorthin.",
+        "duration_seconds": 39.57,
+        "marks": 1,
+        "stem": "Where does this conversation take place?",
+        "options": [
+          "In the library",
+          "At the canteen",
+          "In a classroom",
+          "In the schoolyard"
+        ],
+        "image_path": "clips/2022/q08.png"
+      },
+      {
+        "question_number": 9,
+        "clip_path": "clips/2022/q09.mp3",
+        "transcript": "Female: Hallo Julian, kommst du auf die Party von Alex?\nMale: Ich darf nicht. Mama und Papa haben es verboten. Ich will aber gehen! Ich werde aus meinem Zimmer klettern und zur Party gehen.\nFemale: Bist du verrückt? Dein Zimmer ist im zweiten Stock. Du kannst dir deine Arme oder Beine verletzen, wenn du fällst. Außerdem wohnen wir 5 Kilometer von der Party weg. Alex wohnt in einem schlechten Stadtteil. Dort ist es nachts gefährlich.\nMale: Du klingst schon wie Mama!\nFemale: Du verstehst dich doch gut mit unseren Eltern. Sie vertrauen dir. Aber wenn du so etwas machst, dann glauben sie dir nie wieder.\nMale: Du hast ja Recht.\nFemale: Soll ich mit ihnen sprechen? Ich kann dich im Auto mitnehmen und auch wieder nach Hause fahren. Ich kann dich auch auf der Party babysitten.\nMale: Haha, aber mit Mama und Papa reden, das könnte funktionieren.",
+        "duration_seconds": 68.66,
+        "marks": 4,
+        "stem": "How does Nina try to persuade Julian to change his mind?"
+      },
+      {
+        "question_number": 10,
+        "clip_path": "clips/2022/q10.mp3",
+        "transcript": "Female: Hi Andreas! Hier ist Isabell. Na? Wie war der Familienurlaub?\nMale: Naja, einerseits war es echt gut: das Essen war billig und die Zimmer waren se sauber und groß. Für die Kinder war es eine tolle Zeit, weil es so viele Aktivtät für sie gab.\nFemale: Okay, und andererseits?\nMale: Es gab so viele Leute! Die Swimming Pools waren ständig überfüllt und mussten immer warten! Auf einen Tisch im Restaurant, auf einen Platz am Stran auf alles mussten wir warten! Es gab auch sehr viele Sportmöglichkeiten für d Erwachsenen, aber meine Frau Sonja ist total unsportlich. Sie mag lieber Kult Aber Ausflüge zu Museen, Konzerte oder sowas gab es nicht. Leider konnte au niemand Deutsch sprechen und das war manchmal kompliziert. hr en wir d, ie ur. ch",
+        "duration_seconds": 67.24,
+        "marks": 5,
+        "stem": "To what extent is Andreas likely to recommend this holiday? Justi\nyour response with reference to the text.\nfy"
+      }
+    ]
+  },
+  "2023": {
+    "familiarisation": {
+      "clip_path": "clips/2023/familiarisation.mp3",
+      "transcript": "Hans (male): Hallo Petra. Ich habe mein Mittagessen vergessen und ich bin so hungrig!\nFemale: Hans, du hast Glück. Ich habe zwei Brote in meiner Tasche. Du kannst mein Käsebrot essen.\nHans (male): Und weißt du, ich habe auch meinen Deutschaufsatz noch nicht geschrieben.\nFemale: Typisch! Und wenn wir unser Brot gegessen haben, helfe ich dir mit dem Aufsatz.",
+      "duration_seconds": 31.86
+    },
+    "questions": [
+      {
+        "question_number": 1,
+        "clip_path": "clips/2023/q01.mp3",
+        "transcript": "Mama (female): Nico, hast du alles für deinen Urlaub fertig?\nNico (male): Ja, Mama.\nMama (female): Hast du die Telefonnummer von dem Hotel an deine Freunde getextet?\nNico (male): Nein, noch nicht.\nMama (female): Und hast du die Fahrkarte?\nNico (male): Ich kaufe sie morgen am Bahnhof.\nMama (female): Gut. Dann bist du fast fertig.",
+        "duration_seconds": 25.22,
+        "marks": 2,
+        "stem": "What are the TWO things Nico’s mum reminds him to do?"
+      },
+      {
+        "question_number": 2,
+        "clip_path": "clips/2023/q02.mp3",
+        "transcript": "Tim (male): Hallo Emma, kannst du dein Haus beschreiben? Ich bin in 2 Minuten bei dir.\nFemale: Hallo, Tim! Kein Problem. Es ist ein weißes Haus mit einem dunklen Dach. Es gibt einen Balkon im ersten Stock und einen kleinen Garten mit Rosen. Die Haustür ist zwischen zwei Fenstern. Zieh bitte deine Schuhe aus. Meine Mama mag keine Schuhe im Haus. Du musst auch die Codenummer 2803 für die Tür eintippen.\nTim (male): Okay, 2803 bis gleich.",
+        "duration_seconds": 53.45,
+        "marks": 3,
+        "stem": "(a)\nWhich of the following is Emma’s house?",
+        "options": [
+          "C. D. (b) What additional instructions does Emma give Tim?"
+        ],
+        "image_path": "clips/2023/q02.png"
+      },
+      {
+        "question_number": 3,
+        "clip_path": "clips/2023/q03.mp3",
+        "transcript": "Male: Achtung liebe Schülerinnen und Schüler! Unser Fußballteam hat gerade das Finale 5 zu 4 gewonnen. Wir wollen das mit der ganzen Schule feiern. Zum Mittagessen bekommen alle Schüler und Schülerinnen eine Bratwurst mit Brötchen.",
+        "duration_seconds": 22.54,
+        "marks": 2,
+        "stem": "What is the purpose of this announcement?"
+      },
+      {
+        "question_number": 4,
+        "clip_path": "clips/2023/q04.mp3",
+        "transcript": "Female: Hi Leo, wohin gehst du?\nMale: Hi Susi, ich gehe zu meinem Tanzkurs.\nFemale: Tanzkurs? Echt, das ist doch altmodisch, so etwas hat meine Oma gemacht, als sie jung war. Wer macht denn heute noch so was?\nMale: Fast alle deutschen Jugendlichen. Es macht viel Spaß.\nFemale: Okay, okay, und wo machst du das?\nMale: In einem professionellen Tanzstudio.\nFemale: Wieviel kostet ein Tanzkurs?\nMale: 150 Euro für 10 Stunden.\nFemale: Was so viel? Das ist aber teuer!\nMale: 15 Euro für eine Stunde finde ich O.K.",
+        "duration_seconds": 50.47,
+        "marks": 3,
+        "stem": "How do Leo’s and Susi’s opinions differ?"
+      },
+      {
+        "question_number": 5,
+        "clip_path": "clips/2023/q05.mp3",
+        "transcript": "Female: Suchen Sie etwas Besonderes für Ihr Kind in den nächsten Schulferien? Wie wäre es mit einem Ferienprogramm bei uns? Wir haben ein super Programm. Wir besuchen Museen und Schlösser am Morgen und nachmittags gibt es viel Sport wie schwimmen oder segeln. Die Kinder helfen mit dem Essen und sie lernen kochen. Das Beste: 2 Wochen bei uns gibt es zu dem einmaligen Preis von 500 Euro!",
+        "duration_seconds": 43.76,
+        "marks": 3,
+        "stem": "Why would parents choose this school holiday program for their\nchild?"
+      },
+      {
+        "question_number": 6,
+        "clip_path": "clips/2023/q06.mp3",
+        "transcript": "Mama (female): Mensch, Noah – es ist schon fünf Uhr! Du kommst eine ganze Stunde zu spät nach Hause. Hast du den Bus verpasst?\nNoah (male): Ja, ich habe den Bus verpasst und musste dann zwei Kilometer nach Hause laufen. Das war schon ärgerlich, aber dann hat es auch noch angefangen zu regnen. Ich war ganz nass! Meine Schuhe, meine Kleidung – einfach alles und es war sehr kalt.\nMama (female): Aber du siehst so glücklich aus!\nNoah (male): Ja, auf dem Weg nach Hause habe ich Thomas Weber getroffen und wir haben lange geredet. Ich habe ihn seit Jahren nicht mehr gesehen. Er wohnt jetzt wieder hier, in der Schillerstraße. Ach, Mama – ich bin einfach so froh, Thomas wiedergesehen zu haben. Wir treffen uns morgen wieder und ich freue mich total darauf!",
+        "duration_seconds": 73.79,
+        "marks": 4,
+        "stem": "How did Noah’s feelings change throughout the afternoon?"
+      },
+      {
+        "question_number": 7,
+        "clip_path": "clips/2023/q07.mp3",
+        "transcript": "Male: Bald müsst ihr eure Fächer für nächstes Jahr wählen. Was ist bei der Wahl wichtig? Ihr sollt euch diese Fragen stellen: Sind die Klassen für dieses Fach groß oder klein? Gibt es viele Hausaufgaben und kann man in diesem Fach gute Noten bekommen? Für viele meiner Freunde waren gute Noten das Wichtigste, aber für mich waren es meine Lehrer, denn bei einem guten Lehrer macht das Lernen Spaß. Viel Glück bei der Wahl!",
+        "duration_seconds": 41.67,
+        "marks": 1,
+        "stem": "According to the speaker, what is the most important consideration\nwhen choosing a subject?",
+        "options": [
+          "The size of the class",
+          "The expected workload",
+          "The quality of the teacher",
+          "The potential to get good grades"
+        ],
+        "image_path": "clips/2023/q07.png"
+      },
+      {
+        "question_number": 8,
+        "clip_path": "clips/2023/q08.mp3",
+        "transcript": "Female: Hallo Luke, wir müssen noch die Geburtstagsparty für Alex organisieren.\nMale: Stimmt! Wir können vielleicht im Jugendzentrum feiern.\nFemale: Das geht leider nicht, das Jugendzentrum ist an diesem Tag nicht frei.\nMale: Wie wäre es mit unserem Lieblingsrestaurant?\nFemale: Das wäre eine gute Idee, aber es hat nur Platz für 20 Leute und wir wollen doch 30 Leute einladen.\nMale: Vielleicht eine Party im Park? Da ist genug Platz für alle.\nFemale: Nein Luke, ich habe den Wetterbericht gesehen. Es soll windig und sehr kalt sein.\nMale: Jetzt weiß ich es! Wir haben eine große Garage. Feiern wir die Party bei mir.\nFemale: Das ist ja prima!",
+        "duration_seconds": 63.95,
+        "marks": 4,
+        "stem": "Explain the factors that led to Luke’s final decision."
+      },
+      {
+        "question_number": 9,
+        "clip_path": "clips/2023/q09.mp3",
+        "transcript": "Male: Guten Tag, ich möchte gern einen Urlaub für mich und meine Frau buchen. Sie arbeitet so viel und braucht eine Pause.\nFemale: Vielleicht ein Resort in Spanien am Strand.\nMale: Mmmm. . . Urlaub am Strand finde ich toll, aber meine Frau würde gerne viele Städte sehen, aber sie mag nicht immer ihren Koffer ein – und auspacken.\nFemale: Wie wäre es mit einem Urlaub auf einem schönen Schiff? Dann muss sie den Koffer nur am Anfang und am Ende der Reise packen. Unsere Reise nach Madagaskar ist sehr beliebt. Sie dauert 14 Tage.\nMale: Das ist zu lang. . .\nFemale: Es gibt auch Schifffahrten auf Flüssen wie zum Beispiel dem Rhein. Die sind viel kürzer. Zwischen zwei und fünf Tagen. Das Schiff hält jeden Tag in einer anderen schönen Stadt an.\nMale: Das klingt super, Danke.",
+        "duration_seconds": 75.22,
+        "marks": 3,
+        "stem": "Explain why the husband will book one of the suggestions."
+      },
+      {
+        "question_number": 10,
+        "clip_path": "clips/2023/q10.mp3",
+        "transcript": "Phillip (male): Hi Leoni! Ich brauche deine Hilfe. Ich weiß noch nicht, was ich in der 12. Klasse machen soll. Ich habe einen Vollzeitsausbildungsplatz als Assistent in einer Apotheke bekommen. Ich hatte in dieser Apotheke in den Ferien gearbeitet. Es war total super. Aber vielleicht soll ich mein Abitur machen.\nFemale: Ach, du Armer! Das ist ja ein Dilemma, Phillip. Hast du schon von einer dualen Ausbildung gehört?\nPhillip (male): Nein, was ist denn das?\nFemale: Du lernst einen Beruf, aber du machst auch Fächer wie Mathe und Englisch und am Ende hast du eine Ausbildung und ein Abitur.\nPhillip (male): Klingt ja super. Wie sieht das so aus?\nFemale: Von 8 bis 5 bist du in der Apotheke. Dann, am Abend, gehst du online und lernst die Fächer für dein Abitur.\nPhillip (male): Was? Den ganzen Tag arbeiten und nachts lernen? Aber, O.K., danke. Ich muss darüber nachdenken.",
+        "duration_seconds": 84.74,
+        "marks": 5,
+        "stem": "How could Leoni’s suggestion help Phillip to solve his dilemma?"
+      }
+    ]
+  },
+  "2024": {
+    "familiarisation": {
+      "clip_path": "clips/2024/familiarisation.mp3",
+      "transcript": "Hans (male): Hallo Petra. Ich habe mein Mittagessen vergessen und ich bin so hungrig!\nFemale: Hans, du hast Glück. Ich habe zwei Brote in meiner Tasche. Du kannst mein Käsebrot essen.\nHans (male): Und weißt du, ich habe auch meinen Deutschaufsatz noch nicht geschrieben.\nFemale: Typisch! Und wenn wir unser Brot gegessen haben, helfe ich dir mit dem Aufsatz.",
+      "duration_seconds": 38.57
+    },
+    "questions": [
+      {
+        "question_number": 1,
+        "clip_path": "clips/2024/q01.mp3",
+        "transcript": "Female: Hallo Markus! Hier ist Tina. Ich bin so aufgeregt, ich habe eine neue Katze. Sie heißt Mitzi. Mitzi ist ganz weiß, aber sie hat große schwarze Ohren und einen schwarzen Schwanz.",
+        "duration_seconds": 18.66,
+        "marks": 1,
+        "stem": "Which of the following is Mitzi?",
+        "image_path": "clips/2024/q01.png"
+      },
+      {
+        "question_number": 2,
+        "clip_path": "clips/2024/q02.mp3",
+        "transcript": "Male: Liebe Kundinnen und Kunden, es ist schon 18:45 Uhr. Wir schließen unseren Supermarkt in 15 Minuten. Bitte machen Sie Ihre letzten Einkäufe und gehen Sie dann zur Kasse.",
+        "duration_seconds": 18.09,
+        "marks": 2,
+        "stem": "What is the purpose of this announcement?"
+      },
+      {
+        "question_number": 3,
+        "clip_path": "clips/2024/q03.mp3",
+        "transcript": "Female: Hallo Tom! Kommst du mit zum Weihnachtsmarkt?\nMale: Hallo Katrin, ich bin mir nicht sicher, es gibt immer die gleichen langweiligen Sachen.\nFemale: Aber das stimmt nicht! Dieses Jahr gibt es extra lange Bratwürste. Sie sind einen Meter lang und kosten nur 5 Euro!! Außerdem kommt die neue Schülerin aus Australien mit. Sie heißt Ruby und sie will neue Leute kennenlernen.\nMale: Einen Meter lang? Das ist ja fantastisch! Bratwurst ist mein Lieblingsessen und ich will auch die neue Schülerin treffen. Vielleicht komme ich doch mit.",
+        "duration_seconds": 49.41,
+        "marks": 2,
+        "stem": "Why would Tom go to the Christmas Market?"
+      },
+      {
+        "question_number": 4,
+        "clip_path": "clips/2024/q04.mp3",
+        "transcript": "Female: Guten Tag, hier ist Café Bergblick. Wie kann ich Ihnen helfen?\nMale: Guten Tag, Wolf hier. Ich möchte gern für morgen einen Tisch reservieren.\nFemale: Für wieviele Personen?\nMale: 4 Erwachsene und ein 2 Jahre altes Kind. Haben Sie einen Stuhl für Kleinkinder?\nFemale: : Natürlich haben wir einen Hochstuhl. Also, Sie wollen am Freitag, den 13. Dezember einen Tisch für 5 Personen reservieren und wollen einen Hochstuhl für ihr kleines Kind.\nMale: Ja, genau. Bis morgen.\nFemale: Auf Wiederhören.",
+        "duration_seconds": 45.71,
+        "marks": 3,
+        "stem": "Fill in the missing details.\nName: Wolf\nDate:\nNumber of Guests:\nSpecial request(s):"
+      },
+      {
+        "question_number": 5,
+        "clip_path": "clips/2024/q05.mp3",
+        "transcript": "Female: Tim, was ist mit unserem Flug?\nTim (male): So ein Mist. Unser Flug nach Spanien ist gecancelt worden. Ein Motor ist kaputt. Leider war das heute der letzte Flug nach Spanien.\nFemale: Und was machen wir jetzt?\nTim (male): Wir müssen bis morgen warten und hier in einem Hotel übernachten. Weil wir einen billigen Urlaub machen und mit einem Billigflieger fliegen, müssen wir das Hotel selber bezahlen. Wir bekommen kein Geld für das Hotel.",
+        "duration_seconds": 38.4,
+        "marks": 3,
+        "stem": "Why is Tim annoyed?"
+      },
+      {
+        "question_number": 6,
+        "clip_path": "clips/2024/q06.mp3",
+        "transcript": "Male: Bücherei der Stadt Frankfurt. Sie sprechen mit Herrn Schiller.\nFemale: Hier ist Nina Grass, ich habe meinen roten Laptop in der Bücherei vergessen.\nMale: Ja, ich habe einen roten Laptop gefunden.\nFemale: Das ist ja super!\nMale: Sie können ihn morgen abholen.\nFemale: Morgen erst?\nMale: Wir haben heute nicht mehr geöffnet!\nFemale: Oh nein, das ist ja schrecklich! Ich brauche den Laptop für meine Hausaufgaben. Was soll ich jetzt tun?\nMale: Mmm, wenn Sie in 10 Minuten hier sind, warte ich auf Sie.\nFemale: Fantastisch! Jetzt kann ich doch meine Hausaufgaben für morgen machen. Ich komme sofort. Vielen Dank.",
+        "duration_seconds": 53.29,
+        "marks": 3,
+        "stem": "Why is Nina pleased with the outcome of the phone call?"
+      },
+      {
+        "question_number": 7,
+        "clip_path": "clips/2024/q07.mp3",
+        "transcript": "Male: Guten Tag, Isabel. Warum möchten Sie bei uns als Tierpflegerin arbeiten?\nIsabel (female): Ich möchte eigentlich Tierärztin werden und ich lese schon seit Jahren viele Bücher über Tiere, was sie fressen, welche Krankheiten es gibt und wie man sich gut um sie kümmert.\nMale: Wie schön! Haben Sie schon mit Tieren gearbeitet?\nIsabel (female): Ja, wir haben drei Hunde zu Hause, und ich habe auch Teilzeitjobs als Hunde-und Katzensitterin gehabt. Ich habe auch in einem Tiergeschäft gearbeitet.\nMale: Wann können Sie arbeiten? Wir suchen jemanden der flexibel ist.\nIsabel (female): Ich kann ab nächster Woche jeden Tag arbeiten.\nMale: Das hört sich gut an! Wir rufen Sie an.\nIsabel (female): Danke, auf Wiedersehen!",
+        "duration_seconds": 63.09,
+        "marks": 3,
+        "stem": "Why would Isabel be a good candidate for the job as a veterinary\nassistant?"
+      },
+      {
+        "question_number": 8,
+        "clip_path": "clips/2024/q08.mp3",
+        "transcript": "Male: Hallo, Susanne! Na, wie geht es mit deiner neuen Mitbewohnerin Anita?\nSusanne (female): Nicht so gut. Anita ist so unordentlich. Ihre Kleider liegen auf dem Fußboden und sie macht nie die Dusche sauber! Sie kommt immer nach Mitternacht nach Hause und ist unglaublich laut.\nMale: Machst du das nicht auch?\nSusanne (female): Also Peter! So schlimm wie Anita bin ich nicht. Meine Kleider liegen auf dem Stuhl und nicht auf dem Boden und seit ich studiere habe ich nicht viel Zeit für Partys. Vielleicht eine Party pro Monat und wenn ich nach Hause komme, bin ich ganz leise.\nMale: Wenn du meinst.",
+        "duration_seconds": 53.42,
+        "marks": 4,
+        "stem": "To what extent is Susanne justified in her complaints?"
+      },
+      {
+        "question_number": 9,
+        "clip_path": "clips/2024/q09.mp3",
+        "transcript": "Male: Willkommen bei Radio Franken. Heute interviewen wir Frau Brecht. Sie ist die Schulleiterin des Gymnasiums Bamberg. Frau Brecht, wir wollen wissen, warum Sie wieder zum Abitur nach 13 Jahren zurückgekehrt sind.\nFemale: Es war eigentlich eine leichte Entscheidung. Die Schüler hatten viel mehr Stress mit dem kurzen Abitur, und das hat sie krank gemacht.\nMale: Was haben die Eltern gesagt?\nFemale: Die Eltern haben auch gesagt, dass sie ein Jahr mehr für ihre Kinder wollen. Die Kinder sollen auch noch Zeit für Hobbys und Freunde haben. Außerdem sind die Noten im Abitur nach 13 Jahren wieder besser. Das freut die Eltern und die Schüler.\nMale: Und die Lehrer?\nFemale: Sie sind auch dafür, weil sie jetzt wieder genug Zeit haben, ihre Fächer interessanter zu machen.\nMale: Dann sind ja alle zufrieden. Danke fürs Interview.",
+        "duration_seconds": 70.43,
+        "marks": 4,
+        "stem": "What led to the principal’s decision?"
+      },
+      {
+        "question_number": 10,
+        "clip_path": "clips/2024/q10.mp3",
+        "transcript": "Male: Hallo Maxi, wie geht’s?\nFemale: Nicht so gut, ich habe ein Stipendium für ein Jahr an einer Uni in England bekommen. Ich weiß nicht, ob ich gehen soll.\nMale: Was? Du musst kein Geld bezahlen, um zu studieren und darüber bist du unglücklich?\nFemale: Naja, das ist schon prima, aber alle meine Freunde fangen mit der Uni in unserer Stadt an. Ich möchte gern mit meinen Freunden studieren.\nMale: Denk doch mal nach. Du studierst doch in England, das heißt, dass du dann mit deinen Freunden im zweiten Jahr zusammen bist. Dann studierst du immer noch mit ihnen, nur ein Jahr später.\nFemale: So habe ich das noch gar nicht gesehen.\nMale: Deine Tante wohnt doch in England? Du könntest doch bei ihr wohnen?\nFemale: Ach ja, ich könnte sie fragen und sie wohnt in der Nähe von der Uni. So ein Jahr im Ausland ist natürlich schon toll, aber ich weiß nicht. Ich habe hier einen super Teilzeit-Job und ich will den Job behalten.\nMale: Arbeitest du nicht online? Du kannst doch überall arbeiten und musst nicht ins Büro gehen.\nFemale: Daran habe ich noch gar nicht gedacht. England, ich komme!",
+        "duration_seconds": 87.8,
+        "marks": 5,
+        "stem": "Explain how Maxi’s opinion of studying overseas changed."
+      }
+    ]
+  },
+  "2025": {
+    "familiarisation": {
+      "clip_path": "clips/2025/familiarisation.mp3",
+      "transcript": "Hans (male): Hallo Petra. Ich habe mein Mittagessen vergessen und ich bin so hungrig!\nFemale: Hans, du hast Glück. Ich habe zwei Brote in meiner Tasche. Du kannst mein Käsebrot essen.\nHans (male): Und weißt du, ich habe auch meinen Deutschaufsatz noch nicht geschrieben.\nFemale: Typisch! Und wenn wir unser Brot gegessen haben, helfe ich dir mit dem Aufsatz.",
+      "duration_seconds": 38.74
+    },
+    "questions": [
+      {
+        "question_number": 1,
+        "clip_path": "clips/2025/q01.mp3",
+        "transcript": "Female: Hallo, Frank, du hast heute morgen einen Termin beim Zahnarzt um 10 Uhr. Vergiss ihn bitte nicht!\nFrank (male): Ok Mama, um 10 Uhr beim Zahnarzt.\nFemale: Ich kann dich fahren.\nFrank (male): Danke Mama, das ist prima!",
+        "duration_seconds": 20.57,
+        "marks": 2,
+        "stem": "What was the purpose of this call?"
+      },
+      {
+        "question_number": 2,
+        "clip_path": "clips/2025/q02.mp3",
+        "transcript": "Female: An alle Schülerinnen und Schüler der 11. Klasse. Morgen ist der Ausflug zum Museum in Hamburg. Vergesst nicht, €10 für den Eintritt mitzubringen und dass ihr keine Schuluniform tragen müsst. Ihr könnt anziehen, was ihr wollt!",
+        "duration_seconds": 23.7,
+        "marks": 2,
+        "stem": "What are the students reminded to do?"
+      },
+      {
+        "question_number": 3,
+        "clip_path": "clips/2025/q03.mp3",
+        "transcript": "Male: Hallo Barbara, schön dich zu sehen. Hast du einen neuen Hund?\nFemale: Nein, das ist immer noch mein lieber alter Hund Oscar. Warum fragst du?\nMale: Er sieht ganz anders aus! Oscar hat doch ein dunkles und langes Fell, oder? Nicht hell und kurz?\nFemale: Er war heute morgen beim Hundefriseur. Der Friseur hat Oscar gebadet und sein Fell ganz kurz geschnitten. Seine Haare waren so lang! Er konnte nichts mehr sehen.\nMale: Ach so?\nFemale: Er war auch so schmutzig, dass er dunkelbraun aussah und nicht hell, und mit so langen Haaren konnte ich ihn nicht mehr baden. Es war zu viel Arbeit.\nMale: Jetzt sieht Oscar richtig schön aus!\nFemale: Danke für das Kompliment.",
+        "duration_seconds": 66.62,
+        "marks": 3,
+        "stem": "(a)\nFill in the missing details.",
+        "options": [
+          "D. C."
+        ],
+        "image_path": "clips/2025/q03.png"
+      },
+      {
+        "question_number": 4,
+        "clip_path": "clips/2025/q04.mp3",
+        "transcript": "Anna (male): Hier Hellmann.\nFemale: Hallo Papa, ich bin’s, Anna. Es ist schon fünf Uhr und ich muss in einer halben Stunde bei der Arbeit sein.\nAnna (male): Ja und?\nFemale: Ich bin noch im Fitnessstudio und habe nur meine stinkige Kleidung an. Kannst du mir bitte meine Arbeitsuniform bringen?\nAnna (male): Ach Mensch! Wo ist die denn?\nFemale: In meinem Schlafzimmer, wahrscheinlich noch auf dem Boden.\nAnna (male): Ja natürlich, wie immer! Ich schaue mal nach, und wenn sie da ist, bringe ich sie dir.\nFemale: Danke sehr Papa, du bist der Beste, wie immer!",
+        "duration_seconds": 49.65,
+        "marks": 3,
+        "stem": "What is Anna’s dilemma?"
+      },
+      {
+        "question_number": 5,
+        "clip_path": "clips/2025/q05.mp3",
+        "transcript": "Male: Hallo Mia, Ich bin’s, Paul. Ich kann morgen leider nicht kommen. Ich muss unser Treffen absagen. Die Busse fahren morgen nicht. Immer sind diese Busfahrer am Streiken. Leider ist auch mein Auto kaputt und in der Werkstatt und ich habe wirklich keine Lust €50 für ein Taxi zu bezahlen. Können wir uns nächste Woche am Dienstag treffen?",
+        "duration_seconds": 34.47,
+        "marks": 3,
+        "stem": "Why did Paul cancel the meeting?"
+      },
+      {
+        "question_number": 6,
+        "clip_path": "clips/2025/q06.mp3",
+        "transcript": "Female: Wollen Sie Ihren Führerschein machen? Dann kommen Sie zur Fahrschule „Supersicher“. Wir haben im Moment ein super Angebot. Sie bekommen fünf Fahrstunden aber bezahlen nur für vier. Wir haben auch nur neue Autos, dann ist das Fahren ganz sicher. Unsere Fahrlehrer und Fahrlehrerinnen sind nett und geduldig und haben sehr gute Nerven. Das macht das Autofahren lernen absolut stressfrei! Finden sie uns im Internet unter www.superschnell.de",
+        "duration_seconds": 47.02,
+        "marks": 3,
+        "stem": "What might attract people to this driving school?"
+      },
+      {
+        "question_number": 7,
+        "clip_path": "clips/2025/q07.mp3",
+        "transcript": "Female: Hallo, Markus, wie war denn dein Interview?\nMarkus (male): Ich bin sicher, dass ich den Job bekommen werde. Ich schwimme seit meinem dritten Geburtstag. Meinen jüngeren Geschwistern habe ich das Schwimmen beigebracht und meine Schwester hat in Paris im Schwimmen eine Medaille gewonnen! Den Bademeister hier in unserem Schwimmbad kenne ich und wir verstehen uns gut. Ich kann auch an jedem Wochenende arbeiten.",
+        "duration_seconds": 34.01,
+        "marks": 4,
+        "stem": "Why does Markus think he is likely to get the job as a swimming\ninstructor?",
+        "image_path": "clips/2025/q07.png"
+      },
+      {
+        "question_number": 8,
+        "clip_path": "clips/2025/q08.mp3",
+        "transcript": "Male: Hast du die Ansage verstanden?\nFemale: Ja, wir müssen zu Gleis 20!\nMale: Was? Wir sind auf Gleis 2. Unser Zug fährt in 5 Minuten. Hoffentlich sind wir schnell genug, sonst kommen wir nicht pünktlich zum Flughafen.\nFemale: Zum Flughafen kommen wir auf jeden Fall. Für den Bus haben wir keine Zeit mehr. Wenn es mit dem Zug nicht klappt, können wir ein Taxi nehmen.",
+        "duration_seconds": 34.09,
+        "marks": 1,
+        "stem": "Where is this conversation taking place?",
+        "options": [
+          "Airport",
+          "Bus stop",
+          "Taxi rank",
+          "Train station"
+        ],
+        "image_path": "clips/2025/q08.png"
+      },
+      {
+        "question_number": 9,
+        "clip_path": "clips/2025/q09.mp3",
+        "transcript": "Female: Hallo Simon, hast du schon einen neuen Mitbewohner gefunden?\nMale: Hi Pia, ich habe mich gestern mit zwei Leuten getroffen.\nFemale: Und, waren die Leute nett?\nMale: Die erste Person war sehr sympathisch. Sie spielt Trompete in Konzerten und sie liebt Musik.\nFemale: Ist doch ideal – du magst doch auch so gern Musik.\nMale: Richtig, und wir haben uns sehr gut verstanden, aber dann hat sie gesagt, dass sie eine Katze hat! Kannst du dir meine schönen, alten Möbel und eine Katze vorstellen! Dann sind die Möbel bald nur noch alt und nicht mehr schön!\nFemale: Okay, und wie war die zweite Person?\nMale: Sie war auch nett, aber sehr schüchtern.\nFemale: Dann eher nicht?\nMale: Nicht so schnell. Sie macht eine Ausbildung zur Köchin und kann sehr gut kochen. Sie probiert neue Rezepte zu Hause aus.\nFemale: Dann ist die Entscheidung nicht schwer für deinen Magen.",
+        "duration_seconds": 73.99,
+        "marks": 4,
+        "stem": "Which flatmate is Simon most likely to choose? Support your answer\nwith reference to the text."
+      },
+      {
+        "question_number": 10,
+        "clip_path": "clips/2025/q10.mp3",
+        "transcript": "Zoe (female): Hi Carl, möchtest du nicht ein Kandidat für die Show, „Deutschland sucht das Superhirn“ werden? Ich glaube, das ist was für dich!\nMale: Zoe, wirklich, warum sollte ich das machen?\nZoe (female): Du kannst €50.000 gewinnen!\nMale: Das ist natürlich ein Grund.\nZoe (female): Außerdem bist du doch so gut in Mathe, und die Show hat viele Mathefragen.\nMale: Ja, aber das ist doch nicht genug.\nZoe (female): Du bist auch immer so lustig. Du erzählst die besten Witze, das kommt beim Publikum bestimmt gut an.\nMale: Nur weil du mich lustig findest.\nZoe (female): Nicht nur ich, auch alle meine Freundinnen. Du trägst auch immer tolle und interessante Kleidung, das macht dich zum guten Kandidaten. Denn, wer will schon wie alle anderen Kandidaten aussehen?\nMale: Du bist aber heute nett zu mir.\nZoe (female): Du willst doch auch später für einen Radiosender arbeiten? Da ist es doch gut, wenn du schon bekannt bist.\nMale: Richtig, aber nur wenn ich gut bin.\nZoe (female): Bist du bestimmt!",
+        "duration_seconds": 77.97,
+        "marks": 5,
+        "stem": "How does Zoe try to convince Carl to apply to be a game show\ncontestant? Support your answer with reference to the text.",
+        "image_path": "clips/2025/q10.png"
+      }
+    ]
+  }
+}
