@@ -4,6 +4,7 @@
 
 #include "sim/config.hpp"
 #include "sim/server.hpp"
+#include "sim/store.hpp"
 
 #include "sim/examiner/gemini_examiner.hpp"
 #include "sim/examiner/hailo_examiner.hpp"
@@ -25,6 +26,11 @@ int main() {
         //startup rather than on the turn that first uses it. It comes from the
         //same place Server's registry will read it, so the two cannot disagree
 
+        auto store = std::make_unique<sim::Store>(config.database_path);
+        //opened and migrated before run(), never inside it: prewarm_examiner
+        //occupies every pool thread at startup, and a database opened after it
+        //would be opened by whichever turn happened to need it first
+
         std::unique_ptr<sim::InterfaceExaminer> examiner;
         if (config.examiner_backend == sim::ExaminerBackend::Hailo) {
             examiner = std::make_unique<sim::HailoExaminer>(config.hailo_ollama_url);
@@ -36,7 +42,8 @@ int main() {
         sim::Server server(std::move(config),
                            std::move(stt),
                            std::move(examiner),
-                           std::move(tts));
+                           std::move(tts),
+                           std::move(store));
         //inject the concrete pieces into the server as interfaces
 
         server.run();

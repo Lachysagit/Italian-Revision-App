@@ -63,11 +63,13 @@ crow::response json_error(int status, const std::string& message) {
 Server::Server(Config config,
                std::unique_ptr<InterfaceSTT> stt,
                std::unique_ptr<InterfaceExaminer> examiner,
-               std::unique_ptr<InterfaceTTS> tts)
+               std::unique_ptr<InterfaceTTS> tts,
+               std::unique_ptr<Store> store)
     : config_(std::move(config)),
       stt_(std::move(stt)),
       examiner_(std::move(examiner)),
       tts_(std::move(tts)),
+      store_(std::move(store)),
       pool_(config_.worker_threads) {
     //constructor where config_ is initialised
 } // constructor

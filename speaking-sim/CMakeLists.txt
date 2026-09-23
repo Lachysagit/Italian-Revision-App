@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(speaking_sim LANGUAGES CXX)
+project(speaking_sim LANGUAGES C CXX)
+# C is enabled for one reason: SQLite ships as a .c amalgamation. Without it
+# CMake has no CMAKE_C_COMPILE_OBJECT and the generate step fails on that target.
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -111,6 +113,36 @@ FetchContent_Declare(httplib
 FetchContent_MakeAvailable(httplib)
 
 # ---------------------------------------------------------------------------
+# SQLite - accounts, classes and exam history.
+# ---------------------------------------------------------------------------
+
+# The amalgamation ships no CMakeLists, so this downloads the source and the
+# target is declared by hand below - the same shape as Asio above.
+FetchContent_Declare(sqlite3
+    URL      https://www.sqlite.org/2025/sqlite-amalgamation-3500400.zip
+    URL_HASH SHA256=1d3049dd0f830a025a53105fc79fd2ab9431aea99e137809d064d8ee8356b032
+)
+FetchContent_MakeAvailable(sqlite3)
+
+add_library(sqlite3 STATIC "${sqlite3_SOURCE_DIR}/sqlite3.c")
+target_include_directories(sqlite3 SYSTEM PUBLIC "${sqlite3_SOURCE_DIR}")
+target_compile_definitions(sqlite3
+    PUBLIC
+        SQLITE_THREADSAFE=1             # serialized: Crow socket threads and
+                                        # pool_ workers both reach the Store
+        SQLITE_DEFAULT_FOREIGN_KEYS=1   # the schema leans on ON DELETE CASCADE
+        SQLITE_DQS=0                    # no double-quoted string literals, so a
+                                        # mistyped column name is an error
+        SQLITE_OMIT_LOAD_EXTENSION=1
+)
+# The amalgamation is third-party C: keep this project's warning level off it.
+if(MSVC)
+    target_compile_options(sqlite3 PRIVATE /w)
+else()
+    target_compile_options(sqlite3 PRIVATE -w)
+endif()
+
+# ---------------------------------------------------------------------------
 # third_party submodules - optional, so the project still configures on a fresh
 # clone that has not run: git submodule update --init --recursive
 # ---------------------------------------------------------------------------
@@ -188,6 +220,9 @@ add_executable(speaking-sim
     src/server.cpp
     src/session.cpp
     src/static_files.cpp
+    src/store.cpp
+    src/auth/google_oauth.cpp
+    src/auth/session_cookie.cpp
     src/text_clean.cpp
     src/topics.cpp
     src/translate.cpp
@@ -219,6 +254,7 @@ target_link_libraries(speaking-sim
         httplib::httplib    # brings in OpenSSL::SSL / OpenSSL::Crypto
         OpenSSL::SSL
         OpenSSL::Crypto
+        sqlite3            # accounts, classes and exam history
         Threads::Threads
         ${SIM_NATIVE_LIBS}
 )

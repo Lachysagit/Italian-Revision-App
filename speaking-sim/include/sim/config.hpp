@@ -35,6 +35,10 @@ struct Config {
     std::vector<std::pair<std::string, std::string>> language_voices;
     //language id -> piper voice path, parsed from LANGUAGE_VOICES. Empty means
     //every language keeps the voice built into language.cpp
+    std::string database_path;
+    //accounts, classes and exam history. A relative path resolves against the
+    //working directory, which is speaking-sim/ like every other asset path here
+
     std::uint16_t port = 8080;
 
     std::size_t worker_threads = 2;

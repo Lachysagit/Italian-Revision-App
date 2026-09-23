@@ -16,6 +16,7 @@
 #include "sim/tts.hpp"
 #include "sim/worker.hpp"
 #include "sim/session.hpp"
+#include "sim/store.hpp"
 
 namespace sim {
 
@@ -30,7 +31,8 @@ public:
     Server(Config config,
            std::unique_ptr<InterfaceSTT> stt,
            std::unique_ptr<InterfaceExaminer> examiner,
-           std::unique_ptr<InterfaceTTS> tts
+           std::unique_ptr<InterfaceTTS> tts,
+           std::unique_ptr<Store> store
         );
 
     void run();
@@ -136,6 +138,12 @@ private:
     std::unique_ptr<InterfaceSTT> stt_;
     std::unique_ptr<InterfaceExaminer> examiner_;
     std::unique_ptr<InterfaceTTS> tts_;
+
+    std::unique_ptr<Store> store_;
+    //accounts, classes and exam history. A member of Server like languages_ so
+    //it outlives every session - but unlike that registry it is mutable, which
+    //is why Session must not hold a pointer to it. Session stays a pure state
+    //object and Server does the writing
 
     WorkerPool pool_;
 };

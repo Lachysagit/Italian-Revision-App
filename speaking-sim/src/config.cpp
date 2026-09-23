@@ -108,6 +108,8 @@ Config load_config() {
     //built-in paths in language.cpp already name the voices in models/, and
     //PIPER_MODEL_PATH still overrides italian's on its own
 
+    config.database_path = get_env("DATABASE_PATH", "speaking-sim.db");
+
     const std::string backend = get_env("EXAMINER_BACKEND", "gemini");
     config.examiner_backend =
         (backend == "hailo") ? ExaminerBackend::Hailo : ExaminerBackend::Gemini;

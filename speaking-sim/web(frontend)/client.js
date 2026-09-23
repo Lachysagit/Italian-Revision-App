@@ -810,7 +810,11 @@ startButton.onclick = async () => {
     //than behind getUserMedia: playAudio and armMic both test it, and the
     //opening reply can now land while the mic is still being opened
 
-    socket = new WebSocket(`ws://${location.host}/ws`);
+    const wsScheme = location.protocol === "https:" ? "wss:" : "ws:";
+    socket = new WebSocket(`${wsScheme}//${location.host}/ws`);
+    //derived rather than hardcoded: a browser refuses a plaintext ws:// from a
+    //page served over https, so a fixed ws:// breaks the moment this sits
+    //behind a reverse proxy
     socket.binaryType = "arraybuffer";
     //tell the socket to send binary data as an ArrayBuffer (raw bytes)
 
