@@ -11,7 +11,7 @@
 
 #include "sim/config.hpp"
 #include "sim/examiner.hpp"
-#include "sim/question_bank.hpp"
+#include "sim/language.hpp"
 #include "sim/stt.hpp"
 #include "sim/tts.hpp"
 #include "sim/worker.hpp"
@@ -38,34 +38,41 @@ public:
 private:
     Config config_;
     crow::SimpleApp app_;
-    crow::response serve_index();
-    crow::response serve_client_script();
-    crow::response serve_stylesheet();
+    crow::response serve_manifest(const std::string& language);
+
+    crow::response serve_clip(const crow::request& req,
+                              const std::string& language,
+                              const std::string& year,
+                              const std::string& file);
+    //language, year and file come straight off the URL, so they are validated
+    //against an allowlist before the path is built
+
     crow::response serve_gemini_keys();
     //names only, never the keys themselves - this is a plain unauthenticated
     //GET a browser tab can fire, so it must be safe to expose to anyone who
     //can already reach the server
+
+    crow::response serve_languages();
+    //what the speaking page's picker is built from: id, label and translate
+    //code per language. Objects rather than bare strings because the picker
+    //needs the wire value, the display name and the translate code at once
 
     crow::response serve_translate(const crow::request& req);
     //the translate box. Deliberately plain HTTP rather than a /ws message: the
     //socket only exists while a session is running, and the session's one-job
     //latch would refuse a lookup made mid-turn as "busy"
 
-    std::string load_prompt(const std::string& path, const std::string& fallback);
-
-    std::shared_ptr<const QuestionBank> question_bank_;
-    //loaded once at startup and handed to every session by pointer. Read-only
-    //from there on, so the sessions share it without a lock
-
-    std::string first_prompt_;
-    std::string ongoing_prompt_;
-    //one authoritative file per phase of the exam, read once at startup. The
-    //opening question and every later turn are governed by exactly one of
-    //these and nothing else, so a rule has a single place it can be changed
+    LanguageRegistry languages_;
+    //every language's prompts, question bank, voice and per-language strings,
+    //loaded once at startup and const from there on. Sessions hold bare
+    //pointers into it, so it must outlive them - which a member of Server does.
+    //The prompts, the bank and load_prompt all used to live here as separate
+    //members; they moved into the pack when a second language needed its own
 
     void prewarm_tts();
-    //one throwaway synthesis at startup so the first real turn does not pay
-    //piper's cold cost. Called from run() before the port is bound
+    //one throwaway synthesis per distinct voice at startup, so the first real
+    //turn in either language does not pay piper's cold cost. Called from run()
+    //before the port is bound
 
     void prewarm_examiner();
     //the same idea for the examiner's HTTPS connection, but it has to run once
@@ -103,7 +110,11 @@ private:
 
     void send_examiner_text(const std::shared_ptr<ConnHandle>& handle,
                             const std::string& reply,
-                            bool speech_follows);
+                            bool speech_follows,
+                            int sample_rate);
+    //sample_rate is the session's own voice rate, passed in because two
+    //languages on one server produce different ones. Ignored when
+    //speech_follows is false, since no frame is coming to describe
     //split off from the old send_examiner_result so the question can be painted
     //the moment the examiner returns it, rather than behind the TTS it describes
 

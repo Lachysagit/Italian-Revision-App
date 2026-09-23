@@ -18,6 +18,7 @@
 
 #include "sim/protocol.hpp"
 #include "sim/question_bank.hpp"
+#include "sim/static_files.hpp"
 #include "sim/text_clean.hpp"
 #include "sim/topics.hpp"
 #include "sim/translate.hpp"
@@ -42,7 +43,9 @@ constexpr std::size_t kMaxTranslateChars = 1000;
 // checked against a list rather than passed through. Without this the request
 // body could steer the outbound call at any language Google offers.
 bool is_supported_language(const std::string& code) {
-    return code == "it" || code == "en";
+    return code == "it" || code == "en" || code == "de";
+    //de was missing while the listening page already offered German, so its
+    //translate box answered every lookup with an unsupported-pair error
 }
 
 crow::response json_error(int status, const std::string& message) {
@@ -73,57 +76,94 @@ Server::Server(Config config,
 void Server::run() 
 
     {
-    first_prompt_ = load_prompt(
-        "prompts/examiner_first.txt",
-        "You are an examiner. Ask the student one short, easy question in "
-        "Italian, in the present tense, at a beginner's level.");
-    ongoing_prompt_ = load_prompt(
-        "prompts/examiner_ongoing.txt",
-        "You are an examiner. Ask the student questions in Italian at a "
-        "beginner's level.");
-    //both read once at startup. Which one a turn gets is Session's decision,
-    //because only the Session knows whether a question has been asked yet
-
-    question_bank_ = std::make_shared<const QuestionBank>(
-        QuestionBank::load("prompts/question_bank.txt"));
-    if (question_bank_->empty()) {
-        std::cerr << "prompts/question_bank.txt is missing or carries no "
-                     "questions, so the examiner runs without samples"
-                  << std::endl;
-        //named in the log for the same reason a missing prompt file is: the
-        //exam still runs, and the only symptom is questions drifting off the
-        //syllabus with nothing to point at
-    } else {
-        std::cerr << "question bank: " << question_bank_->group_count()
-                  << " topics loaded" << std::endl;
-    }
+    languages_ = LanguageRegistry::load(config_);
+    //every language's prompts, bank and voice, read once at startup. Which
+    //prompt a turn gets is still Session's decision, because only the Session
+    //knows whether a question has been asked yet. load() logs per language and
+    //never throws: a missing German prompt file must still leave Italian exams
+    //running, the same way a missing prompt file always has
 
     prewarm_tts();
     prewarm_examiner();
     //before the port is bound, so the first student to connect cannot race them
 
     CROW_ROUTE(app_, "/") //HTTP ROUTE -----------------------------------
-    ([this] {
-        return serve_index();
+    ([] {
+        return serve_static_file("web(frontend)/index.html", "text/html");
     });
 
     CROW_ROUTE(app_, "/client.js") //HTTP ROUTE -----------------------------------
-    ([this] {
-        return serve_client_script();
+    ([] {
+        return serve_static_file("web(frontend)/client.js", "application/javascript");
     });
-    //index.html pulls this in with <script src="client.js">
+
+    CROW_ROUTE(app_, "/translate.js") //HTTP ROUTE -----------------------------------
+    ([] {
+        return serve_static_file("web(frontend)/translate.js", "application/javascript");
+    });
+    //the translate box, shared by both pages
 
     CROW_ROUTE(app_, "/styles.css") //HTTP ROUTE -----------------------------------
-    ([this] {
-        return serve_stylesheet();
+    ([] {
+        return serve_static_file("web(frontend)/styles.css", "text/css");
     });
-    //same reason as client.js: index.html links it
+
+    CROW_ROUTE(app_, "/fonts.css") //HTTP ROUTE -----------------------------------
+    ([] {
+        return serve_static_file("web(frontend)/fonts.css", "text/css");
+    });
+    //the @font-face block, linked by both pages
+
+    CROW_ROUTE(app_, "/fonts/<string>") //HTTP ROUTE -----------------------------------
+    ([](const std::string& file) {
+        if (!is_safe_font_name(file)) {
+            return crow::response(404);
+        }
+        return serve_static_file("web(frontend)/fonts/" + file, "font/woff2");
+    });
+    //crow's <string> stops at a /, and is_safe_font_name keeps the rest of the
+    //folder from being readable through a name the stylesheet never asks for
+
+    CROW_ROUTE(app_, "/listening") //HTTP ROUTE -----------------------------------
+    ([] {
+        return serve_static_file("web(frontend)/listening.html", "text/html");
+    });
+
+    CROW_ROUTE(app_, "/listening.js") //HTTP ROUTE -----------------------------------
+    ([] {
+        return serve_static_file("web(frontend)/listening.js", "application/javascript");
+    });
+
+    CROW_ROUTE(app_, "/listening.css") //HTTP ROUTE -----------------------------------
+    ([] {
+        return serve_static_file("web(frontend)/listening.css", "text/css");
+    });
+
+    CROW_ROUTE(app_, "/listening/<string>/manifest.json") //HTTP ROUTE -----------------------------------
+    ([this](const std::string& language) {
+        return serve_manifest(language);
+    });
+    //one clip index per language, re-fetched when the page's picker changes
+
+    CROW_ROUTE(app_, "/listening/<string>/clips/<string>/<string>") //HTTP ROUTE -----------------------------------
+    ([this](const crow::request& req, const std::string& language,
+            const std::string& year, const std::string& file) {
+        return serve_clip(req, language, year, file);
+    });
+    //crow's <string> stops at a /, so the path cannot be walked upward even
+    //before is_safe_clip_name looks at it
 
     CROW_ROUTE(app_, "/api/gemini-keys") //HTTP ROUTE -----------------------------------
     ([this] {
         return serve_gemini_keys();
     });
     //the settings modal fetches this to populate its picker
+
+    CROW_ROUTE(app_, "/api/languages") //HTTP ROUTE -----------------------------------
+    ([this] {
+        return serve_languages();
+    });
+    //and this to populate the language picker beside it
 
     CROW_ROUTE(app_, "/api/translate").methods("POST"_method) //HTTP ROUTE -----------------------------------
     ([this](const crow::request& req) {
@@ -138,8 +178,10 @@ void Server::run()
         
             {
             auto session = std::make_shared<Session>();
-            session->set_prompts(first_prompt_, ongoing_prompt_);
-            session->set_question_bank(question_bank_);
+            session->set_language(&languages_.default_pack());
+            //the default until a Start message names one, so a client that
+            //never sends a language still runs an exam rather than reaching a
+            //null pack on its first turn
 
 
             //sessions_ maps crow::websocket::connection* keys to
@@ -235,25 +277,42 @@ void Server::prewarm_tts() {
     //cold disk - seconds, all of it landing on the opening question. Doing it
     //here pulls those pages into the OS file cache while nobody is waiting, so
     //every later spawn is a warm one. The samples are thrown away.
-    const auto started = std::chrono::steady_clock::now();
-    try {
-        const std::vector<std::int16_t> warm = tts_->synthesize("Buongiorno.");
-        const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                            std::chrono::steady_clock::now() - started).count();
-        if (warm.empty()) {
-            std::cerr << "tts prewarm produced no audio in " << ms
-                      << "ms - piper is not configured, replies will be silent" << std::endl;
-        } else {
-            std::cerr << "tts prewarm: " << ms << "ms, "
-                      << (warm.size() / static_cast<double>(tts_->sample_rate()))
-                      << "s of audio discarded" << std::endl;
-            //the number to compare against the first turn's tts timing: if they
-            //are still close, the cost is synthesis itself, not the cold start
+    std::vector<std::string> warmed;
+    //each distinct voice once: two languages sharing a voice share its cache
+    //entry too, and warming it twice only spends a second spawn on nothing
+
+    for (const LanguagePack* pack : languages_.all()) {
+        if (std::find(warmed.begin(), warmed.end(), pack->piper_voice_path) !=
+            warmed.end()) {
+            continue;
         }
-    } catch (const std::exception& e) {
-        std::cerr << "tts prewarm failed, continuing: " << e.what() << std::endl;
-        //never fatal. A broken piper must still leave a server that serves the
-        //page and the text of every reply, exactly as a mid-turn failure does
+        warmed.push_back(pack->piper_voice_path);
+
+        const auto started = std::chrono::steady_clock::now();
+        try {
+            const std::vector<std::int16_t> warm =
+                tts_->synthesize(pack->prewarm_text, pack->piper_voice_path);
+            const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - started).count();
+            if (warm.empty()) {
+                std::cerr << "tts prewarm (" << pack->id << ") produced no audio in "
+                          << ms << "ms - piper is not configured, replies will be silent"
+                          << std::endl;
+            } else {
+                std::cerr << "tts prewarm (" << pack->id << "): " << ms << "ms, "
+                          << (warm.size() / static_cast<double>(
+                                  tts_->sample_rate(pack->piper_voice_path)))
+                          << "s of audio discarded" << std::endl;
+                //the number to compare against the first turn's tts timing: if they
+                //are still close, the cost is synthesis itself, not the cold start
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "tts prewarm (" << pack->id
+                      << ") failed, continuing: " << e.what() << std::endl;
+            //never fatal, and per voice: a missing German voice must still leave
+            //a server that runs Italian exams, the same way a broken piper
+            //leaves one that serves the page and the text of every reply
+        }
     }
 }
 
@@ -323,60 +382,30 @@ void Server::prewarm_examiner() {
     }
 }
 
-crow::response Server::serve_index()
+crow::response Server::serve_manifest(const std::string& language)
     {
-    std::ifstream file("web(frontend)/index.html");
-    if (!file) {
-        return crow::response(404, "index.html not found");
+    if (!is_known_language(language)) {
+        return crow::response(404);
     }
-    //open index html file with error handling
 
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    //stream entire index file into a string
-    crow::response response(buffer.str());
-    //build http response
-    response.set_header("Content-Type", "text/html");
-    //set header so its rendered as webpage
-    return response;
+    return serve_static_file("listening/" + language + "/manifest.json", "application/json");
 }
 
-crow::response Server::serve_client_script() 
-
+crow::response Server::serve_clip(const crow::request& req,
+                                  const std::string& language,
+                                  const std::string& year,
+                                  const std::string& file)
     {
-    std::ifstream file("web(frontend)/client.js");
-    if (!file) {
-        return crow::response(404, "client.js not found");
+    if (!is_known_language(language) || !is_safe_clip_name(year, file)) {
+        return crow::response(404);
     }
-    //open the browser client script
+    //rejected before the path exists, so a rejected name is never opened
 
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    //stream the entire script into a string
-    crow::response response(buffer.str());
-    //build http response
-    response.set_header("Content-Type", "application/javascript");
-    //set header so the browser executes it rather than displaying it
-    return response;
-}
+    //is_safe_clip_name has already limited this to .mp3 or .png
+    const bool is_image = file.compare(file.size() - 4, 4, ".png") == 0;
 
-crow::response Server::serve_stylesheet() 
-
-    {
-    std::ifstream file("web(frontend)/styles.css");
-    if (!file) {
-        return crow::response(404, "styles.css not found");
-    }
-    //open the page stylesheet
-
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    //stream the entire stylesheet into a string
-    crow::response response(buffer.str());
-    //build http response
-    response.set_header("Content-Type", "text/css");
-    //set header so the browser applies it rather than displaying it as text
-    return response;
+    return serve_range_file(req, "listening/" + language + "/clips/" + year + "/" + file,
+                            is_image ? "image/png" : "audio/mpeg");
 }
 
 crow::response Server::serve_gemini_keys()
@@ -387,6 +416,24 @@ crow::response Server::serve_gemini_keys()
     for (const GeminiKeyOption& option : config_.gemini_api_keys) {
         json[index] = option.name;
         //name only - the key itself never leaves the server
+        ++index;
+    }
+    crow::response response(json.dump());
+    response.set_header("Content-Type", "application/json");
+    return response;
+}
+
+crow::response Server::serve_languages()
+    {
+    crow::json::wvalue json;
+    unsigned index = 0;
+    for (const LanguagePack* pack : languages_.all()) {
+        json[index]["id"] = pack->id;
+        json[index]["label"] = pack->display_name;
+        json[index]["translate_code"] = pack->translate_code;
+        //objects rather than bare strings: the picker needs the wire value, the
+        //text to show and the code the translate box switches to, and deriving
+        //any of the three in JavaScript would be a second table to keep in step
         ++index;
     }
     crow::response response(json.dump());
@@ -445,26 +492,6 @@ crow::response Server::serve_translate(const crow::request& req)
         //the detail goes to the operator's log and a fixed string to the page,
         //the same split the examiner path uses for its failures
     }
-}
-
-std::string Server::load_prompt(const std::string& path,
-                                const std::string& fallback)
-
-    {
-    std::ifstream file(path);
-    if (!file) {
-        std::cerr << "prompt file " << path
-                  << " not found, falling back to a built-in one line prompt"
-                  << std::endl;
-        return fallback;
-        //named in the log rather than failing silently: a missing file used to
-        //produce a working but oddly terse examiner and no clue why
-    }
-
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    //stream entire prompt file into a string
-    return buffer.str();
 }
 
 std::shared_ptr<Session> Server::find_session(crow::websocket::connection* conn) 
@@ -569,11 +596,19 @@ void Server::handle_control(crow::websocket::connection& conn,
             return;
         } //a job is already in flight on this session, so refuse this message
 
+        if (const LanguagePack* pack = languages_.find(message.language)) {
+            session->set_language(pack);
+        }
+        //an unknown or absent language leaves the default set on open, rather
+        //than failing the Start: a stale client or a typo must still get an
+        //exam. Set before the job is enqueued, because build_examiner_input()
+        //reads the pack's prompts the moment the opening question is queued
+
         session->set_gemini_key_name(message.gemini_key);
         session->set_student_name(message.student_name);
-        //both picked once, before the first job, and reused by every later turn
-        //- Stop messages carry neither field of their own. Set before the job is
-        //enqueued, so even the opening question already knows the name
+        //all three picked once, before the first job, and reused by every later
+        //turn - Stop messages carry none of these fields of their own. Set
+        //before the job is enqueued, so even the opening question knows them
 
         std::shared_ptr<Session> claim(session.get(), [session](Session* s) { s->end_job(); });
         //not an owner, just an RAII handle whose deleter releases the claim
@@ -621,13 +656,18 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
     std::vector<Turn> examiner_input = session->build_examiner_input();
     //still on Crow's socket thread, which the claim has already made exclusive
 
+    const LanguagePack* language = &session->language();
+    //snapshotted here alongside the input, for the same reason: the socket
+    //thread is the one that knows the session is not mid-change. The pack
+    //itself outlives every session, so the pointer stays good in the worker
+
     if (transcribe_first && !examiner_input.empty() &&
         examiner_input.back().role == Role::Student) {
         examiner_input.pop_back();
         //drops the previous turn's answer, this job appends a fresher one below
     }
 
-    pool_.enqueue([this, session, transcribe_first, answer_only,
+    pool_.enqueue([this, session, transcribe_first, answer_only, language,
         handle = std::move(handle),
         job_audio = std::move(utterance_audio),
         job_input = std::move(examiner_input),
@@ -657,7 +697,8 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
         try {
             if (transcribe_first) {
                 const auto stt_started = clock::now();
-                std::string transcript = stt_->transcribe(job_audio);
+                std::string transcript =
+                    stt_->transcribe(job_audio, language->whisper_code);
                 stt_ms = ms_since(stt_started);
 
                 if (!transcript.empty()) {
@@ -682,7 +723,7 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                         //nothing to re-arm for: the clock has run out and this
                         //job was the last one, heard or not
                     } else {
-                        send_examiner_text(handle, reply, false);
+                        send_examiner_text(handle, reply, false, 0);
                     }
                     return;
                     //no audio promised, so the client re-arms off the text alone
@@ -717,14 +758,15 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
             session->record_question(reply);
             session->note_question_topic(topic);
 
-            send_examiner_text(handle, reply, true);
+            send_examiner_text(handle, reply, true,
+                               tts_->sample_rate(language->piper_voice_path));
             text_sent = true;
             //ahead of synthesis, not after it. The question is on screen while
             //piper is still working, so the wait the student actually sees is
             //the examiner call alone rather than examiner + tts back to back
 
             const auto tts_started = clock::now();
-            speech = tts_->synthesize(reply);
+            speech = tts_->synthesize(reply, language->piper_voice_path);
             tts_ms = ms_since(tts_started);
 
             std::cerr << "turn timings: audio " << (job_audio.size() / 16000.0)
@@ -753,8 +795,10 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
             send_speech(handle, speech);
             //empty if synthesis threw, which is the signal that re-arms the mic
         } else {
-            send_examiner_text(handle, reply, false);
+            send_examiner_text(handle, reply, false, 0);
             //the examiner itself failed, so reply is empty and no audio is owed
+            //rate 0 because no frame follows; send_examiner_text writes the
+            //field only when it is positive
         }
         //hand the result back to Crow's thread for sending. 
     }
@@ -812,17 +856,21 @@ void Server::send_transcript(const std::shared_ptr<ConnHandle>& handle,
 
 void Server::send_examiner_text(const std::shared_ptr<ConnHandle>& handle,
                                 const std::string& reply,
-                                bool speech_follows) {
+                                bool speech_follows,
+                                int sample_rate) {
     Message message; //create Message Object
     message.type = MessageType::ExaminerText; //Set Message.type to Examiner Text
     message.payload = reply; //set payload to examiners reply
     if (speech_follows) {
-        message.sample_rate = tts_->sample_rate();
+        message.sample_rate = sample_rate;
         //tell the browser what rate the PCM frame that follows was produced at.
         //Taken from the backend rather than from the samples, because this is
         //now sent BEFORE synthesis runs - there are no samples to measure yet.
         //Its presence is also how the client knows to hold the mic muted until
         //the binary frame lands, so it must not be set on a text-only turn
+        //passed in rather than read from tts_ here: the rate belongs to the
+        //session's voice, and this function has no business knowing which
+        //voice that is. Two languages on one server report different rates
     }
     send_text_on_handle(handle, to_json(message).dump());
 }

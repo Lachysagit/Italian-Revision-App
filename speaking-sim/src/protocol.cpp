@@ -45,6 +45,9 @@ crow::json::wvalue to_json(const Message& message) {
         //the browser cannot guess the rate piper produced, so it is sent
         //alongside the text and used to build the playback buffer
     }
+    if (!message.language.empty()) {
+        json["language"] = message.language;
+    }
     if (!message.gemini_key.empty()) {
         json["gemini_key"] = message.gemini_key;
     }
@@ -75,6 +78,13 @@ Message from_json(const crow::json::rvalue& json) {
     if (json.has("payload") && json["payload"].t() == crow::json::type::String) {
         message.payload = json["payload"].s();
         //pull the JSON payload field out as a string an put it into Message Object
+    }
+
+    if (json.has("language") && json["language"].t() == crow::json::type::String) {
+        message.language = json["language"].s();
+        //presence AND type, like every other field: a client that sends a
+        //number here leaves the language empty and gets the default, rather
+        //than throwing on .s()
     }
 
     if (json.has("gemini_key") && json["gemini_key"].t() == crow::json::type::String) {

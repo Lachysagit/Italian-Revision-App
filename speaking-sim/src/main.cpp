@@ -17,9 +17,13 @@ int main() {
         //read all settings from environment variables once at startup
 
         auto stt = std::make_unique<sim::WhisperSTT>(config.whisper_model_path);
-        auto tts = std::make_unique<sim::PiperTTS>(config.piper_model_path);
-        //build the concrete STT and TTS implementations 
+        auto tts = std::make_unique<sim::PiperTTS>(
+            config.piper_model_path, sim::configured_voice_paths(config));
+        //build the concrete STT and TTS implementations
         //use unique_ptr
+        //the voice list is passed so every voice's sample rate is read at
+        //startup rather than on the turn that first uses it. It comes from the
+        //same place Server's registry will read it, so the two cannot disagree
 
         std::unique_ptr<sim::InterfaceExaminer> examiner;
         if (config.examiner_backend == sim::ExaminerBackend::Hailo) {

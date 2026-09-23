@@ -24,6 +24,11 @@ struct Message {
     std::string gemini_key;
     //name of the Gemini key the settings picker chose, sent with Start only.
     //only written to the JSON when non-empty, same discipline as sample_rate
+    std::string language;
+    //which exam the browser's picker chose, sent with Start only. Same
+    //discipline as the two below: absent rather than empty when nothing was
+    //picked, which is how the server tells "run the default" from a client
+    //that names a language it does not have
     std::string student_name;
     //what the examiner calls the student, sent with Start only. Same discipline
     //again: absent rather than empty when the settings field was left blank,

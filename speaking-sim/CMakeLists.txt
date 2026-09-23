@@ -182,10 +182,12 @@ endif()
 add_executable(speaking-sim
     src/main.cpp
     src/config.cpp
+    src/language.cpp
     src/protocol.cpp
     src/question_bank.cpp
     src/server.cpp
     src/session.cpp
+    src/static_files.cpp
     src/text_clean.cpp
     src/topics.cpp
     src/translate.cpp
