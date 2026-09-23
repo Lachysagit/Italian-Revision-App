@@ -39,12 +39,14 @@ bool parse_int_strict(const std::string& text, int& out) {
 //value taken straight from the environment is a startup-time foot-gun
 constexpr int kMaxWorkerThreads = 64;
 
-//GEMINI_API_KEYS="Personal=AIza...,Backup=AIza..." lets a settings picker
-//choose which key a session's requests are billed against. "name=key" pairs
-//separated by commas; a pair missing "=" or with an empty name/key is skipped
-//rather than failing startup, since one bad entry should not take the rest down
-std::vector<GeminiKeyOption> parse_gemini_keys(const std::string& text) {
-    std::vector<GeminiKeyOption> options;
+//"name=value" pairs separated by commas, the shape GEMINI_API_KEYS uses and
+//LANGUAGE_VOICES copies. A pair missing "=" or with an empty name/value is
+//skipped rather than failing startup, since one bad entry should not take the
+//rest down. Splitting on the FIRST "=" only: values carry their own, and a
+//path or a key truncated at one would be worse than useless
+std::vector<std::pair<std::string, std::string>> parse_named_pairs(
+    const std::string& text) {
+    std::vector<std::pair<std::string, std::string>> pairs;
     std::size_t start = 0;
     while (start <= text.size()) {
         std::size_t comma = text.find(',', start);
@@ -54,14 +56,24 @@ std::vector<GeminiKeyOption> parse_gemini_keys(const std::string& text) {
         const std::size_t equals = pair.find('=');
         if (equals != std::string::npos) {
             std::string name = pair.substr(0, equals);
-            std::string key = pair.substr(equals + 1);
-            if (!name.empty() && !key.empty()) {
-                options.push_back({std::move(name), std::move(key)});
+            std::string value = pair.substr(equals + 1);
+            if (!name.empty() && !value.empty()) {
+                pairs.emplace_back(std::move(name), std::move(value));
             }
         }
 
         if (comma == std::string::npos) break;
         start = comma + 1;
+    }
+    return pairs;
+}
+
+//GEMINI_API_KEYS="Personal=AIza...,Backup=AIza..." lets a settings picker
+//choose which key a session's requests are billed against.
+std::vector<GeminiKeyOption> parse_gemini_keys(const std::string& text) {
+    std::vector<GeminiKeyOption> options;
+    for (auto& [name, key] : parse_named_pairs(text)) {
+        options.push_back({std::move(name), std::move(key)});
     }
     return options;
 }
@@ -90,6 +102,11 @@ Config load_config() {
     config.hailo_ollama_url = get_env("HAILO_OLLAMA_URL", "http://localhost:11434");
     config.whisper_model_path = get_env("WHISPER_MODEL_PATH", "");
     config.piper_model_path = get_env("PIPER_MODEL_PATH", "");
+    config.language_voices = parse_named_pairs(get_env("LANGUAGE_VOICES", ""));
+    //LANGUAGE_VOICES="italian=models/it_IT-...onnx,german=models/de_DE-...onnx"
+    //overrides the voice a language ships with. Empty is the normal case: the
+    //built-in paths in language.cpp already name the voices in models/, and
+    //PIPER_MODEL_PATH still overrides italian's on its own
 
     const std::string backend = get_env("EXAMINER_BACKEND", "gemini");
     config.examiner_backend =

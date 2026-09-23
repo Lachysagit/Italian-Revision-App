@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace sim {
@@ -29,6 +30,11 @@ struct Config {
     std::string hailo_ollama_url;
     std::string whisper_model_path;
     std::string piper_model_path;
+    //the italian voice, kept singular so an .env written before multi-language
+    //still selects it. LANGUAGE_VOICES overrides per language on top
+    std::vector<std::pair<std::string, std::string>> language_voices;
+    //language id -> piper voice path, parsed from LANGUAGE_VOICES. Empty means
+    //every language keeps the voice built into language.cpp
     std::uint16_t port = 8080;
 
     std::size_t worker_threads = 2;
