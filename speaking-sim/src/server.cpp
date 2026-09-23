@@ -1,11 +1,13 @@
 #include "sim/server.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <exception>
+#include <cctype>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -57,6 +59,37 @@ crow::response json_error(int status, const std::string& message) {
     return response;
     //an error is JSON too, so the client can read .error the same way on every
     //path instead of guessing whether a body is text or JSON by status code
+}
+
+constexpr const char* kSessionCookie = "sid";
+
+//TEACHER_EMAILS is a comma separated allowlist. A school deployment needs some
+//way to say who may create a class, and an env var needs no admin UI to go
+//with it. Case insensitive, because it is typed by a person.
+bool is_teacher_email(const Config& config, const std::string& email) {
+    if (config.teacher_emails.empty() || email.empty()) return false;
+
+    std::string lowered;
+    lowered.reserve(email.size());
+    for (char c : email) {
+        lowered.push_back(static_cast<char>(
+            std::tolower(static_cast<unsigned char>(c))));
+    }
+    return std::find(config.teacher_emails.begin(), config.teacher_emails.end(),
+                     lowered) != config.teacher_emails.end();
+}
+
+crow::response auth_error_page(const std::string& message) {
+    crow::response response(400,
+        "<!doctype html><meta charset=utf-8>"
+        "<title>Sign-in failed</title>"
+        "<body style=\"font-family:system-ui;max-width:32rem;margin:4rem auto\">"
+        "<h1>Sign-in failed</h1><p>" + message + "</p>"
+        "<p><a href=\"/auth/login\">Try again</a></p>");
+    response.set_header("Content-Type", "text/html; charset=utf-8");
+    return response;
+    //a page rather than JSON: this is reached by a browser redirect from
+    //Google, so whoever hits it is looking at a window, not reading a fetch
 }
 
 template <typename F>
@@ -116,6 +149,12 @@ void Server::run()
     ([] {
         return serve_static_file("web(frontend)/client.js", "application/javascript");
     });
+
+    CROW_ROUTE(app_, "/account.js") //HTTP ROUTE -----------------------------------
+    ([] {
+        return serve_static_file("web(frontend)/account.js", "application/javascript");
+    });
+    //the signed-in-as corner of the nav, shared by both pages
 
     CROW_ROUTE(app_, "/translate.js") //HTTP ROUTE -----------------------------------
     ([] {
@@ -184,6 +223,37 @@ void Server::run()
         return serve_languages();
     });
     //and this to populate the language picker beside it
+
+    CROW_ROUTE(app_, "/signin") //HTTP ROUTE -----------------------------------
+    ([] {
+        return serve_static_file("web(frontend)/signin.html", "text/html");
+    });
+
+    CROW_ROUTE(app_, "/auth/login") //HTTP ROUTE -----------------------------------
+    ([this] {
+        return serve_auth_login();
+    });
+    //the sign-in button points straight here rather than at Google, so the
+    //client id and the PKCE challenge never have to exist in the page
+
+    CROW_ROUTE(app_, "/auth/callback") //HTTP ROUTE -----------------------------------
+    ([this](const crow::request& req) {
+        return serve_auth_callback(req);
+    });
+    //where Google sends the browser back. This exact URL has to be listed as an
+    //authorised redirect URI on the OAuth client, matched as a literal string
+
+    CROW_ROUTE(app_, "/auth/logout").methods("POST"_method) //HTTP ROUTE -----------------------------------
+    ([this](const crow::request& req) {
+        return serve_auth_logout(req);
+    });
+    //POST so that a link or a prefetch cannot sign somebody out
+
+    CROW_ROUTE(app_, "/api/me") //HTTP ROUTE -----------------------------------
+    ([this](const crow::request& req) {
+        return serve_me(req);
+    });
+    //what every page asks to find out whether it is signed in and as whom
 
     CROW_ROUTE(app_, "/api/translate").methods("POST"_method) //HTTP ROUTE -----------------------------------
     ([this](const crow::request& req) {
@@ -529,6 +599,151 @@ crow::response Server::serve_translate(const crow::request& req)
         //the detail goes to the operator's log and a fixed string to the page,
         //the same split the examiner path uses for its failures
     }
+}
+
+std::optional<User> Server::user_for_request(const crow::request& req) {
+    auto& ctx = app_.get_context<crow::CookieParser>(req);
+    const std::string token = ctx.get_cookie(kSessionCookie);
+    if (token.empty()) {
+        return std::nullopt;
+    }
+    return store_->user_for_auth_token(token);
+}
+
+crow::response Server::serve_auth_login() {
+    if (config_.google_client_id.empty()) {
+        return crow::response(503,
+            "Sign-in is not configured on this server. "
+            "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.");
+        //a plain sentence rather than a stack trace: the person who sees this
+        //is the one who has to go and set it
+    }
+
+    const std::string verifier = auth::random_token(32);
+    const std::string state = login_states_.create(verifier);
+
+    crow::response response(302);
+    response.set_header("Location",
+        auth::authorize_url(config_, state, auth::pkce_challenge(verifier)));
+    response.set_header("Cache-Control", "no-store");
+    return response;
+}
+
+crow::response Server::serve_auth_callback(const crow::request& req) {
+    const std::string error = req.url_params.get("error")
+                                  ? req.url_params.get("error") : "";
+    if (!error.empty()) {
+        std::cerr << "oauth: Google returned error " << error << '\n';
+        return auth_error_page("Google did not complete the sign-in.");
+        //the commonest one is access_denied, which just means the person
+        //pressed cancel - not something to show them a code for
+    }
+
+    const std::string code = req.url_params.get("code")
+                                 ? req.url_params.get("code") : "";
+    const std::string state = req.url_params.get("state")
+                                  ? req.url_params.get("state") : "";
+    if (code.empty() || state.empty()) {
+        return auth_error_page("That sign-in link was incomplete.");
+    }
+
+    auth::PendingLogin pending;
+    if (!login_states_.take(state, pending)) {
+        return auth_error_page(
+            "That sign-in link has expired or was already used. "
+            "Please try signing in again.");
+        //single use and time limited, so a bookmarked or replayed callback
+        //lands here rather than minting a second session
+    }
+
+    const auth::SignInResult result =
+        auth::exchange_code(config_, code, pending.verifier);
+    if (!result.ok) {
+        return auth_error_page(result.error);
+    }
+
+    try {
+        const bool is_teacher = is_teacher_email(config_, result.profile.email);
+        const User user = store_->upsert_google_user(result.profile, is_teacher);
+        const std::string token = store_->create_auth_session(
+            user.id, req.get_header_value("User-Agent"));
+
+        crow::response response(302);
+        auto& ctx = app_.get_context<crow::CookieParser>(req);
+        ctx.set_cookie(kSessionCookie, token)
+            .httponly()
+            .path("/")
+            .max_age(60 * 60 * 24 * 30)
+            .same_site(crow::CookieParser::Cookie::SameSitePolicy::Lax);
+        //Lax rather than Strict: the cookie has to survive the redirect back
+        //from accounts.google.com, and Strict would drop it on exactly that hop
+
+        if (config_.public_origin.rfind("https://", 0) == 0) {
+            ctx.set_cookie(kSessionCookie, token)
+                .httponly()
+                .secure()
+                .path("/")
+                .max_age(60 * 60 * 24 * 30)
+                .same_site(crow::CookieParser::Cookie::SameSitePolicy::Lax);
+        }
+        //Secure is decided from PUBLIC_ORIGIN rather than from a forwarded
+        //header: behind a proxy the header is whatever the proxy chose to send,
+        //and a Secure cookie on a plain-http dev origin never comes back at all
+
+        response.set_header("Location", "/");
+        response.set_header("Cache-Control", "no-store");
+        std::cerr << "oauth: signed in " << user.email
+                  << (user.is_teacher ? " (teacher)" : "") << '\n';
+        return response;
+    } catch (const std::exception& e) {
+        std::cerr << "oauth: could not record the sign-in: " << e.what() << '\n';
+        return auth_error_page("Could not complete the sign-in on this server.");
+    }
+}
+
+crow::response Server::serve_auth_logout(const crow::request& req) {
+    auto& ctx = app_.get_context<crow::CookieParser>(req);
+    const std::string token = ctx.get_cookie(kSessionCookie);
+
+    if (!token.empty()) {
+        try {
+            store_->delete_auth_session(token);
+            //deleted server side, not just cleared in the browser: on a shared
+            //classroom machine the cookie is the thing somebody else could reuse
+        } catch (const std::exception& e) {
+            std::cerr << "oauth: logout could not clear the session: "
+                      << e.what() << '\n';
+        }
+    }
+
+    ctx.set_cookie(kSessionCookie, "").path("/").max_age(0);
+
+    crow::response response(302);
+    response.set_header("Location", "/");
+    response.set_header("Cache-Control", "no-store");
+    return response;
+}
+
+crow::response Server::serve_me(const crow::request& req) {
+    const std::optional<User> user = user_for_request(req);
+    if (!user) {
+        return json_error(401, "not signed in");
+    }
+
+    crow::json::wvalue json;
+    json["id"] = user->id;
+    json["email"] = user->email;
+    json["name"] = user->display_name;
+    json["picture"] = user->picture_url;
+    json["is_teacher"] = user->is_teacher;
+    json["year_level"] = user->year_level;
+    json["subject_level"] = user->subject_level;
+    json["onboarded"] = user->onboarded;
+
+    crow::response response(json.dump());
+    response.set_header("Content-Type", "application/json");
+    response.set_header("Cache-Control", "no-store");
+    return response;
 }
 
 std::shared_ptr<Session> Server::find_session(crow::websocket::connection* conn) 

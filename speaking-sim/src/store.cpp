@@ -1,5 +1,8 @@
 #include "sim/store.hpp"
 
+#include "sim/auth/google_oauth.hpp"
+
+#include <openssl/sha.h>
 #include <sqlite3.h>
 
 #include <iostream>
@@ -246,6 +249,236 @@ void Store::reconcile_crashed_attempts() {
         std::cerr << "store: closed " << changed
                   << " attempt(s) left open by a previous run\n";
     }
+}
+
+namespace {
+
+//sessions are looked up by the hash of the cookie, never by the cookie itself:
+//a copied database file then contains no usable tokens.
+std::string sha256_raw(const std::string& text) {
+    unsigned char digest[SHA256_DIGEST_LENGTH];
+    SHA256(reinterpret_cast<const unsigned char*>(text.data()), text.size(),
+           digest);
+    return std::string(reinterpret_cast<const char*>(digest), sizeof(digest));
+}
+
+User read_user_row(sqlite3_stmt* stmt) {
+    const auto text = [stmt](int col) {
+        const unsigned char* value = sqlite3_column_text(stmt, col);
+        return value ? std::string(reinterpret_cast<const char*>(value))
+                     : std::string();
+    };
+    User user;
+    user.id = sqlite3_column_int64(stmt, 0);
+    user.email = text(1);
+    user.display_name = text(2);
+    user.picture_url = text(3);
+    user.is_teacher = sqlite3_column_int(stmt, 4) != 0;
+    user.year_level = text(5);
+    user.subject_level = text(6);
+    user.onboarded = sqlite3_column_type(stmt, 7) != SQLITE_NULL;
+    return user;
+}
+
+constexpr const char* kUserColumns =
+    "users.id, users.email, users.display_name, users.picture_url, "
+    "users.is_teacher, users.year_level, users.subject_level, "
+    "users.onboarded_at";
+//table qualified: user_for_auth_token joins auth_sessions, which has its own
+//user_id, and an unqualified "id" is ambiguous there
+//one list, so read_user_row's column indices cannot drift from the queries
+
+}  // namespace
+
+User Store::upsert_google_user(const GoogleProfile& profile, bool is_teacher) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    exec("BEGIN IMMEDIATE");
+    try {
+        std::int64_t user_id = 0;
+
+        sqlite3_stmt* find = nullptr;
+        sqlite3_prepare_v2(db_,
+            "SELECT user_id FROM oauth_identities "
+            "WHERE provider = 'google' AND subject = ?",
+            -1, &find, nullptr);
+        sqlite3_bind_text(find, 1, profile.subject.c_str(), -1, SQLITE_TRANSIENT);
+        if (sqlite3_step(find) == SQLITE_ROW) {
+            user_id = sqlite3_column_int64(find, 0);
+        }
+        sqlite3_finalize(find);
+
+        if (user_id == 0) {
+            sqlite3_stmt* by_email = nullptr;
+            sqlite3_prepare_v2(db_, "SELECT id FROM users WHERE email = ?",
+                               -1, &by_email, nullptr);
+            sqlite3_bind_text(by_email, 1, profile.email.c_str(), -1,
+                              SQLITE_TRANSIENT);
+            if (sqlite3_step(by_email) == SQLITE_ROW) {
+                user_id = sqlite3_column_int64(by_email, 0);
+            }
+            sqlite3_finalize(by_email);
+        }
+        //the email fallback is what lets a roster entry and a first sign-in
+        //meet on one row. email is COLLATE NOCASE, so the capitals a teacher
+        //typed do not open a second account
+
+        if (user_id == 0) {
+            sqlite3_stmt* insert = nullptr;
+            sqlite3_prepare_v2(db_,
+                "INSERT INTO users (email, display_name, picture_url, "
+                " is_teacher, created_at, last_seen_at) "
+                "VALUES (?, ?, ?, ?, CAST(strftime('%s','now') AS INTEGER), "
+                "        CAST(strftime('%s','now') AS INTEGER))",
+                -1, &insert, nullptr);
+            sqlite3_bind_text(insert, 1, profile.email.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(insert, 2, profile.display_name.c_str(), -1,
+                              SQLITE_TRANSIENT);
+            sqlite3_bind_text(insert, 3, profile.picture_url.c_str(), -1,
+                              SQLITE_TRANSIENT);
+            sqlite3_bind_int(insert, 4, is_teacher ? 1 : 0);
+            const int rc = sqlite3_step(insert);
+            sqlite3_finalize(insert);
+            if (rc != SQLITE_DONE) {
+                throw std::runtime_error(std::string("user insert: ") +
+                                         sqlite3_errmsg(db_));
+            }
+            user_id = sqlite3_last_insert_rowid(db_);
+        } else {
+            sqlite3_stmt* update = nullptr;
+            sqlite3_prepare_v2(db_,
+                "UPDATE users SET display_name = ?, picture_url = ?, "
+                " is_teacher = max(is_teacher, ?), "
+                " last_seen_at = CAST(strftime('%s','now') AS INTEGER) "
+                "WHERE id = ?",
+                -1, &update, nullptr);
+            sqlite3_bind_text(update, 1, profile.display_name.c_str(), -1,
+                              SQLITE_TRANSIENT);
+            sqlite3_bind_text(update, 2, profile.picture_url.c_str(), -1,
+                              SQLITE_TRANSIENT);
+            sqlite3_bind_int(update, 3, is_teacher ? 1 : 0);
+            sqlite3_bind_int64(update, 4, user_id);
+            sqlite3_step(update);
+            sqlite3_finalize(update);
+            //max() so dropping an address from TEACHER_EMAILS does not quietly
+            //demote somebody mid-term. Taking the role away is a deliberate act
+        }
+
+        sqlite3_stmt* link = nullptr;
+        sqlite3_prepare_v2(db_,
+            "INSERT OR IGNORE INTO oauth_identities (user_id, provider, subject) "
+            "VALUES (?, 'google', ?)",
+            -1, &link, nullptr);
+        sqlite3_bind_int64(link, 1, user_id);
+        sqlite3_bind_text(link, 2, profile.subject.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_step(link);
+        sqlite3_finalize(link);
+
+        exec("COMMIT");
+
+        auto user = user_by_id(user_id);
+        if (!user) {
+            throw std::runtime_error("user vanished immediately after upsert");
+        }
+        return *user;
+    } catch (...) {
+        exec("ROLLBACK");
+        throw;
+    }
+}
+
+std::optional<User> Store::user_by_id(std::int64_t user_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    const std::string sql =
+        std::string("SELECT ") + kUserColumns + " FROM users WHERE id = ?";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        throw std::runtime_error(std::string("user_by_id prepare: ") +
+                                 sqlite3_errmsg(db_));
+    }
+    sqlite3_bind_int64(stmt, 1, user_id);
+
+    std::optional<User> found;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        found = read_user_row(stmt);
+    }
+    sqlite3_finalize(stmt);
+    return found;
+}
+
+std::string Store::create_auth_session(std::int64_t user_id,
+                                       const std::string& user_agent) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    const std::string token = auth::random_token(32);
+    const std::string hash = sha256_raw(token);
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_,
+            "INSERT INTO auth_sessions "
+            "(user_id, token_hash, created_at, expires_at, user_agent) "
+            "VALUES (?, ?, CAST(strftime('%s','now') AS INTEGER), "
+            "        CAST(strftime('%s','now','+30 days') AS INTEGER), ?)",
+            -1, &stmt, nullptr) != SQLITE_OK) {
+        throw std::runtime_error(std::string("create_auth_session prepare: ") +
+                                 sqlite3_errmsg(db_));
+    }
+    sqlite3_bind_int64(stmt, 1, user_id);
+    sqlite3_bind_blob(stmt, 2, hash.data(), static_cast<int>(hash.size()),
+                      SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, user_agent.c_str(), -1, SQLITE_TRANSIENT);
+
+    const int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) {
+        throw std::runtime_error(std::string("create_auth_session step: ") +
+                                 sqlite3_errmsg(db_));
+    }
+    return token;
+}
+
+std::optional<User> Store::user_for_auth_token(const std::string& token) {
+    if (token.empty()) return std::nullopt;
+
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    const std::string hash = sha256_raw(token);
+    const std::string sql =
+        std::string("SELECT ") + kUserColumns +
+        " FROM users JOIN auth_sessions ON auth_sessions.user_id = users.id "
+        " WHERE auth_sessions.token_hash = ? "
+        "   AND auth_sessions.expires_at > CAST(strftime('%s','now') AS INTEGER)";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        throw std::runtime_error(std::string("user_for_auth_token prepare: ") +
+                                 sqlite3_errmsg(db_));
+    }
+    sqlite3_bind_blob(stmt, 1, hash.data(), static_cast<int>(hash.size()),
+                      SQLITE_TRANSIENT);
+
+    std::optional<User> found;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        found = read_user_row(stmt);
+    }
+    sqlite3_finalize(stmt);
+    return found;
+}
+
+void Store::delete_auth_session(const std::string& token) {
+    if (token.empty()) return;
+
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    const std::string hash = sha256_raw(token);
+    sqlite3_stmt* stmt = nullptr;
+    sqlite3_prepare_v2(db_, "DELETE FROM auth_sessions WHERE token_hash = ?",
+                       -1, &stmt, nullptr);
+    sqlite3_bind_blob(stmt, 1, hash.data(), static_cast<int>(hash.size()),
+                      SQLITE_TRANSIENT);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
 }
 
 std::int64_t Store::begin_attempt(std::optional<std::int64_t> user_id,

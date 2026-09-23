@@ -1,10 +1,12 @@
 #include "sim/config.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <charconv>
 #include <cstddef>
 #include <cstdlib>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <system_error>
 #include <thread>
@@ -16,6 +18,13 @@ namespace {
 std::string get_env(const char* name, const std::string& fallback) {
     const char* value = std::getenv(name);
     return value ? std::string(value) : fallback;
+}
+
+bool parse_bool(const std::string& text, bool fallback) {
+    if (text.empty()) return fallback;
+    return text == "1" || text == "true" || text == "yes" || text == "on";
+    //anything else is false, including "TRUE": the .env files this reads are
+    //written by hand and lowercase is the only spelling documented
 }
 
 bool parse_int_strict(const std::string& text, int& out) {
@@ -127,6 +136,39 @@ Config load_config() {
 
     config.database_path = get_env("DATABASE_PATH", "speaking-sim.db");
 
+    config.google_client_id = get_env("GOOGLE_CLIENT_ID", "");
+    config.google_client_secret = get_env("GOOGLE_CLIENT_SECRET", "");
+    config.public_origin = get_env("PUBLIC_ORIGIN", "http://localhost:8080");
+    config.auth_required = parse_bool(get_env("AUTH_REQUIRED", ""), false);
+
+    const std::string teachers = get_env("TEACHER_EMAILS", "");
+    std::size_t start = 0;
+    while (start <= teachers.size() && !teachers.empty()) {
+        const std::size_t comma = teachers.find(',', start);
+        std::string entry = teachers.substr(
+            start, comma == std::string::npos ? std::string::npos : comma - start);
+
+        entry.erase(0, entry.find_first_not_of(" 	"));
+        const std::size_t last = entry.find_last_not_of(" 	");
+        if (last != std::string::npos) entry.erase(last + 1);
+
+        std::transform(entry.begin(), entry.end(), entry.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        if (!entry.empty()) config.teacher_emails.push_back(std::move(entry));
+
+        if (comma == std::string::npos) break;
+        start = comma + 1;
+    }
+    //lowercased once here rather than at every comparison, and trimmed because
+    //a list typed by hand has spaces after the commas
+
+    while (!config.public_origin.empty() && config.public_origin.back() == '/') {
+        config.public_origin.pop_back();
+    }
+    //a trailing slash would produce "...:8080//auth/callback", and Google
+    //compares the redirect_uri as a literal string: one stray character is a
+    //redirect_uri_mismatch with nothing in the error naming the slash
+
     const std::string backend = get_env("EXAMINER_BACKEND", "gemini");
     config.examiner_backend =
         (backend == "hailo") ? ExaminerBackend::Hailo : ExaminerBackend::Gemini;
@@ -188,6 +230,30 @@ Config load_config() {
                                          static_cast<std::size_t>(kMaxWorkerThreads));
         //the ceiling has to apply here too: capping only the explicit value
         //would let a host with more cores walk straight past it
+    }
+
+    if (config.google_client_id.empty() || config.google_client_secret.empty()) {
+        if (config.auth_required) {
+            throw std::runtime_error(
+                "AUTH_REQUIRED is on but GOOGLE_CLIENT_ID or "
+                "GOOGLE_CLIENT_SECRET is empty: nobody could sign in, so every "
+                "request would be refused. Set both, or clear AUTH_REQUIRED.");
+        }
+        std::cerr << "GOOGLE_CLIENT_ID/SECRET is empty, sign-in is disabled\n";
+        //a warning rather than fatal while sign-in is optional: the rest of the
+        //server is a working exam, and this codebase does not refuse to start
+        //over a feature nothing is gated behind yet. It turns fatal above the
+        //moment AUTH_REQUIRED says the server is useless without it
+    }
+
+    if (config.public_origin.rfind("http://", 0) != 0 &&
+        config.public_origin.rfind("https://", 0) != 0) {
+        throw std::runtime_error(
+            "PUBLIC_ORIGIN must start with http:// or https://, got: " +
+            config.public_origin);
+        //it is pasted into the redirect_uri sent to Google and compared there
+        //as a literal string, so a scheme-less value fails at sign-in with an
+        //error that names Google rather than this setting
     }
 
     if (config.examiner_backend == ExaminerBackend::Gemini &&

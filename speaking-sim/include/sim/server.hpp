@@ -5,9 +5,11 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <optional>
 #include <vector>
 
 #include "crow.h"
+#include "crow/middlewares/cookie_parser.h"
 
 #include "sim/config.hpp"
 #include "sim/examiner.hpp"
@@ -17,6 +19,7 @@
 #include "sim/worker.hpp"
 #include "sim/session.hpp"
 #include "sim/store.hpp"
+#include "sim/auth/google_oauth.hpp"
 
 namespace sim {
 
@@ -39,7 +42,12 @@ public:
 
 private:
     Config config_;
-    crow::SimpleApp app_;
+    using App = crow::App<crow::CookieParser>;
+    App app_;
+    //CookieParser parses the session cookie and sets it on the way out; it
+    //gates nothing. Which routes need a user is decided per route by
+    //require_user, so the route table stays the place that says so rather than
+    //a prefix test buried in a middleware
     crow::response serve_manifest(const std::string& language);
 
     crow::response serve_clip(const crow::request& req,
@@ -70,6 +78,22 @@ private:
     //pointers into it, so it must outlive them - which a member of Server does.
     //The prompts, the bank and load_prompt all used to live here as separate
     //members; they moved into the pack when a second language needed its own
+
+    crow::response serve_auth_login();
+    crow::response serve_auth_callback(const crow::request& req);
+    crow::response serve_auth_logout(const crow::request& req);
+    crow::response serve_me(const crow::request& req);
+    //sign-in. The token exchange in the callback is an outbound HTTPS call on a
+    //crow socket thread, like /api/translate: once per sign-in, with explicit
+    //timeouts, and never taking a worker from a student mid-turn
+
+    std::optional<User> user_for_request(const crow::request& req);
+    //the cookie -> user lookup every protected route starts with. nullopt means
+    //not signed in, which each caller turns into its own 401 or redirect
+
+    auth::LoginStates login_states_;
+    //the PKCE verifier and state for sign-ins in flight, in memory: they live
+    //for one redirect round trip
 
     void prewarm_tts();
     //one throwaway synthesis per distinct voice at startup, so the first real

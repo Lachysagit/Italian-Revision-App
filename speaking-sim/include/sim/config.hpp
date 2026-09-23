@@ -58,6 +58,22 @@ struct Config {
     std::vector<std::pair<std::string, std::string>> language_voices;
     //language id -> piper voice path, parsed from LANGUAGE_VOICES. Empty means
     //every language keeps the voice built into language.cpp
+    std::string google_client_id;
+    std::string google_client_secret;
+    //the OAuth client this server signs users in with. Required once
+    //auth_required is on, and checked at startup rather than on the first
+    //sign-in attempt
+    std::string public_origin;
+    //the origin a browser reaches this server on. One value drives three
+    //things: the redirect_uri handed to Google, whether the session cookie is
+    //marked Secure, and ws:// against wss://. Changing deployment is this line
+    std::vector<std::string> teacher_emails;
+    //TEACHER_EMAILS, lowercased at load. Whoever signs in with one of these
+    //may create classes; everyone else is a student until a teacher adds them
+    bool auth_required = false;
+    //false while sign-in is being built: the pages and routes exist, nothing is
+    //gated, and an exam still runs for a browser that has never signed in
+
     std::string database_path;
     //accounts, classes and exam history. A relative path resolves against the
     //working directory, which is speaking-sim/ like every other asset path here

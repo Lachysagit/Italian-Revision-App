@@ -706,3 +706,52 @@ h1 {
         color: #e79287;
     }
 }
+
+/* Sign-in page. Borrows the modal card's surface so the one page a student
+   sees before anything else does not look like a different application. */
+#signinCard {
+    max-width: 26rem;
+    margin: 2rem auto;
+    padding: 1.5rem;
+    border: 1px solid var(--line, #d9d4cc);
+    border-radius: 8px;
+}
+
+#signinButton {
+    display: inline-block;
+    margin: 1rem 0;
+    padding: 0.6rem 1.2rem;
+    border-radius: 6px;
+    font-weight: 600;
+    text-decoration: none;
+    color: #fff;
+    background: #1a73e8;
+}
+
+#signinButton:hover { background: #1765cc; }
+
+#signinNote { font-size: 0.9rem; opacity: 0.75; }
+
+/* Signed-in-as corner of the nav, pushed to the right of the page links. */
+#accountBox {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.9rem;
+}
+
+#accountName { opacity: 0.8; }
+
+#signOutButton {
+    font: inherit;
+    padding: 0.2rem 0.6rem;
+    cursor: pointer;
+    background: none;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    color: inherit;
+    opacity: 0.75;
+}
+
+#signOutButton:hover { opacity: 1; }

@@ -58,6 +58,27 @@ public:
     Store(const Store&) = delete;
     Store& operator=(const Store&) = delete;
 
+    // ---- users and sign-in -----------------------------------------------
+
+    User upsert_google_user(const GoogleProfile& profile, bool is_teacher);
+    //matched on (provider, subject) first and on email second, so a teacher who
+    //invited an address before that student ever signed in ends up on the same
+    //row rather than creating a duplicate account beside the invite
+
+    std::optional<User> user_by_id(std::int64_t user_id);
+
+    // ---- cookie sessions -------------------------------------------------
+
+    std::string create_auth_session(std::int64_t user_id,
+                                    const std::string& user_agent);
+    //returns the raw token for the cookie. Only its SHA-256 is stored, so the
+    //database file cannot be read for live logins
+
+    std::optional<User> user_for_auth_token(const std::string& token);
+    //also the websocket's check, so it must stay cheap: one indexed lookup
+
+    void delete_auth_session(const std::string& token);
+
     // ---- exam attempts ---------------------------------------------------
     //the accessors for users, classes and cookie sessions arrive with the
     //phases that need them. These are the ones exam history needs.
