@@ -27,8 +27,11 @@ public:
     //ctx_ is a raw owning pointer and mutex_ cannot be moved, so all four are
     //deleted explicitly to fail at the call site with a clear message
 
-    std::string transcribe(const std::vector<std::int16_t>& pcm) override;
-    //override pure virtual transcribe method of base class
+    std::string transcribe(const std::vector<std::int16_t>& pcm,
+                           const std::string& language_code) override;
+    //override pure virtual transcribe method of base class. The model is
+    //multilingual and whisper takes the language per call, so one context and
+    //one mutex still serve every language
 
 private:
     std::string model_path_;

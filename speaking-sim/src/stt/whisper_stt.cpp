@@ -48,10 +48,11 @@ WhisperSTT::~WhisperSTT() {
 #endif
 } // destructor
 
-std::string WhisperSTT::transcribe(const std::vector<std::int16_t>& pcm) {
+std::string WhisperSTT::transcribe(const std::vector<std::int16_t>& pcm,
+                                   const std::string& language_code) {
     if (pcm.empty()) {
         return {};
-    
+
     }
 
 #ifdef SIM_HAVE_WHISPER
@@ -68,7 +69,11 @@ std::string WhisperSTT::transcribe(const std::vector<std::int16_t>& pcm) {
 
     whisper_full_params wparams =
         whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
-    wparams.language = "it";
+    wparams.language = language_code.empty() ? "it" : language_code.c_str();
+    //a borrowed pointer: whisper reads it during whisper_full below, so it must
+    //name storage that outlives the call. language_code is a reference the
+    //caller owns for the whole function, and the literal is static. Assigning
+    //from a temporary string here would dangle
     wparams.translate = false;
     wparams.no_timestamps = true;
     wparams.print_progress = false; 
@@ -104,6 +109,7 @@ std::string WhisperSTT::transcribe(const std::vector<std::int16_t>& pcm) {
     // Trims, and drops the non-speech annotations ([BLANK_AUDIO], (musica))
     // that used to reach the examiner as if the student had said them.
 #else
+    (void)language_code;
     std::cerr << "WhisperSTT::transcribe not implemented\n";
     return "placeholder transcript";
 #endif

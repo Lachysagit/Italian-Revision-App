@@ -219,26 +219,48 @@ std::vector<std::int16_t> pcm_from_raw(const std::string& raw) {
 
 }  // namespace
 
-PiperTTS::PiperTTS(std::string model_path)
+PiperTTS::PiperTTS(std::string model_path, std::vector<std::string> voice_paths)
     : model_path_(std::move(model_path)),
-      sample_rate_(read_voice_sample_rate(model_path_)) {
+      default_sample_rate_(read_voice_sample_rate(model_path_)) {
     // model_path_ is initialised first because it is declared first. Passing
     // the parameter instead would read a moved-from string.
+    if (!model_path_.empty()) {
+        sample_rates_.emplace(model_path_, default_sample_rate_);
+    }
+    for (const std::string& voice : voice_paths) {
+        if (!voice.empty()) {
+            sample_rates_.emplace(voice, read_voice_sample_rate(voice));
+        }
+    }
+    // emplace rather than [] so model_path_'s already-read rate is not read a
+    // second time when the voice list names it too. Every rate is read here,
+    // at startup, because the alternative is opening a .json on the turn a
+    // student is waiting for.
 } // constructor
 
-int PiperTTS::sample_rate() const {
-    return sample_rate_;
+int PiperTTS::sample_rate(const std::string& voice_path) const {
+    if (voice_path.empty()) {
+        return default_sample_rate_;
+    }
+    const auto at = sample_rates_.find(voice_path);
+    return at == sample_rates_.end() ? default_sample_rate_ : at->second;
+    // An unregistered voice reports the default rather than reading the file
+    // here: this is called on the send path, and a wrong rate is a pitch shift
+    // where a blocking read would be a stall.
 }
 
-std::vector<std::int16_t> PiperTTS::synthesize(const std::string& text) {
+std::vector<std::int16_t> PiperTTS::synthesize(const std::string& text,
+                                               const std::string& voice_path) {
 #ifdef SIM_HAVE_PIPER
     if (text.empty()) {
         return {};
         // piper on empty stdin produces nothing and exits, so skip the process.
     }
-    return pcm_from_raw(run_piper(model_path_, text));
+    const std::string& voice = voice_path.empty() ? model_path_ : voice_path;
+    return pcm_from_raw(run_piper(voice, text));
 #else
     (void)text;
+    (void)voice_path;
     return {};
     // No piper binary configured. Empty is already the "no audio" signal the
     // send path is built around; the old #else fell off its end without one.
