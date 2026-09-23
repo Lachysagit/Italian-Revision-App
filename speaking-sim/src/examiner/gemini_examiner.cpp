@@ -19,9 +19,9 @@ namespace sim {
 
 namespace {
 
-// TEMPORARY - REVERT TO "gemini-3.6-flash" BEFORE SHIPPING; 3.6 is parked at
-// 20/20 requests per day. Revert kThinkingLevel below in the same edit.
-constexpr const char* kModel = "gemini-3.5-flash";
+// The model id and both thinking levels now come from config (GEMINI_MODEL,
+// GEMINI_THINKING_LEVEL, GEMINI_OPENING_THINKING_LEVEL). They were constants
+// here through three model moves, and each one meant a recompile.
 
 constexpr const char* kHost = "https://generativelanguage.googleapis.com";
 
@@ -50,10 +50,12 @@ constexpr time_t kWriteTimeoutSeconds = 10;
 // tokens, so this stays where it is.
 constexpr int kMaxOutputTokens = 512;
 
-// 3.x takes thinkingLevel (enum), not the 2.5-series thinkingBudget integer.
-// TEMPORARY - restore "low", the 3.5/3.6/3.7-safe value, when reverting kModel.
-constexpr const char* kThinkingLevel = "minimal";
-
+// Deprecated on 3.x: the guidance is to leave temperature at its 1.0 default,
+// and Google warn that lowering it can cause looping or degraded output. Kept
+// for now because the docs say "strip" rather than "rejected", so whether 3.8
+// actually refuses it is worth learning from a real response - a 400 names the
+// offending field in the body logged below. Drop both constants if it does.
+//
 // Under the 1.0 default to tighten prompt adherence, but not to 0: a varied
 // opening question is better practice. 0.5 dumps exactly, 0.6 does not.
 constexpr double kTemperature = 0.5;
@@ -61,15 +63,17 @@ constexpr double kTemperature = 0.5;
 
 constexpr double kOpeningTemperature = 1.0;
 
-// The floor for the opening question. Reasoning collapses the sampling
-// distribution: the model thinks its way to the one canonical
-// easiest-beginner-question and temperature then only picks between wordings of
-// it, which is why 1.0 above was not buying any variety. Nothing on the opening
-// turn needs thought - there is no answer to respond to - and the floor also
-// takes latency off the turn the student waits through before the exam starts.
-// The API has no "none": the levels are minimal/low/medium/high, and a value
-// outside that set is a 400 on every opening turn.
-constexpr const char* kOpeningThinkingLevel = "minimal";
+// The opening turn takes its own thinking level, and the floor is deliberate.
+// Reasoning collapses the sampling distribution: the model thinks its way to
+// the one canonical easiest-beginner-question and temperature then only picks
+// between wordings of it, which is why 1.0 above was not buying any variety.
+// Nothing on the opening turn needs thought - there is no answer to respond to
+// - and the floor also takes latency off the turn the student waits through
+// before the exam starts.
+//
+// The API has no "none". 3.5 and 3.6 took minimal/low/medium/high; 3.8 dropped
+// "minimal" and errors on it, so "low" is now the floor. config.cpp checks the
+// value at startup, because anything outside the set is a 400 on every turn.
 
 // Operator-side only; the student still sees the server's fixed string. Names
 // the failure in the log so nobody has to decode a status by hand.
@@ -158,8 +162,9 @@ const char* gemini_role(Role role) {
 
 }  // namespace
 
-GeminiExaminer::GeminiExaminer(std::vector<GeminiKeyOption> keys)
-    : keys_(std::move(keys)) {} // constructor
+GeminiExaminer::GeminiExaminer(std::vector<GeminiKeyOption> keys,
+                               GeminiSettings settings)
+    : keys_(std::move(keys)), settings_(std::move(settings)) {} // constructor
 
 const std::string& GeminiExaminer::key_for(const std::string& gemini_key_name) const {
     if (!gemini_key_name.empty()) {
@@ -245,11 +250,12 @@ std::string GeminiExaminer::respond(const std::vector<Turn>& history,
     //the opening turn, not a count: it is the one request with no real
     //conversation behind it, which is the whole condition
     body["generationConfig"]["thinkingConfig"]["thinkingLevel"] =
-        opening_turn ? kOpeningThinkingLevel : kThinkingLevel;
+        opening_turn ? settings_.opening_thinking_level
+                     : settings_.thinking_level;
     apply_response_schema(body);
 
     const std::string path =
-        std::string("/v1beta/models/") + kModel + ":generateContent";
+        "/v1beta/models/" + settings_.model + ":generateContent";
     const httplib::Headers headers = {{"x-goog-api-key", api_key}};
 
     httplib::Result res =

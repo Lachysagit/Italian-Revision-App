@@ -35,7 +35,11 @@ int main() {
         if (config.examiner_backend == sim::ExaminerBackend::Hailo) {
             examiner = std::make_unique<sim::HailoExaminer>(config.hailo_ollama_url);
         } else {
-            examiner = std::make_unique<sim::GeminiExaminer>(config.gemini_api_keys);
+            examiner = std::make_unique<sim::GeminiExaminer>(
+                config.gemini_api_keys,
+                sim::GeminiSettings{config.gemini_model,
+                                    config.gemini_thinking_level,
+                                    config.gemini_opening_thinking_level});
         }
         //choose the examiner backend based on config - the ONLY place this is decided
 

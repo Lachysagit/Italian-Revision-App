@@ -8,9 +8,17 @@
 
 namespace sim {
 
+//Everything about the call that config.cpp can change, grouped so the
+//constructor does not take four strings in an order nobody can remember.
+struct GeminiSettings {
+    std::string model;
+    std::string thinking_level;
+    std::string opening_thinking_level;
+};
+
 class GeminiExaminer : public InterfaceExaminer {
 public:
-    explicit GeminiExaminer(std::vector<GeminiKeyOption> keys);
+    GeminiExaminer(std::vector<GeminiKeyOption> keys, GeminiSettings settings);
 
     std::string respond(const std::vector<Turn>& history,
                         const std::string& gemini_key_name) override;
@@ -23,6 +31,7 @@ private:
     const std::string& key_for(const std::string& gemini_key_name) const;
 
     std::vector<GeminiKeyOption> keys_;
+    GeminiSettings settings_;
 };
 
 }  // namespace sim

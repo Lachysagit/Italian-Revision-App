@@ -78,6 +78,23 @@ std::vector<GeminiKeyOption> parse_gemini_keys(const std::string& text) {
     return options;
 }
 
+//Gemini 3.x takes an enum here, not the 2.5-series thinkingBudget integer, and
+//3.8 dropped the "minimal" that 3.5 and 3.6 accepted. A value outside the set
+//is a 400 on every single turn, so it is worth catching at startup rather than
+//on the first student's opening question.
+constexpr const char* kDefaultThinkingLevel = "low";
+
+std::string checked_thinking_level(const char* name) {
+    const std::string level = get_env(name, kDefaultThinkingLevel);
+    if (level == "low" || level == "medium" || level == "high") {
+        return level;
+    }
+    std::cerr << name << " " << level
+              << " is not low, medium or high, using " << kDefaultThinkingLevel
+              << " (3.8 rejects the \"minimal\" that 3.5 took)\n";
+    return kDefaultThinkingLevel;
+}
+
 }  // namespace
 
 Config load_config() {
@@ -113,6 +130,21 @@ Config load_config() {
     const std::string backend = get_env("EXAMINER_BACKEND", "gemini");
     config.examiner_backend =
         (backend == "hailo") ? ExaminerBackend::Hailo : ExaminerBackend::Gemini;
+
+    config.gemini_model = get_env("GEMINI_MODEL", "gemini-3.8-flash");
+    config.gemini_thinking_level = checked_thinking_level("GEMINI_THINKING_LEVEL");
+    config.gemini_opening_thinking_level =
+        checked_thinking_level("GEMINI_OPENING_THINKING_LEVEL");
+    //the opening turn gets its own level: it has no answer to reason about, and
+    //thinking collapses the sampling distribution onto one canonical question
+
+    const std::string audio_input = get_env("AUDIO_INPUT", "gemini");
+    config.audio_input = (audio_input == "whisper") ? AudioInput::Whisper
+                                                    : AudioInput::Gemini;
+
+    const std::string audio_codec = get_env("AUDIO_CODEC", "flac");
+    config.audio_codec =
+        (audio_codec == "wav") ? AudioCodec::Wav : AudioCodec::Flac;
 
     const std::string port_text = get_env("PORT", "8080");
     config.port = 8080;
