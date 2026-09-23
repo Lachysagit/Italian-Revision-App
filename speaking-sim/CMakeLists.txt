@@ -143,6 +143,46 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
+# libFLAC - lossless compression for the audio sent to the examiner.
+# ---------------------------------------------------------------------------
+
+# Unlike Crow and cpp-httplib this is a RUNTIME dependency: the encode runs on
+# every student turn inside the server, not once at compile time. It is linked
+# statically, so there is still nothing to install alongside the binary.
+#
+# Everything optional is forced off. The defaults drag in ogg, the command line
+# tools, the test suite and docs, none of which this build has any use for.
+set(BUILD_CXXLIBS       OFF CACHE BOOL "" FORCE)
+set(BUILD_PROGRAMS      OFF CACHE BOOL "" FORCE)
+set(BUILD_EXAMPLES      OFF CACHE BOOL "" FORCE)
+set(BUILD_TESTING       OFF CACHE BOOL "" FORCE)
+set(BUILD_DOCS          OFF CACHE BOOL "" FORCE)
+set(INSTALL_MANPAGES    OFF CACHE BOOL "" FORCE)
+set(WITH_OGG            OFF CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS   OFF CACHE BOOL "" FORCE)
+
+# Forced to Release for the same reason piper is below: a sub-project that
+# picks up a Debug or empty CMAKE_BUILD_TYPE here links a CRT this binary does
+# not use, and the mismatch surfaces as a crash at runtime rather than as a
+# link error. See the piper block for the longer version.
+set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
+
+FetchContent_Declare(flac
+    GIT_REPOSITORY https://github.com/xiph/flac.git
+    GIT_TAG        1.5.0
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(flac)
+
+# The encoder is reached through FLAC/stream_encoder.h on the FLAC target. Fail
+# here rather than in a wall of compiler errors if a future tag moves either.
+if(NOT TARGET FLAC)
+    message(FATAL_ERROR
+        "libFLAC defined no FLAC target. The pinned tag has changed its "
+        "target names.")
+endif()
+
+# ---------------------------------------------------------------------------
 # third_party submodules - optional, so the project still configures on a fresh
 # clone that has not run: git submodule update --init --recursive
 # ---------------------------------------------------------------------------
@@ -213,6 +253,7 @@ endif()
 # added to a glob without a manual reconfigure.
 add_executable(speaking-sim
     src/main.cpp
+    src/audio_encode.cpp
     src/config.cpp
     src/language.cpp
     src/protocol.cpp
@@ -255,6 +296,7 @@ target_link_libraries(speaking-sim
         OpenSSL::SSL
         OpenSSL::Crypto
         sqlite3            # accounts, classes and exam history
+        FLAC               # encodes the audio sent to the examiner
         Threads::Threads
         ${SIM_NATIVE_LIBS}
 )
@@ -280,11 +322,18 @@ endif()
 # without this the server fails to start the moment src/stt/whisper_stt.cpp
 # actually calls into whisper. It starts today only because the stub never
 # references a whisper symbol, so the linker drops the unused import.
+#
+# Guarded on the list being non-empty: copy_if_different with a destination and
+# no sources is a usage error that fails the build, and the list goes empty as
+# soon as every dependency is static. Adding statically-linked libFLAC was
+# enough to hit that, and the failure surfaces as a cmake -E usage dump at the
+# post-link step rather than as anything naming this rule.
 if(WIN32 AND SIM_NATIVE_LIBS AND CMAKE_VERSION VERSION_GREATER_EQUAL 3.21)
     add_custom_command(TARGET speaking-sim POST_BUILD
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        COMMAND "${CMAKE_COMMAND}" -E
+                "$<IF:$<BOOL:$<TARGET_RUNTIME_DLLS:speaking-sim>>,copy_if_different,true>"
                 "$<TARGET_RUNTIME_DLLS:speaking-sim>"
-                "$<TARGET_FILE_DIR:speaking-sim>"
+                "$<$<BOOL:$<TARGET_RUNTIME_DLLS:speaking-sim>>:$<TARGET_FILE_DIR:speaking-sim>>"
         COMMAND_EXPAND_LISTS
         VERBATIM
     )
