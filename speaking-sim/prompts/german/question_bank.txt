@@ -1,0 +1,207 @@
+# SAMPLE QUESTIONS, NOT INSTRUCTIONS. Nothing in this file tells the examiner
+# how to behave: examiner_first.txt and examiner_ongoing.txt remain the whole
+# instruction for the exam. This is the pool of real syllabus questions that
+# Session shows the examiner a few of, per turn, for the topic already running.
+#
+# FORMAT
+#   ## <group>   a syllabus topic. The text must match topic_group() in
+#                src/topics.cpp exactly, or the group is never drawn from.
+#   > <question> a headline question, the kind that opens a topic.
+#   - <question> a connecting question, the kind that follows one up.
+#   # <text>     a comment. Blank lines are ignored.
+#
+# Both > and - are drawn from alike today; the mark records which is which so
+# that opening a topic can later be treated differently from following one up.
+#
+# One question mark per line. The examiner is told elsewhere to ask exactly one
+# question per reply, so a line carrying two would teach it the opposite.
+#
+# The group headers are the English syllabus names on purpose: topic_group() in
+# src/topics.cpp returns those exact strings for both languages, and they never
+# reach the student. Only the questions below them are German.
+#
+# BEGINNER LEVEL. These questions set the register the examiner imitates, so
+# every one of them keeps to the rules the prompt files state: "du" and never
+# "Sie", one main clause with the verb second and no subordinate clause, no
+# relative or subordinating linker, and open enough that "ja" or "nein" would
+# not finish it. A single Sie-form or verb-final question here would teach the
+# examiner the wrong level more effectively than any instruction corrects it.
+
+## family life, home and neighbourhood
+> Erzähl mir von deiner Familie.
+- Wie ist deine Familie?
+- Wie viele Personen seid ihr zu Hause?
+- Wie viele Geschwister hast du?
+- Was machen deine Eltern beruflich?
+- Wie kommst du mit deinen Eltern aus?
+- Wen in deiner Familie magst du besonders?
+- Warum ist dir deine Familie wichtig?
+- Was machst du gern mit deiner Familie?
+- Wie viel Zeit verbringst du mit deiner Familie?
+- Welche Feste feiert ihr zusammen?
+- Wann esst ihr zu Abend?
+- Wie hast du früher die Ferien verbracht?
+- Wie hast du als Kind Weihnachten gefeiert?
+- Welche Haustiere habt ihr zu Hause?
+- Welche Tiere magst du?
+- Was machst du im Haushalt?
+> Wie ist deine Gegend?
+- Wo wohnst du?
+- Wie ist deine Wohnung?
+- Wie ist dein Zimmer?
+- Wie ist dein Viertel?
+- Was gefällt dir an deiner Gegend?
+- Was kann man bei dir in der Gegend machen?
+- Was gibt es für junge Leute bei dir?
+- Was machst du abends in deiner Gegend?
+- Was gibt es in der Nähe von deinem Haus?
+- Wie ist der Verkehr in deinem Viertel?
+- Wo möchtest du später wohnen?
+- Wie weit ist die Schule von dir?
+- Wie kommst du zur Schule?
+- Wie lange brauchst du zur Schule?
+> Erzähl mir etwas über dich.
+- Was für ein Mensch bist du?
+- Woher kommst du?
+- Wie warst du als Kind?
+- Wie alt bist du?
+- Wie feierst du normalerweise deinen Geburtstag?
+- Wie hast du deinen letzten Geburtstag gefeiert?
+- Wie feierst du deinen nächsten Geburtstag?
+- Was wünschst du dir zum Geburtstag?
+
+## friends, recreation and pastimes
+> Wie viele Freunde hast du?
+> Was machst du mit deinen Freunden?
+- Wie heißt dein bester Freund?
+- Beschreib mir deinen besten Freund.
+- Was für ein Mensch ist er?
+- Wie sieht er aus?
+- Wie ist sein Charakter?
+- Was macht ihr gern zusammen?
+- Was habt ihr gemeinsam?
+- Warum ist er dein bester Freund?
+- Wie lange kennt ihr euch schon?
+- Wo habt ihr euch kennengelernt?
+- Wie oft seht ihr euch?
+- Wo trefft ihr euch normalerweise?
+- Was ist für dich ein guter Freund?
+> Was machst du in deiner Freizeit?
+> Welche Hobbys hast du?
+> Was machst du am Wochenende?
+- Was hast du letztes Wochenende gemacht?
+- Was machst du nächstes Wochenende?
+- Wie viel Freizeit hast du?
+- Was machst du nachmittags nach dem Unterricht?
+- Welchen Sport treibst du?
+- Wie oft trainierst du?
+- Wo treibst du Sport?
+- Warum gefällt dir dieser Sport?
+- Welchen Sport siehst du gern im Fernsehen?
+> Welche Musik hörst du gern?
+- Welche Band magst du?
+- Welches Instrument spielst du?
+- Wann hörst du Musik?
+- Auf welchem Konzert warst du schon?
+- Was liest du gern?
+- Welches Buch hast du zuletzt gelesen?
+- Welche Filme magst du?
+- Welchen Film hast du zuletzt gesehen?
+- Wie oft gehst du ins Kino?
+- Mit wem gehst du ins Kino?
+- Was siehst du gern im Fernsehen?
+- Wie lange bist du abends am Handy?
+- Was machst du am Computer?
+- Welche sozialen Netzwerke nutzt du?
+- Wie oft spielst du Videospiele?
+- Was kochst du gern?
+- Was isst du am liebsten?
+- Wo isst du gern mit deinen Freunden?
+
+## education and study
+> Wie gefällt dir deine Schule?
+> Wie ist deine Schule?
+- Wie viele Schüler gibt es an deiner Schule?
+> Welche Fächer hast du dieses Jahr?
+- Welches Fach magst du am liebsten?
+- Warum gefällt dir dieses Fach?
+- Welches Fach fällt dir schwer?
+- Wann beginnt der Unterricht?
+- Wann endet dein Schultag?
+- Was machst du in der Pause?
+- Wie sind deine Lehrer?
+- Was macht einen guten Lehrer aus?
+- Wie viele Hausaufgaben bekommst du?
+- Wann machst du deine Hausaufgaben?
+- Wie lernst du für eine Prüfung?
+- Was trägst du in der Schule?
+- Was möchtest du an deiner Schule ändern?
+- Was machst du nach der Schule weiter?
+
+## part-time work and earnings
+> Arbeitest du neben der Schule?
+> Was für einen Job hast du?
+- Wo arbeitest du?
+- An welchen Tagen arbeitest du?
+- Wie viele Stunden arbeitest du in der Woche?
+> Wie gefällt dir die Arbeit?
+- Was machst du genau bei der Arbeit?
+- Wie sind deine Kollegen?
+- Wie viel verdienst du in der Stunde?
+- Wofür gibst du dein Geld aus?
+- Wie viel Geld sparst du im Monat?
+- Wofür sparst du gerade?
+- Was hast du dir zuletzt selbst gekauft?
+- Welchen Ferienjob möchtest du machen?
+
+## people, places and communities
+> Beschreib mir deine Stadt.
+- Wo liegt deine Stadt?
+- Wie groß ist deine Stadt?
+> Was gefällt dir an deiner Stadt?
+- Was gefällt dir dort nicht?
+> Was kann man in deiner Stadt machen?
+- Welche Sehenswürdigkeiten gibt es dort?
+- Wie sind die Leute bei euch?
+- Wie ist das Wetter bei euch?
+- Wo triffst du dort deine Freunde?
+- Wie fährst du in die Stadt?
+- Was machst du für andere Menschen?
+- Wie hilfst du in deiner Nachbarschaft?
+- Welche Feste gibt es bei euch im Jahr?
+- Wie feiert man bei euch Weihnachten?
+- In welcher Stadt möchtest du später leben?
+
+## holidays, travel and tourism
+> Wohin fährst du in den Ferien?
+> Wo warst du letztes Jahr im Urlaub?
+- Mit wem bist du dorthin gefahren?
+- Wie lange bist du dort geblieben?
+- Wie bist du dorthin gereist?
+- Wo hast du dort gewohnt?
+- Wie war das Wetter dort?
+- Was hast du dort gemacht?
+- Was hat dir dort am besten gefallen?
+- Was isst du gern im Urlaub?
+> Welche Länder kennst du schon?
+- Wohin fährst du nächstes Jahr?
+> Wohin möchtest du gern einmal reisen?
+- Warum möchtest du dorthin?
+> Fährst du lieber ans Meer oder in die Berge?
+- Wie sind deine Ferien zu Hause?
+- Was machst du an einem freien Tag?
+
+## future plans and aspirations
+> Was machst du nach der Schule?
+> Welche Pläne hast du für nächstes Jahr?
+- Was möchtest du studieren?
+- Warum möchtest du das studieren?
+- An welcher Universität möchtest du studieren?
+> Welchen Beruf möchtest du später haben?
+- Warum gefällt dir dieser Beruf?
+- Wie sieht dein Traumjob aus?
+- Was ist dir bei der Arbeit wichtig?
+- Wo möchtest du in zehn Jahren leben?
+- Welche Sprachen möchtest du noch lernen?
+- Was möchtest du in deinem Leben erreichen?
+- Was machst du nächsten Sommer?

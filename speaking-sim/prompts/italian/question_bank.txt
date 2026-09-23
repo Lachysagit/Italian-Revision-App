@@ -146,11 +146,11 @@
 
 ## education and study
 > Parlami della tua scuola.
-- Com'è la tua scuola?
+> Com'è la tua scuola?
 - Ti piace la tua scuola?
 - Come sono i tuoi professori?
 - Hai un professore preferito?
-- Quali materie hai studiato quest'anno?
+> Quali materie hai studiato quest'anno?
 - Hai una materia preferita?
 - C'è una materia che non ti piace?
 - In quale materia non vai bene?
@@ -165,10 +165,10 @@
 
 ## part-time work and earnings
 > Parlami del tuo lavoro.
-- Hai un lavoro part-time?
+> Hai un lavoro part-time?
 - Dove lavori?
 - Cosa fai al lavoro?
-- Ti piace il tuo lavoro?
+> Ti piace il tuo lavoro?
 - Quante ore lavori alla settimana?
 - Quante ore vorresti lavorare?
 - Come sono i tuoi colleghi?
@@ -179,7 +179,7 @@
 ## people, places and communities
 > Cosa ti piace di più della cultura italiana?
 - Sei mai stato in un locale italiano?
-- Ti piacerebbe visitare l'Italia?
+> Ti piacerebbe visitare l'Italia?
 - Vorresti visitare una città particolare in Italia?
 - Qual è il tuo piatto italiano preferito?
 - Conosci qualche prodotto italiano?
@@ -187,7 +187,7 @@
 - Hai mai visto un film italiano?
 - C'è un cantante italiano che ti piace?
 - Hai mai mangiato in un ristorante italiano?
-- Ti piace la cucina italiana?
+> Ti piace la cucina italiana?
 - Hai mai cucinato del cibo all'italiana a casa?
 - Segui il calcio in Italia?
 - Hai una squadra italiana preferita?
@@ -196,14 +196,14 @@
 
 ## holidays, travel and tourism
 > Parlami di una vacanza che hai fatto recentemente.
-- Dove ti piace andare in vacanza?
+> Dove ti piace andare in vacanza?
 - Vai in vacanza con la tua famiglia?
 - Racconta dove sei andato.
 - Con chi sei andato?
 - Cosa hai visto?
 - Ti sei divertito?
 - Dove preferisci passare le vacanze?
-- Descrivimi la tua vacanza ideale.
+> Descrivimi la tua vacanza ideale.
 - Hai viaggiato in Australia?
 - Sei mai stato in Italia?
 - Hai mai fatto un viaggio all'estero?
@@ -215,9 +215,9 @@
 
 ## future plans and aspirations
 > Cosa vorresti fare nel tuo futuro?
-- Quali sono i tuoi progetti per il futuro?
+> Quali sono i tuoi progetti per il futuro?
 - Hai un sogno nel cassetto?
-- Che lavoro ti piacerebbe fare?
+> Che lavoro ti piacerebbe fare?
 - Vuoi continuare a studiare?
 - Che corso hai in mente?
 - Vuoi iscriverti all'università?
