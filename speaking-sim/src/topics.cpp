@@ -53,7 +53,7 @@ std::string topic_group(const std::string& tag) {
     //eighteen entries, once per turn: a linear scan is the honest shape here
 }
 
-std::string topic_menu(std::mt19937& rng) {
+TopicMenu topic_menu(std::mt19937& rng) {
     std::vector<std::string_view> groups;
     for (const TagGroup& entry : kTagGroups) {
         if (std::find(groups.begin(), groups.end(), entry.group) ==
@@ -66,15 +66,20 @@ std::string topic_menu(std::mt19937& rng) {
 
     std::shuffle(groups.begin(), groups.end(), rng);
 
-    std::string menu;
+    TopicMenu menu;
+    if (!groups.empty()) {
+        menu.first = std::string(groups.front());
+        //the group string as the bank keys it, uncapitalised: examples_for()
+        //and openers_for() match it exactly
+    }
     for (const std::string_view group : groups) {
-        if (!menu.empty()) {
-            menu += '\n';
+        if (!menu.text.empty()) {
+            menu.text += '\n';
         }
-        menu += "- ";
-        menu += static_cast<char>(std::toupper(
+        menu.text += "- ";
+        menu.text += static_cast<char>(std::toupper(
             static_cast<unsigned char>(group.front())));
-        menu.append(group.substr(1));
+        menu.text.append(group.substr(1));
     }
     return menu;
     //capitalised to match the wording the prompt files carried before the list

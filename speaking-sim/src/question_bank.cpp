@@ -42,9 +42,11 @@ QuestionBank QuestionBank::load(const std::string& path) {
             continue;
             //a comment, or a question sitting above the first group header
         }
+        const bool headline = trimmed[0] == '>';
         std::string question = trim(trimmed.substr(1));
         if (!question.empty()) {
-            bank.by_group_[group].push_back(std::move(question));
+            bank.by_group_[group].push_back(
+                Question{std::move(question), headline});
         }
     }
     return bank;
@@ -62,35 +64,93 @@ std::size_t QuestionBank::group_count() const {
 
 std::string QuestionBank::examples_for(const std::string& group,
                                        std::size_t count,
-                                       std::mt19937& rng) const {
+                                       std::mt19937& rng,
+                                       const std::string& header,
+                                       const std::string& footer) const {
+    return draw(group, count, rng, header, footer, false);
+}
+
+std::string QuestionBank::openers_for(const std::string& group,
+                                      std::size_t count,
+                                      std::mt19937& rng,
+                                      const std::string& header,
+                                      const std::string& footer) const {
+    return draw(group, count, rng, header, footer, true);
+}
+
+std::string QuestionBank::draw(const std::string& group,
+                               std::size_t count,
+                               std::mt19937& rng,
+                               const std::string& header,
+                               const std::string& footer,
+                               bool headlines_only) const {
     const auto entry = by_group_.find(group);
     if (count == 0 || entry == by_group_.end()) {
         return {};
     }
 
-    std::vector<const std::string*> picked;
+    std::vector<const Question*> picked;
+    std::vector<const Question*> rest;
     picked.reserve(entry->second.size());
-    for (const std::string& question : entry->second) {
-        picked.push_back(&question);
+    for (const Question& question : entry->second) {
+        if (!headlines_only || question.headline) {
+            picked.push_back(&question);
+        } else {
+            rest.push_back(&question);
+        }
     }
     std::shuffle(picked.begin(), picked.end(), rng);
+
+    if (headlines_only && picked.size() < count) {
+        std::shuffle(rest.begin(), rest.end(), rng);
+        picked.insert(picked.end(), rest.begin(), rest.end());
+        //headlines first, then follow-ups to make up the count. Most groups
+        //mark only one headline, and one sample is what the examiner was
+        //already doing wrong: it copies the single example every exam. A
+        //follow-up asked cold still opens a topic, so the count matters more
+        //here than the mark does
+    }
     if (picked.size() > count) {
         picked.resize(count);
     }
+    if (picked.empty()) {
+        return {};
+    }
+
+    if (headlines_only) {
+        std::shuffle(picked.begin(), picked.end(), rng);
+        const auto headline = std::find_if(
+            picked.begin(), picked.end(),
+            [](const Question* q) { return q->headline; });
+        if (headline != picked.end()) {
+            std::iter_swap(picked.begin(), headline);
+        }
+        //the append above left every headline ahead of every follow-up, so the
+        //examiner - told to pick one and ask it - took a headline every time
+        //and the opening question came from a pool of ten. Shuffled as one
+        //list the whole group is in play, and the swap keeps a topic-opening
+        //question in front so the exam does not start on a follow-up that
+        //assumes an answer nobody has given yet
+    }
     //pointers, not copies: the bank outlives the turn being built
 
-    std::string text = "Esempi di domande d'esame su \"" + group + "\":\n";
-    for (const std::string* question : picked) {
+    std::string text = header;
+    const std::size_t slot = text.find("{0}");
+    if (slot != std::string::npos) {
+        text.replace(slot, 3, group);
+        //{0} is the topic the questions were drawn for. A header without the
+        //marker still works, it just does not name the topic
+    }
+    text += '\n';
+    for (const Question* question : picked) {
         text += "- ";
-        text += *question;
+        text += question->text;
         text += '\n';
     }
-    text +=
-        "Servono come guida al registro, alla lunghezza e alla difficolta. "
-        "Non copiarle parola per parola, non elencarle e non farne piu di una "
-        "per volta. La tua domanda deve comunque rispondere a quello che lo "
-        "studente ha appena detto.";
+    text += footer;
     return text;
+    //both come from the caller's LanguagePack: they are the exam's own
+    //language, and this class is handed a path with no idea which one it read
 }
 
 }  // namespace sim

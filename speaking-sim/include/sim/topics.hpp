@@ -26,6 +26,15 @@ std::string topic_group(const std::string& tag);
 // The seven syllabus groups as a bullet list, in a random order. Drawn once per
 // session, so a fixed list can no longer nudge the examiner towards whichever
 // topic happens to sit at the top of it.
-std::string topic_menu(std::mt19937& rng);
+struct TopicMenu {
+    std::string text;
+    std::string first;
+    //the group the shuffle put at the top, named so the opening turn can draw
+    //its sample questions from that one group and the prompt can order the
+    //examiner onto it. A shuffle the prompt was free to ignore was still
+    //producing the same opening question every exam
+};
+
+TopicMenu topic_menu(std::mt19937& rng);
 
 }  // namespace sim
