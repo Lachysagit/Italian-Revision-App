@@ -5,7 +5,8 @@
 Italian Exam API
 Project number: 105421562997
 
-A local speaking-exam simulator for beginner Italian. The browser captures
+A local speaking-exam simulator for beginner Italian and beginner German, picked
+per session from the settings modal. The browser captures
 microphone audio and streams it over a WebSocket to a C++ server, which runs it
 through speech-to-text, sends the transcript plus the conversation history to an
 examiner LLM over HTTP, synthesises the reply to speech, and streams the audio
@@ -112,9 +113,17 @@ set -a && . ./.env && set +a
 ```
 
 **Run the binary from this directory.** It opens `web(frontend)/index.html` and
-`prompts/examiner_system.txt` by relative path, so starting it from anywhere
-else serves a 404 for the page and silently falls back to a built-in one-line
-system prompt.
+`prompts/<language>/*.txt` by relative path, so starting it from anywhere else
+serves a 404 for the page and silently falls back to a built-in one-line system
+prompt.
+
+Each language has its own directory under `prompts/` — `prompts/italian/` and
+`prompts/german/` — holding `examiner_first.txt`, `examiner_ongoing.txt` and
+`question_bank.txt`. The bank's `## ` group headers are the English syllabus
+names in `src/topics.cpp` in every language and must match byte for byte; only
+the questions under them are in the language being examined. Adding a third
+language means one entry in `built_in_packs()` in `src/language.cpp`, one
+directory here, and a piper voice in `models/`.
 
 The server reads its settings from the process environment, not from `.env`
 directly — hence the `set -a && . ./.env && set +a` above, which exports every
@@ -142,11 +151,16 @@ src/              Implementation, mirroring include/sim/. main.cpp picks the
                   into Server as interfaces.
 web(frontend)/    Browser client: index.html and client.js (mic capture, PCM
                   conversion, WebSocket, playback).
-prompts/          examiner_system.txt, the examiner's system prompt, read once
-                  at startup.
+prompts/          One directory per language (italian/, german/), each holding
+                  examiner_first.txt, examiner_ongoing.txt and
+                  question_bank.txt. All read once at startup.
 third_party/      git submodules: whisper.cpp and piper.
 models/           Model weights. Ignored by git apart from .gitkeep — download
-                  the whisper and piper models here yourself.
+                  the whisper and piper models here yourself. One whisper model
+                  serves every language (it is multilingual and takes the
+                  language per call); each language needs its own piper voice,
+                  with the voice's .onnx.json beside it so its sample rate can
+                  be read.
 ```
 
 ## Architecture

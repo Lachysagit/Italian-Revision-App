@@ -50,6 +50,26 @@ foreach ($pair in @(@("WHISPER_MODEL_PATH", $env:WHISPER_MODEL_PATH),
     }
 }
 
+# Same check for each voice named in LANGUAGE_VOICES ("id=path,id=path"). A
+# missing voice is not fatal to the server - that language simply falls silent -
+# but it is always a mistake, and finding out here beats finding out mid-exam.
+if ($env:LANGUAGE_VOICES) {
+    foreach ($entry in $env:LANGUAGE_VOICES.Split(",")) {
+        $i = $entry.IndexOf("=")
+        if ($i -lt 1) { continue }
+        $id = $entry.Substring(0, $i).Trim()
+        $voice = $entry.Substring($i + 1).Trim()
+        if ($voice -and -not (Test-Path $voice)) {
+            Write-Error "LANGUAGE_VOICES entry '$id' points at '$voice', which does not exist."
+        }
+        # piper reads the sample rate from the voice's .onnx.json, and without
+        # it that language plays back at piper's 22050 default instead.
+        if ($voice -and (Test-Path $voice) -and -not (Test-Path "$voice.json")) {
+            Write-Error "LANGUAGE_VOICES entry '$id' has no '$voice.json' beside it."
+        }
+    }
+}
+
 $port = if ($env:PORT) { $env:PORT } else { "8080" }
 Write-Host "Starting speaking-sim on http://localhost:$port" -ForegroundColor Green
 
