@@ -3,6 +3,7 @@
 #include <openssl/rand.h>
 #include <openssl/sha.h>
 
+#include <cctype>
 #include <cstdint>
 #include <iostream>
 #include <vector>
@@ -64,6 +65,27 @@ bool decode_jwt_payload(const std::string& jwt, crow::json::rvalue& out) {
     if (decoded.empty()) return false;
     out = crow::json::load(decoded);
     return static_cast<bool>(out);
+}
+
+//the first name out of a fuller one. `separators` differs by source: a real
+//name splits on whitespace only, because Jean-Luc and Anne-Marie are first
+//names and not two of them, while an email local part splits on the punctuation
+//it joins words with, so "lachlan.carlton" gives "Lachlan".
+std::string first_word(const std::string& text, const char* separators = " 	") {
+    const std::size_t begin = text.find_first_not_of(" 	");
+    if (begin == std::string::npos) return std::string();
+
+    const std::size_t end = text.find_first_of(separators, begin);
+    std::string word = (end == std::string::npos) ? text.substr(begin)
+                                                  : text.substr(begin, end - begin);
+
+    if (!word.empty()) {
+        word[0] = static_cast<char>(
+            std::toupper(static_cast<unsigned char>(word[0])));
+        //an email local part is usually lowercase, and the examiner says this
+        //name aloud. Only the first byte, so a UTF-8 name is left untouched
+    }
+    return word;
 }
 
 bool has_string(const crow::json::rvalue& json, const char* key) {
@@ -250,18 +272,29 @@ SignInResult exchange_code(const Config& config,
 
     result.profile.subject = claims["sub"].s();
     result.profile.email = claims["email"].s();
-    if (has_string(claims, "name")) {
-        result.profile.display_name = claims["name"].s();
-    }
     if (has_string(claims, "picture")) {
         result.profile.picture_url = claims["picture"].s();
     }
 
+    //a first name, not a full one: this is what the examiner calls the student
+    //out loud, and "Buongiorno, Lachlan Carlton" is not how a person is greeted.
+    //given_name first because Google has already worked out which part that is
+    //- splitting "name" guesses wrong wherever the family name comes first
+    if (has_string(claims, "given_name")) {
+        result.profile.display_name = first_word(claims["given_name"].s());
+        //through first_word as well: a given_name is occasionally two words,
+        //and this is read out by the examiner
+    } else if (has_string(claims, "name")) {
+        result.profile.display_name = first_word(claims["name"].s());
+    }
+
     if (result.profile.display_name.empty()) {
         const std::size_t at = result.profile.email.find('@');
-        result.profile.display_name = result.profile.email.substr(0, at);
-        //a profile with no name still has to give the examiner something to
-        //call the student, and the local part is what a person would read out
+        result.profile.display_name =
+            first_word(result.profile.email.substr(0, at), " 	._-+");
+        //no name on the profile at all, so the local part stands in - and this
+        //is the one place the punctuation split is wanted, since an address
+        //joins words with it rather than carrying them as part of a name
     }
 
     result.ok = true;

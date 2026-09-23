@@ -83,6 +83,7 @@ private:
     crow::response serve_auth_callback(const crow::request& req);
     crow::response serve_auth_logout(const crow::request& req);
     crow::response serve_me(const crow::request& req);
+    crow::response serve_set_profile(const crow::request& req);
     //sign-in. The token exchange in the callback is an outbound HTTPS call on a
     //crow socket thread, like /api/translate: once per sign-in, with explicit
     //timeouts, and never taking a worker from a student mid-turn

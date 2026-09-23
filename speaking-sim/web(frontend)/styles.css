@@ -143,6 +143,76 @@ h1 {
     cursor: not-allowed;
 }
 
+/* the settings a student touches every session, on the page rather than behind
+   the modal. Not sticky: it is set once before Start and then scrolls away */
+#examSetup {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.9rem;
+    padding-bottom: 0.9rem;
+    border-bottom: 1px solid var(--line);
+}
+
+#examSetup label {
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+#examSetup select,
+#examSetup input[type="text"] {
+    padding: 0.4rem 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.9rem;
+}
+
+#examSetup input[type="text"] {
+    flex: 1 1 10rem;
+    min-width: 0;
+    /* the free-text field takes the slack, so the two selects keep the width
+       their longest option needs and the row still fits a phone */
+}
+
+#examSetup select:disabled,
+#examSetup input[type="text"]:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    /* mid-session these are already spent: read once at the start message */
+}
+
+#examSetup #settings {
+    margin-left: auto;
+    padding: 0.4rem 0.9rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+}
+
+#examSetup #settings:hover:not(:disabled) {
+    border-color: var(--muted);
+    color: var(--ink);
+}
+
+#examSetup #settings:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+#examSetup :focus-visible {
+    outline: 2px solid var(--examiner-edge);
+    outline-offset: 2px;
+}
+
 #transcript {
     display: flex;
     flex-direction: column;
@@ -291,8 +361,7 @@ h1 {
     color: var(--muted);
 }
 
-#settingsModal select,
-#settingsModal input[type="text"] {
+#settingsModal select {
     width: 100%;
     padding: 0.45rem 0.6rem;
     border: 1px solid var(--line);
@@ -300,21 +369,6 @@ h1 {
     font: inherit;
     font-size: 0.95rem;
     box-sizing: border-box;
-    /* the name box shares the key picker's styling rather than repeating it.
-       box-sizing because a text input adds its border outside the 100% width
-       by default, which pushed it past the select it sits above */
-}
-
-#settingsModal input[type="text"] + label {
-    margin-top: 0.9rem;
-    /* the modal has two fields now, so the second label needs the gap the
-       single-field layout never had to provide */
-}
-
-#settingsModal input[type="text"]:disabled {
-    background: #f1f3f5;
-    color: var(--muted);
-    /* mid-session the name is already spent, and a greyed box says so */
 }
 
 #settingsActions {
@@ -685,13 +739,12 @@ h1 {
     #settingsOverlay { background: rgba(0, 0, 0, 0.6); }
 
     #settingsModal select,
-    #settingsModal input[type="text"],
+    #examSetup select,
+    #examSetup input[type="text"],
     #translateInput {
         background: var(--page-bg);
         color: var(--ink);
     }
-
-    #settingsModal input[type="text"]:disabled { background: #17191c; }
 
     #translateBox { box-shadow: none; }
 
@@ -755,3 +808,82 @@ h1 {
 }
 
 #signOutButton:hover { opacity: 1; }
+
+/* The sign-in / sign-up gate. Covers the page rather than replacing it, so
+   whatever the page fetched at load keeps running behind the overlay. */
+#authGate {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(3px);
+}
+
+#authGate[hidden] { display: none; }
+
+/* the page behind must not scroll while the gate is up */
+body.gated { overflow: hidden; }
+
+#authCard {
+    width: min(26rem, 100%);
+    padding: 1.75rem;
+    border-radius: 10px;
+    background: var(--bg, #fbf9f6);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+}
+
+#authCard h2 { margin: 0 0 0.5rem; }
+#authBlurb { margin: 0 0 1.25rem; opacity: 0.8; }
+
+#authGoogle {
+    display: inline-block;
+    padding: 0.6rem 1.2rem;
+    border-radius: 6px;
+    font-weight: 600;
+    text-decoration: none;
+    color: #fff;
+    background: #1a73e8;
+}
+
+#authGoogle:hover { background: #1765cc; }
+
+#authSignup { display: flex; flex-direction: column; gap: 0.35rem; }
+
+#authSignup label {
+    margin-top: 0.6rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+#authSignup select {
+    font: inherit;
+    padding: 0.4rem;
+    border: 1px solid var(--line, #d9d4cc);
+    border-radius: 4px;
+}
+
+#authSubmit {
+    margin-top: 1.1rem;
+    padding: 0.6rem 1.2rem;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    color: #fff;
+    background: #1a73e8;
+    border: none;
+    border-radius: 6px;
+}
+
+#authSubmit:disabled { opacity: 0.6; cursor: default; }
+
+#authError {
+    margin: 0.75rem 0 0;
+    color: #b3261e;
+    font-size: 0.9rem;
+}
+
+#authError[hidden] { display: none; }

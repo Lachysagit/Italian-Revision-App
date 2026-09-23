@@ -631,11 +631,11 @@ function setTurnState(state) {
     endButton.disabled = state === "idle";
     settingsButton.disabled = state !== "idle";
     //the picked key rides on the "start" message only, so changing it once a
-    //session is running would silently do nothing
+    //session is running would silently do nothing, and the modal holding it is
+    //only reachable through this button
     languageSelect.disabled = state !== "idle";
-    //belt and braces: the modal that holds it is already unreachable mid-exam,
-    //but the language is read once at the start message like the key and the
-    //name, so it must not look changeable while a session is running
+    //the language sits on the page rather than behind the modal now, so unlike
+    //the key it has to disable itself: it is read once at the start message
 }
 
 async function loadGeminiKeys() {
@@ -736,6 +736,22 @@ async function loadLanguages() {
     return languageSelect.value;
 }
 
+async function applyPreferredLanguage(id) {
+    // the language picked at sign-up. Waits on the picker's own fetch rather
+    // than assuming it has landed: /api/me and /api/languages are two requests
+    // in flight at once, and either can win
+    await languagesReady;
+    if (!id || !languages.some((entry) => entry.id === id)) return;
+
+    languageSelect.value = id;
+    localStorage.setItem(LANGUAGE_STORAGE, id);
+    setTranslateLanguage(translateCodeFor(id));
+    updatePageTitle(id);
+    // the same three things loadLanguages does for a saved choice, so a
+    // sign-up preference lands the page in exactly the state a returning
+    // student's saved one would
+}
+
 languageSelect.onchange = () => {
     localStorage.setItem(LANGUAGE_STORAGE, languageSelect.value);
     setTranslateLanguage(translateCodeFor(languageSelect.value));
@@ -785,7 +801,7 @@ initTranslate({
 
 loadGeminiKeys();
 
-loadLanguages().then((id) => {
+const languagesReady = loadLanguages().then((id) => {
     setTranslateLanguage(translateCodeFor(id));
     //re-applied here rather than only above: until the fetch lands, languages
     //is empty and translateCodeFor falls back to "it" for every id

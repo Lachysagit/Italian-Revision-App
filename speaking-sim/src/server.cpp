@@ -79,6 +79,18 @@ bool is_teacher_email(const Config& config, const std::string& email) {
                      lowered) != config.teacher_emails.end();
 }
 
+//the cohort a student may claim. Closed lists: subject_level picks which
+//Gemini key pool an exam spends, so it must not be free text from a browser.
+bool is_valid_subject_level(const std::string& level) {
+    return level == "beginners" || level == "continuers" ||
+           level == "advanced" || level == "extension";
+}
+
+bool is_valid_year_level(const std::string& year) {
+    return year == "7" || year == "8" || year == "9" || year == "10" ||
+           year == "11" || year == "12";
+}
+
 crow::response auth_error_page(const std::string& message) {
     crow::response response(400,
         "<!doctype html><meta charset=utf-8>"
@@ -226,8 +238,13 @@ void Server::run()
 
     CROW_ROUTE(app_, "/signin") //HTTP ROUTE -----------------------------------
     ([] {
-        return serve_static_file("web(frontend)/signin.html", "text/html");
+        crow::response response(302);
+        response.set_header("Location", "/");
+        return response;
     });
+    //kept as a redirect rather than a page: the gate on the exam page is what
+    //asks for a sign-in now, and a separate page carrying the same gate would
+    //block itself. Old links and bookmarks still land somewhere sensible
 
     CROW_ROUTE(app_, "/auth/login") //HTTP ROUTE -----------------------------------
     ([this] {
@@ -254,6 +271,13 @@ void Server::run()
         return serve_me(req);
     });
     //what every page asks to find out whether it is signed in and as whom
+
+    CROW_ROUTE(app_, "/api/me/profile").methods("POST"_method) //HTTP ROUTE -----------------------------------
+    ([this](const crow::request& req) {
+        return serve_set_profile(req);
+    });
+    //where sign-up finishes: year, subject level and language. Until this has
+    //been posted once the account is not onboarded, and no exam may start
 
     CROW_ROUTE(app_, "/api/translate").methods("POST"_method) //HTTP ROUTE -----------------------------------
     ([this](const crow::request& req) {
@@ -738,11 +762,72 @@ crow::response Server::serve_me(const crow::request& req) {
     json["is_teacher"] = user->is_teacher;
     json["year_level"] = user->year_level;
     json["subject_level"] = user->subject_level;
+    json["preferred_language"] = user->preferred_language;
     json["onboarded"] = user->onboarded;
 
     crow::response response(json.dump());
     response.set_header("Content-Type", "application/json");
     response.set_header("Cache-Control", "no-store");
+    return response;
+}
+
+crow::response Server::serve_set_profile(const crow::request& req) {
+    const std::optional<User> user = user_for_request(req);
+    if (!user) {
+        return json_error(401, "not signed in");
+    }
+
+    const crow::json::rvalue body = crow::json::load(req.body);
+    if (!body) {
+        return json_error(400, "expected a JSON body");
+    }
+
+    const auto field = [&body](const char* key) -> std::string {
+        if (!body.has(key) || body[key].t() != crow::json::type::String) {
+            return std::string();
+        }
+        return body[key].s();
+    };
+    //presence and type both, the way serve_translate reads its body: this one
+    //writes to the database, so a number where a string belongs must be a 400
+    //rather than something that throws out of a socket thread
+
+    const std::string year = field("year_level");
+    const std::string level = field("subject_level");
+    const std::string language = field("preferred_language");
+
+    if (!is_valid_year_level(year)) {
+        return json_error(400, "pick a year level");
+    }
+    if (!is_valid_subject_level(level)) {
+        return json_error(400, "pick a subject level");
+    }
+    if (languages_.find(language) == nullptr) {
+        return json_error(400, "pick a language");
+        //checked against the registry rather than a list written out here, so
+        //adding a language cannot leave this endpoint behind
+    }
+
+    if (user->onboarded && store_->is_in_any_class(user->id)) {
+        return json_error(403,
+            "ask your teacher to change your year or subject level");
+        //a student in a class may not move themselves between cohorts: the key
+        //pool a level selects is somebody else's quota. Onboarding itself is
+        //always allowed, which is why this only applies once onboarded
+    }
+
+    try {
+        store_->set_profile(user->id, year, level, language);
+    } catch (const std::exception& e) {
+        std::cerr << "profile: could not save for user " << user->id << ": "
+                  << e.what() << '\n';
+        return json_error(500, "could not save that");
+    }
+
+    crow::json::wvalue json;
+    json["ok"] = true;
+    crow::response response(json.dump());
+    response.set_header("Content-Type", "application/json");
     return response;
 }
 

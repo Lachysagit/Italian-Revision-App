@@ -24,28 +24,33 @@
         <button id="export">Export session</button>
         <!-- enabled by the save buttons below, and never disabled by the
              session state: the document is still wanted after the exam -->
-        <button id="settings">Settings</button>
 
         <div id="examTimer" hidden>5:00</div>
      
     </div>
 
+    <div id="examSetup">
+        <label for="languageSelect">Language</label>
+        <select id="languageSelect"></select>
+        <!-- the one setting worth a click every session, so it sits on the page
+             rather than behind a modal -->
+
+        <label for="studentName">Your name</label>
+        <input id="studentName" type="text" autocomplete="given-name"
+               placeholder="the examiner will use this">
+        <!-- rides on the "start" message the same way the key does, so the
+             examiner knows the name before it asks its opening question
+             and never has to ask "come ti chiami". Blank is allowed: the
+             backend then simply tells the examiner nothing about a name -->
+
+        <button id="settings" type="button">Advanced</button>
+    </div>
+
 
     <div id="settingsOverlay" hidden>
         <div id="settingsModal" role="dialog" aria-labelledby="settingsTitle">
-            <h2 id="settingsTitle">Settings</h2>
+            <h2 id="settingsTitle">Advanced</h2>
 
-            <label for="studentName">Your name</label>
-            <input id="studentName" type="text" autocomplete="given-name"
-                   placeholder="the examiner will use this">
-            <!-- rides on the "start" message the same way the key does, so the
-                 examiner knows the name before it asks its opening question
-                 and never has to ask "come ti chiami". Blank is allowed: the
-                 backend then simply tells the examiner nothing about a name -->
-
-            <label for="languageSelect">Language</label>
-            <select id="languageSelect"></select>
-          
             <label for="geminiKeySelect">Gemini API key</label>
             <select id="geminiKeySelect"></select>
             <!-- populated from /api/gemini-keys; the selected name rides on
@@ -56,8 +61,8 @@
             </div>
         </div>
     </div>
-    <!-- disabled while a session is running: the key choice is read once, at
-         the start message, so changing it mid-exam would have no effect -->
+    <!-- unreachable while a session is running: the key choice is read once,
+         at the start message, so changing it mid-exam would have no effect -->
 
     <div id="micOverlay" hidden>
         <div id="micModal" role="alertdialog" aria-labelledby="micTitle" aria-describedby="micReason">
@@ -110,6 +115,18 @@
     <!-- before client.js, which calls initTranslate() as it runs -->
     <script src="client.js"></script>
     <script src="account.js"></script>
-    <script>initAccount();</script>
+    <script>
+        initAccount({
+            onReady: (user) => {
+                // the language chosen at sign-up wins over the one left in
+                // localStorage, but only the first time: changing the picker
+                // afterwards is a deliberate act and must stick
+                if (user.preferred_language &&
+                    !localStorage.getItem("examLanguage")) {
+                    applyPreferredLanguage(user.preferred_language);
+                }
+            },
+        });
+    </script>
 </body>
 </html>

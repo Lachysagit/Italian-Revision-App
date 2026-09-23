@@ -70,6 +70,32 @@ if ($env:LANGUAGE_VOICES) {
     }
 }
 
+# Sign-in: the redirect URI Google is given is built from PUBLIC_ORIGIN, and
+# Google compares it to its allowlist as a literal string. A PUBLIC_ORIGIN whose
+# port disagrees with PORT is the mismatch that is hardest to spot, because both
+# values look right on their own.
+if ($env:GOOGLE_CLIENT_ID -or $env:GOOGLE_CLIENT_SECRET) {
+    if (-not $env:GOOGLE_CLIENT_ID -or -not $env:GOOGLE_CLIENT_SECRET) {
+        Write-Error "Set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, or neither."
+    }
+
+    $origin = if ($env:PUBLIC_ORIGIN) { $env:PUBLIC_ORIGIN.TrimEnd("/") } else { "http://localhost:8080" }
+    if ($origin -notmatch "^https?://") {
+        Write-Error "PUBLIC_ORIGIN must start with http:// or https://, got '$origin'."
+    }
+
+    $originPort = if ($origin -match ":(\d+)$") { $matches[1] }
+                  elseif ($origin.StartsWith("https://")) { "443" }
+                  else { "80" }
+    $serverPort = if ($env:PORT) { $env:PORT } else { "8080" }
+    if ($originPort -ne $serverPort) {
+        Write-Warning "PUBLIC_ORIGIN is '$origin' but PORT is $serverPort. Google will be sent a redirect_uri on port $originPort."
+    }
+
+    Write-Host "Google sign-in enabled. This exact URI must be an authorised redirect URI:" -ForegroundColor Cyan
+    Write-Host "    $origin/auth/callback" -ForegroundColor Cyan
+}
+
 $port = if ($env:PORT) { $env:PORT } else { "8080" }
 Write-Host "Starting speaking-sim on http://localhost:$port" -ForegroundColor Green
 

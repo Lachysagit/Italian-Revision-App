@@ -25,6 +25,7 @@ CREATE TABLE users (
   is_teacher   INTEGER NOT NULL DEFAULT 0,
   year_level    TEXT NOT NULL DEFAULT '',
   subject_level TEXT NOT NULL DEFAULT '',
+  preferred_language TEXT NOT NULL DEFAULT '',
   onboarded_at  INTEGER,
   daily_attempt_cap INTEGER,
   created_at INTEGER NOT NULL,
@@ -217,20 +218,35 @@ void Store::migrate() {
     }
     sqlite3_finalize(stmt);
 
-    if (version >= 1) {
+    if (version < 1) {
+        exec("BEGIN");
+        try {
+            exec(kSchemaV1);
+            exec("PRAGMA user_version=2");
+            exec("COMMIT");
+        } catch (...) {
+            exec("ROLLBACK");
+            throw;
+        }
+        std::cerr << "store: created schema version 2\n";
         return;
+        //a fresh database gets the current shape in one step and skips the
+        //migration below, which only exists to carry an older file forward
     }
 
-    exec("BEGIN");
-    try {
-        exec(kSchemaV1);
-        exec("PRAGMA user_version=1");
-        exec("COMMIT");
-    } catch (...) {
-        exec("ROLLBACK");
-        throw;
+    if (version < 2) {
+        exec("BEGIN");
+        try {
+            exec("ALTER TABLE users ADD COLUMN preferred_language "
+                 "TEXT NOT NULL DEFAULT ''");
+            exec("PRAGMA user_version=2");
+            exec("COMMIT");
+        } catch (...) {
+            exec("ROLLBACK");
+            throw;
+        }
+        std::cerr << "store: migrated schema to version 2\n";
     }
-    std::cerr << "store: created schema version 1\n";
 }
 
 void Store::reconcile_crashed_attempts() {
@@ -276,14 +292,15 @@ User read_user_row(sqlite3_stmt* stmt) {
     user.is_teacher = sqlite3_column_int(stmt, 4) != 0;
     user.year_level = text(5);
     user.subject_level = text(6);
-    user.onboarded = sqlite3_column_type(stmt, 7) != SQLITE_NULL;
+    user.preferred_language = text(7);
+    user.onboarded = sqlite3_column_type(stmt, 8) != SQLITE_NULL;
     return user;
 }
 
 constexpr const char* kUserColumns =
     "users.id, users.email, users.display_name, users.picture_url, "
     "users.is_teacher, users.year_level, users.subject_level, "
-    "users.onboarded_at";
+    "users.preferred_language, users.onboarded_at";
 //table qualified: user_for_auth_token joins auth_sessions, which has its own
 //user_id, and an unqualified "id" is ambiguous there
 //one list, so read_user_row's column indices cannot drift from the queries
@@ -403,6 +420,57 @@ std::optional<User> Store::user_by_id(std::int64_t user_id) {
     if (sqlite3_step(stmt) == SQLITE_ROW) {
         found = read_user_row(stmt);
     }
+    sqlite3_finalize(stmt);
+    return found;
+}
+
+void Store::set_profile(std::int64_t user_id,
+                        const std::string& year_level,
+                        const std::string& subject_level,
+                        const std::string& preferred_language) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_,
+            "UPDATE users SET year_level = ?, subject_level = ?, "
+            " preferred_language = ?, "
+            " onboarded_at = COALESCE(onboarded_at, "
+            "                         CAST(strftime('%s','now') AS INTEGER)) "
+            "WHERE id = ?",
+            -1, &stmt, nullptr) != SQLITE_OK) {
+        throw std::runtime_error(std::string("set_profile prepare: ") +
+                                 sqlite3_errmsg(db_));
+    }
+    //COALESCE so onboarded_at records the first time only: it is the answer to
+    //"has this account finished signing up", not "when was the profile last
+    //touched", and a later edit must not restart that clock
+
+    sqlite3_bind_text(stmt, 1, year_level.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, subject_level.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, preferred_language.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 4, user_id);
+
+    const int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) {
+        throw std::runtime_error(std::string("set_profile step: ") +
+                                 sqlite3_errmsg(db_));
+    }
+}
+
+bool Store::is_in_any_class(std::int64_t user_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_,
+            "SELECT 1 FROM class_members WHERE user_id = ? LIMIT 1",
+            -1, &stmt, nullptr) != SQLITE_OK) {
+        throw std::runtime_error(std::string("is_in_any_class prepare: ") +
+                                 sqlite3_errmsg(db_));
+    }
+    sqlite3_bind_int64(stmt, 1, user_id);
+
+    const bool found = sqlite3_step(stmt) == SQLITE_ROW;
     sqlite3_finalize(stmt);
     return found;
 }

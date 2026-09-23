@@ -36,6 +36,9 @@ struct User {
     //'9'..'12', for class grouping and reporting. Does not route keys
     std::string subject_level;
     //beginners|continuers|advanced|extension - this is what selects the key pool
+    std::string preferred_language;
+    //the exam language this student picked at sign-up. A preference, not a
+    //restriction: the picker still offers the others
     bool onboarded = false;
     //false until a level has been chosen. No exam may start before it is true,
     //which is what stops a brand new account spending anything
@@ -66,6 +69,17 @@ public:
     //row rather than creating a duplicate account beside the invite
 
     std::optional<User> user_by_id(std::int64_t user_id);
+
+    void set_profile(std::int64_t user_id,
+                     const std::string& year_level,
+                     const std::string& subject_level,
+                     const std::string& preferred_language);
+    //onboarding. Stamps onboarded_at the first time, so a profile saved once is
+    //the thing that lets an exam start; later edits leave the stamp alone
+
+    bool is_in_any_class(std::int64_t user_id);
+    //whether a profile edit is the user's own to make. A student in a class has
+    //to ask a teacher; one in no class may change freely
 
     // ---- cookie sessions -------------------------------------------------
 
