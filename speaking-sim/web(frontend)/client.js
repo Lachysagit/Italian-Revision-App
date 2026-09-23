@@ -7,28 +7,31 @@ const settingsButton = document.getElementById("settings");
 const settingsOverlay = document.getElementById("settingsOverlay");
 const settingsClose = document.getElementById("settingsClose");
 const geminiKeySelect = document.getElementById("geminiKeySelect");
+const languageSelect = document.getElementById("languageSelect");
 const studentName = document.getElementById("studentName");
+const micOverlay = document.getElementById("micOverlay");
+const micReason = document.getElementById("micReason");
+const micSteps = document.getElementById("micSteps");
+const micRetry = document.getElementById("micRetry");
+const micDismiss = document.getElementById("micDismiss");
 const examTimer = document.getElementById("examTimer");
 const examLoading = document.getElementById("examLoading");
-const translateInput = document.getElementById("translateInput");
-const translateDirection = document.getElementById("translateDirection");
-const translateGo = document.getElementById("translateGo");
-const translateResult = document.getElementById("translateResult");
-const translateCount = document.getElementById("translateCount");
+const pageTitle = document.getElementById("pageTitle");
 //get references to HTML elements by their ID's
+//the translate box's own elements are looked up inside translate.js
 
 const GEMINI_KEY_STORAGE = "geminiKeyName";
 //persists the picked key across page reloads, same tab only
+const LANGUAGE_STORAGE = "examLanguage";
+//which exam was last taken, so the picker reopens on it. Separate from the
+//listening page's own "listeningLanguage": the two pages are chosen
+//independently, and sharing one key would make picking a German listening
+//paper silently switch the speaking exam too
+const DEFAULT_LANGUAGE = "italian";
 const SAVED_TURNS_STORAGE = "savedTurns";
 //sessionStorage, so a refresh mid-exam does not lose an hour of picked answers
 const STUDENT_NAME_STORAGE = "studentName";
 //same treatment for the name, so it is typed once rather than every session
-const TRANSLATE_DIR_STORAGE = "translateDirection";
-//the direction is a habit rather than a per-session choice, so it outlives the tab
-
-let translateBusy = false;
-//one lookup at a time. A second Enter while the first is in flight would race
-//two responses into the same box, and the later one need not be the newer
 
 let socket = null;
 let audioContext = null;
@@ -342,7 +345,6 @@ function paintSaveBar(pair) {
 }
 
 function paintExportButton() {
-    exportButton.disabled = savedTurns.length === 0;
     exportButton.textContent = savedTurns.length === 0
         ? "Export session"
         : `Export session (${savedTurns.length})`;
@@ -372,7 +374,14 @@ function makeSaveBar(pair) {
 
 exportButton.onclick = () => { //one document holding every staged turn
     if (savedTurns.length === 0) {
+        window.alert(
+            "Nothing saved yet.\n\n" +
+            "This button downloads a Word document of the turns you pick out " +
+            "of the exam. Use the Save buttons under a question and answer " +
+            "to add it, then come back here.");
         return;
+        //the button stays clickable while empty so it can say this: disabled,
+        //it explained nothing and the save bar went unnoticed
     }
 
     const ordered = [...savedTurns].sort((a, b) => a.id - b.id);
@@ -450,6 +459,107 @@ function setExamLoading(waiting) {
     //that shows the exam is under way, and the answer just given to read back
 }
 
+function browserSteps() { //permission is reset in the browser's own UI, and every browser hides it somewhere else
+    const agent = navigator.userAgent;
+    const site = location.host;
+
+    if (/Edg\//.test(agent)) {
+        return [
+            "Click the padlock (or the crossed-out microphone) at the left of the address bar.",
+            "Set Microphone to Allow.",
+            `If it is not listed, open edge://settings/content/microphone and remove ${site} from Block.`,
+            "Reload the page and press Start again.",
+        ];
+    }
+    if (/Firefox\//.test(agent)) {
+        return [
+            "Click the padlock at the left of the address bar.",
+            'Next to "Use the Microphone - Blocked", click the X to clear the block.',
+            "Reload the page and press Start again, then choose Allow when Firefox asks.",
+        ];
+    }
+    if (/Chrome\//.test(agent)) {
+        return [
+            "Click the padlock (or the crossed-out microphone) at the left of the address bar.",
+            "Turn Microphone on.",
+            `If it is not listed, open chrome://settings/content/microphone and remove ${site} from "Not allowed".`,
+            "Reload the page and press Start again.",
+        ];
+    }
+    if (/Safari\//.test(agent)) {
+        return [
+            "Open Safari > Settings > Websites > Microphone.",
+            `Set ${site} to Allow.`,
+            "Reload the page and press Start again.",
+        ];
+    }
+    return [
+        "Open your browser's site permissions for this page.",
+        `Set the microphone for ${site} to Allow.`,
+        "Reload the page and press Start again.",
+    ];
+    //a generic fallback rather than nothing: the shape of the fix is the same
+    //everywhere even when the menu names are not
+}
+
+function showMicHelp(error) { //explain a failed getUserMedia and how to undo it
+    const name = error && error.name ? error.name : "";
+    let reason;
+    let steps;
+
+    if (name === "NotAllowedError" || name === "SecurityError") {
+        reason = "This exam needs your microphone, and the browser has blocked it. " +
+                 "Nothing is recorded or stored - the audio only goes to the examiner for this session.";
+        steps = browserSteps();
+        //NotAllowedError covers both "dismissed the prompt" and "blocked it
+        //permanently"; the steps work for either, since a cleared block puts
+        //the prompt back
+    } else if (name === "NotFoundError" || name === "OverconstrainedError") {
+        reason = "No microphone was found. Plug one in, or pick an input device in your " +
+                 "system sound settings, then press Try again.";
+        steps = [];
+    } else if (name === "NotReadableError" || name === "AbortError") {
+        reason = "The microphone is there but another program is holding it. Close anything " +
+                 "else using it - Teams, Zoom, another tab of this exam - then press Try again.";
+        steps = [];
+    } else if (!navigator.mediaDevices) {
+        reason = "This browser will not give a page microphone access over plain HTTP. " +
+                 `Open the exam from http://localhost instead of ${location.host}.`;
+        steps = [];
+        //mediaDevices is undefined, not an error name, when the page is served
+        //from a non-local address without TLS - a likely way to meet this app
+    } else {
+        reason = `The microphone could not be opened (${name || "unknown error"}).`;
+        steps = [];
+    }
+
+    micReason.textContent = reason;
+    micSteps.replaceChildren(...steps.map((text) => {
+        const item = document.createElement("li");
+        item.textContent = text;
+        return item;
+    }));
+    micOverlay.hidden = false;
+    micRetry.focus();
+}
+
+micDismiss.onclick = () => {
+    micOverlay.hidden = true;
+};
+
+micRetry.onclick = () => {
+    micOverlay.hidden = true;
+    startButton.onclick();
+    //the whole start path again rather than getUserMedia alone: the failed
+    //attempt already tore the socket and the context down
+};
+
+micOverlay.onclick = (event) => {
+    if (event.target === micOverlay) {
+        micOverlay.hidden = true;
+    }
+};
+
 function startExamTimer() {
     if (examDeadline !== null || examExpired) {
         return;
@@ -522,6 +632,10 @@ function setTurnState(state) {
     settingsButton.disabled = state !== "idle";
     //the picked key rides on the "start" message only, so changing it once a
     //session is running would silently do nothing
+    languageSelect.disabled = state !== "idle";
+    //belt and braces: the modal that holds it is already unreachable mid-exam,
+    //but the language is read once at the start message like the key and the
+    //name, so it must not look changeable while a session is running
 }
 
 async function loadGeminiKeys() {
@@ -562,6 +676,74 @@ async function loadGeminiKeys() {
     }
 }
 
+let languages = [];
+//[{id, label, translate_code}] from /api/languages, kept so the change handler
+//can map the picked id back to its translate code without a second fetch
+
+function translateCodeFor(id) {
+    const match = languages.find((entry) => entry.id === id);
+    return match ? match.translate_code : "it";
+}
+
+function updatePageTitle(id) {
+    const match = languages.find((entry) => entry.id === id);
+    const label = match ? match.label : "Italian";
+    pageTitle.textContent = `${label} Speaking Exam Simulator`;
+}
+
+async function loadLanguages() {
+    try {
+        const response = await fetch("/api/languages");
+        if (response.ok) {
+            languages = await response.json();
+        }
+    } catch (error) {
+        addLog(`could not load languages: ${error.message}`);
+    }
+
+    languageSelect.innerHTML = "";
+
+    if (languages.length === 0) {
+        const option = document.createElement("option");
+        option.value = DEFAULT_LANGUAGE;
+        option.textContent = "Italian";
+        languageSelect.appendChild(option);
+        languageSelect.disabled = true;
+        return DEFAULT_LANGUAGE;
+        //the server answered with nothing, so the exam still runs: an empty
+        //picker would leave the start message with no language at all, and the
+        //backend would have fallen back to italian anyway
+    }
+
+    languageSelect.disabled = false;
+    for (const entry of languages) {
+        const option = document.createElement("option");
+        option.value = entry.id;
+        option.textContent = entry.label;
+        languageSelect.appendChild(option);
+    }
+
+    const saved = localStorage.getItem(LANGUAGE_STORAGE);
+    if (saved && languages.some((entry) => entry.id === saved)) {
+        languageSelect.value = saved;
+    } else if (languages.some((entry) => entry.id === DEFAULT_LANGUAGE)) {
+        languageSelect.value = DEFAULT_LANGUAGE;
+        //not "whichever the browser selects by default", which is the first
+        //option: /api/languages comes back in the registry's own map order,
+        //so German sorts ahead of Italian and a first visit would quietly
+        //start a German exam. An unrecognised saved id lands here too
+    }
+    return languageSelect.value;
+}
+
+languageSelect.onchange = () => {
+    localStorage.setItem(LANGUAGE_STORAGE, languageSelect.value);
+    setTranslateLanguage(translateCodeFor(languageSelect.value));
+    updatePageTitle(languageSelect.value);
+    //the translate box follows the exam: looking up an Italian word while
+    //sitting a German exam is not what the button is for
+};
+
 settingsButton.onclick = () => {
     settingsOverlay.hidden = false;
 };
@@ -591,105 +773,24 @@ studentName.oninput = () => {
     //backdrop click is still saved
 };
 
-const TRANSLATE_MAX_CHARS = 1000;
-//mirrors kMaxTranslateChars in server.cpp; the server still enforces it, since
-//maxlength is only a courtesy to whoever is typing
-
-function paintTranslateCount() {
-    const used = translateInput.value.length;
-    const left = TRANSLATE_MAX_CHARS - used;
-    translateCount.textContent = left <= 100 ? `${left} characters left` : "";
-    translateCount.classList.toggle("near", left <= 100);
-    //shown only near the cap: below that the number tells you nothing you were
-    //going to act on
-}
-
-function paintTranslateDirection() {
-    const toEnglish = translateDirection.dataset.direction !== "en-it";
-    translateDirection.textContent = toEnglish ? "IT → EN" : "EN → IT";
-    //the label states what the button will do to your text, not what pressing
-    //it switches to, so it reads the same way as the result underneath
-}
-
-function showTranslateResult(text, isError) {
-    translateResult.textContent = text;
-    //textContent, never innerHTML: this string comes back from Google and is
-    //not ours to trust as markup
-    translateResult.classList.toggle("error", Boolean(isError));
-    translateResult.hidden = false;
-}
-
-async function runTranslate() {
-    const text = translateInput.value.trim();
-    if (!text || translateBusy) return;
-
-    const toEnglish = translateDirection.dataset.direction !== "en-it";
-    const source = toEnglish ? "it" : "en";
-    const target = toEnglish ? "en" : "it";
-
-    translateBusy = true;
-    translateGo.disabled = true;
-    showTranslateResult("translating…", false);
-
-    try {
-        const response = await fetch("/api/translate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text, source, target })
-        });
-        const payload = await response.json();
-
-        if (!response.ok) {
-            showTranslateResult(payload.error || "Translation failed.", true);
-            addLog(`translate failed: HTTP ${response.status} ${payload.error || ""}`);
-            //the server already decided what the student should read, so its
-            //message is shown as-is and the status only goes to the console
-        } else {
-            showTranslateResult(payload.translation, false);
-        }
-    } catch (error) {
-        showTranslateResult("Could not reach the server.", true);
-        addLog(`translate error: ${error.message}`);
-        //a thrown fetch is the network, not the API - a different failure from
-        //the one above and worth a different line in the log
-    } finally {
-        translateBusy = false;
-        translateGo.disabled = false;
-    }
-}
-
-translateDirection.dataset.direction =
-    localStorage.getItem(TRANSLATE_DIR_STORAGE) === "en-it" ? "en-it" : "it-en";
-//anything unrecognised, including the null of a first visit, falls back to
-//IT -> EN: reading a question you did not understand is the commoner need
-paintTranslateDirection();
-
-translateDirection.onclick = () => {
-    translateDirection.dataset.direction =
-        translateDirection.dataset.direction === "en-it" ? "it-en" : "en-it";
-    localStorage.setItem(TRANSLATE_DIR_STORAGE, translateDirection.dataset.direction);
-    paintTranslateDirection();
-    translateResult.hidden = true;
-    //the old result was in the other direction, so leaving it up would label
-    //itself with a heading it no longer matches
-};
-
-translateGo.onclick = runTranslate;
-
-translateInput.oninput = paintTranslateCount;
-paintTranslateCount();
-
-translateInput.onkeydown = (event) => {
-    if (event.key === "Enter" && !event.shiftKey) {
-        event.preventDefault();
-        runTranslate();
-    }
-    //Enter is what "chuck a sentence in quick" actually means; the button is
-    //there for the pointer, not for the keyboard. Shift+Enter is left alone so
-    //the textarea can still take a second line when one is actually wanted
-};
+initTranslate({
+    log: addLog,
+    language: translateCodeFor(
+        localStorage.getItem(LANGUAGE_STORAGE) || DEFAULT_LANGUAGE),
+});
+//the box itself lives in translate.js, shared with the listening page. The
+//object form is used so the box opens on the exam's language rather than
+//always on Italian; loadLanguages() re-applies it once the real list has
+//arrived, because translateCodeFor cannot resolve an id before that fetch
 
 loadGeminiKeys();
+
+loadLanguages().then((id) => {
+    setTranslateLanguage(translateCodeFor(id));
+    //re-applied here rather than only above: until the fetch lands, languages
+    //is empty and translateCodeFor falls back to "it" for every id
+    updatePageTitle(id);
+});
 
 pairCount = savedTurns.reduce((highest, entry) => Math.max(highest, entry.id), 0);
 paintExportButton();
@@ -718,6 +819,10 @@ startButton.onclick = async () => {
         socket.send(JSON.stringify({
             type: "start",
             payload: "",
+            language: languageSelect.value || DEFAULT_LANGUAGE,
+            //picks the prompts, question bank, speech recognition language and
+            //voice for this whole session. An id the server does not know
+            //falls back to its own default rather than failing the start
             gemini_key: geminiKeySelect.value || "",
             student_name: studentName.value.trim(),
             //trimmed here so the server sees a real name or nothing at all;
@@ -737,14 +842,22 @@ startButton.onclick = async () => {
     socket.onmessage = handleMessage;
 
     try {
+        if (!navigator.mediaDevices) {
+            throw new Error("mediaDevices unavailable");
+            //an insecure origin has no mediaDevices at all, so the call below
+            //would throw a TypeError showMicHelp could not tell apart
+        }
         mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         //ask for audio only permission to get input
     } catch (error) {
         addLog(`microphone unavailable: ${error.message}`);
         teardown();
+        showMicHelp(error);
         return;
+        //after teardown, which clears the loading banner and closes the socket:
         //a denied permission previously left the socket open and a server-side
-        //Session allocated for a client that could never speak
+        //Session allocated for a client that could never speak, and said so
+        //only in the console where a student would never look
     }
 
     if (!audioContext) {

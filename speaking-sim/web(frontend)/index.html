@@ -4,30 +4,32 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Speaking Exam Simulator</title>
+    <link rel="stylesheet" href="fonts.css">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <h1>Speaking Exam Simulator</h1>
+    <nav id="siteNav">
+        <a href="/" class="current">Speaking</a>
+        <a href="/listening">Listening</a>
+    </nav>
+    <!-- above the sticky #controls, so it scrolls away rather than competing
+         with the turn buttons for the top of the window -->
+
+    <h1 id="pageTitle">Speaking Exam Simulator</h1>
 
     <div id="controls">
         <button id="start">Start</button>
         <button id="done" disabled>Finished Response</button>
         <button id="end" disabled>End session</button>
-        <button id="export" disabled>Export session</button>
+        <button id="export">Export session</button>
         <!-- enabled by the save buttons below, and never disabled by the
              session state: the document is still wanted after the exam -->
         <button id="settings">Settings</button>
 
         <div id="examTimer" hidden>5:00</div>
-        <!-- the exam clock, sitting with the controls it governs. Started by
-             the first examiner question rather than by the Start button, so
-             the wait for the opening call is not charged to the student. At
-             zero a reply already in flight is still delivered and spoken, and
-             the session ends after it. End session puts it back to 5:00 -->
+     
     </div>
-    <!-- sticky so the turn controls stay reachable however far the transcript
-         has grown. The buttons are the turn guard as well as the display, so
-         scrolling them off screen hid the only way to end a response -->
+
 
     <div id="settingsOverlay" hidden>
         <div id="settingsModal" role="dialog" aria-labelledby="settingsTitle">
@@ -41,6 +43,9 @@
                  and never has to ask "come ti chiami". Blank is allowed: the
                  backend then simply tells the examiner nothing about a name -->
 
+            <label for="languageSelect">Language</label>
+            <select id="languageSelect"></select>
+          
             <label for="geminiKeySelect">Gemini API key</label>
             <select id="geminiKeySelect"></select>
             <!-- populated from /api/gemini-keys; the selected name rides on
@@ -54,12 +59,26 @@
     <!-- disabled while a session is running: the key choice is read once, at
          the start message, so changing it mid-exam would have no effect -->
 
+    <div id="micOverlay" hidden>
+        <div id="micModal" role="alertdialog" aria-labelledby="micTitle" aria-describedby="micReason">
+            <h2 id="micTitle">Microphone blocked</h2>
+            <p id="micReason"></p>
+     
+            <ol id="micSteps"></ol>
+       
+            <div id="micActions">
+                <button id="micRetry" type="button">Try again</button>
+                <button id="micDismiss" type="button">Close</button>
+            </div>
+        </div>
+    </div>
+ 
+
     <div id="translateBox">
         <div id="translateHead">
             <h2 id="translateTitle">Quick translate</h2>
-            <button id="translateDirection" type="button">IT &rarr; EN</button>
-            <!-- a button rather than a select: reversing is the only choice
-                 there is, so it should cost one click and no menu -->
+            <button id="translateDirection" type="button">&nbsp;</button>
+      
         </div>
 
         <textarea id="translateInput" rows="4" autocomplete="off" maxlength="1000"
@@ -74,25 +93,21 @@
         <button id="translateGo" type="button">Translate</button>
         <div id="translateResult" hidden></div>
     </div>
-    <!-- pinned to the right margin rather than sitting in the column, so it
-         stays put however far the transcript has scrolled. Deliberately never
-         disabled by setTurnState: this talks to Google Translate over plain
-         HTTP and shares nothing with the exam pipeline, and looking a word up
-         mid-question is the whole point of having it -->
+
 
     <div id="examLoading" hidden>
         <span class="dots"><i></i><i></i><i></i></span>
         <span>Preparing your exam - waiting for the examiner's first question</span>
     </div>
-    <!-- the gap between Start and the opening question is a Gemini call plus
-         its speech, seconds of nothing on an empty page. Removed by the first
-         painted question, which is also what starts the clock -->
+
 
     <div id="transcript"></div>
     <!-- student-facing conversation surface, and the only surface on the page.
          Turns are grouped one question with its answer, so a pair can be saved
          on its own. Diagnostics go to the console via addLog(), never here -->
 
+    <script src="translate.js"></script>
+    <!-- before client.js, which calls initTranslate() as it runs -->
     <script src="client.js"></script>
 </body>
 </html>
