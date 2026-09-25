@@ -1,6 +1,7 @@
 const transcript = document.getElementById("transcript");
 const startButton = document.getElementById("start");
 const doneButton = document.getElementById("done");
+const pauseButton = document.getElementById("pause");
 const endButton = document.getElementById("end");
 const exportButton = document.getElementById("export");
 const settingsButton = document.getElementById("settings");
@@ -75,6 +76,15 @@ const EXAM_DURATION_MS = 5 * 60 * 1000;
 let examDeadline = null;
 //wall-clock instant the exam ends, set by the first examiner question
 let examTick = null;
+let examPaused = false;
+let examRemaining = null;
+//ms left on the clock while paused, banked when it stopped. The deadline is
+//wall-clock arithmetic, so a pause cannot simply stop counting: it has to put
+//the remainder aside and buy a new deadline from it on resume
+let pausePending = false;
+//the student pressed Pause while the examiner was working. The request in
+//flight is never cancelled - it comes back, is painted and is spoken - and the
+//pause takes hold at the moment the mic would otherwise be handed over
 let examExpired = false;
 //latched for the life of the page: once the clock has run out no further
 //examiner call may be made, including by starting a fresh session
@@ -574,38 +584,80 @@ function startExamTimer() {
     //comes back showing the real time left instead of the ticks it missed
 }
 
+function pauseExamTimer() { //bank the remainder and stop counting
+    if (examDeadline === null || examPaused) {
+        return;
+    }
+    examRemaining = Math.max(0, examDeadline - Date.now());
+    clearInterval(examTick);
+    examTick = null;
+    examPaused = true;
+    examTimer.classList.add("paused");
+    paintExamTimer();
+    //repainted from the banked remainder, so the pill freezes on the reading
+    //the student stopped at rather than on whatever the last tick caught
+}
+
+function resumeExamTimer() { //buy a fresh deadline from what was banked
+    if (!examPaused) {
+        return;
+    }
+    examPaused = false;
+    examTimer.classList.remove("paused");
+    examDeadline = Date.now() + examRemaining;
+    examRemaining = null;
+    paintExamTimer();
+    examTick = setInterval(paintExamTimer, 250);
+}
+
 function resetExamTimer() { //stop the clock and put five minutes back on it
     clearInterval(examTick);
     examTick = null;
     examDeadline = null;
     examExpired = false;
+    examPaused = false;
+    examRemaining = null;
+    pausePending = false;
+    //the pause belongs to the exam that just ended, not to the next one: a
+    //latched pause would otherwise come up already stopped on a fresh clock
     //cleared as well as stopped, so the next Start is allowed to run and gets
     //a whole exam rather than the remainder of the one just abandoned
     examTimer.hidden = true;
-    examTimer.classList.remove("low", "expired");
+    examTimer.classList.remove("low", "expired", "paused");
     examTimer.textContent = "5:00";
     //repainted now rather than at the next start, so the pill does not flash
     //the abandoned session's last reading before the first question lands
 }
 
 function paintExamTimer() {
-    const left = Math.max(0, examDeadline - Date.now());
+    const left = examPaused
+        ? examRemaining
+        : Math.max(0, examDeadline - Date.now());
+    //while paused the remainder is the truth: the deadline it was taken from
+    //is already in the past and would paint 0:00 and expire the exam
     const seconds = Math.ceil(left / 1000);
     examTimer.textContent =
         `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
     examTimer.classList.toggle("low", left > 0 && left <= 60 * 1000);
 
-    if (left === 0) {
+    if (left === 0 && !examPaused) {
         expireExam();
+        //a paused clock never runs out, however long the pause lasts: the
+        //remainder is frozen, and only a resume can walk it down to zero
     }
 }
 
 function expireExam() { //the clock has run out
     examExpired = true;
+    pausePending = false;
+    //a pause still waiting on the examiner has nothing left to stop, and the
+    //button has to come off "Pausing..." rather than sit there owing a pause
+    //that will never arrive
     clearInterval(examTick);
     examTick = null;
     examTimer.classList.remove("low");
     examTimer.classList.add("expired");
+    paintPauseButton();
 
     addLog("time is up - finish your answer, it will still be marked");
     //nothing is torn down here. A request already sent still comes back, so the
@@ -613,6 +665,23 @@ function expireExam() { //the clock has run out
     //already in progress is still submitted and transcribed. What the latch
     //denies is the examiner call that would follow, and the session ends on the
     //server's "ended" status once the last answer has been written down
+}
+
+function paintPauseButton() { //label and latch, from the pause state alone
+    if (examPaused) {
+        pauseButton.textContent = "Resume";
+        pauseButton.disabled = false;
+        return;
+        //never latched while paused: whatever else is true, the student has to
+        //be able to start the exam moving again
+    }
+
+    pauseButton.textContent = pausePending ? "Pausing..." : "Pause";
+    pauseButton.disabled =
+        turnState === "idle" || examExpired || pausePending;
+    //idle has no clock to stop and expired has none left to save. A pause
+    //already waiting on the examiner is disabled rather than relabelled back,
+    //so the second press cannot cancel a pause the student cannot see coming
 }
 
 function setTurnState(state) {
@@ -628,6 +697,7 @@ function setTurnState(state) {
     //deliberately not latched by examExpired: an answer in progress when the
     //clock ran out is still worth transcribing, and the final flag on its stop
     //is what stops it turning into another examiner call
+    paintPauseButton();
     endButton.disabled = state === "idle";
     settingsButton.disabled = state !== "idle";
     //the picked key rides on the "start" message only, so changing it once a
@@ -990,6 +1060,19 @@ function armMic() { //hand the turn to the student
         //the session was ended while the examiner's audio was still playing, so
         //onended fired against a torn-down graph
     }
+    if (pausePending && !examExpired) {
+        enterPause();
+        return;
+        //the pause the student asked for mid-request. The examiner's reply has
+        //now been painted and spoken in full, so this is the first moment the
+        //exam can stop without swallowing anything. Dropped rather than
+        //honoured if the clock ran out while that request was in flight: there
+        //is nothing left to save, and this last answer still has to be given
+    }
+    if (examPaused) {
+        return;
+        //paused already: the mic stays shut until Resume, which re-arms it
+    }
     if (captureState === "armed" || captureState === "capturing") {
         return;
         //already the student's turn; re-arming would drag headCut into the
@@ -1035,6 +1118,55 @@ doneButton.onclick = () => { //the student has finished this answer
     addLog("thinking...");
 };
 
+function enterPause() { //the clock stops and the mic goes quiet
+    pausePending = false;
+    pauseExamTimer();
+
+    if (captureState === "armed" || captureState === "capturing") {
+        captureState = "idle";
+        //dropped rather than stopped: stopMic would send the answer so far to
+        //the server as a finished turn, and a pause is not an answer. The
+        //samples already streamed stay in the session's buffer, and the
+        //resume re-arms on top of them so the answer continues where it left off
+    }
+
+    setTurnState("paused");
+    addLog("paused - press Resume to carry on");
+}
+
+function leavePause() { //the clock and the turn both start again
+    resumeExamTimer();
+    setTurnState("thinking");
+    armMic();
+    //always the student's turn to take back: a pause is only ever entered on
+    //their turn, or - through pausePending - at the moment the examiner has
+    //finished speaking and was about to hand it to them anyway. armMic sets
+    //the state to "armed" itself, so the "thinking" above is just the state it
+    //has to pass through to satisfy its own idle guard
+}
+
+pauseButton.onclick = () => {
+    if (examPaused) {
+        leavePause();
+        return;
+    }
+    if (turnState === "idle" || examExpired || pausePending) {
+        return;
+    }
+
+    if (turnState === "thinking") {
+        pausePending = true;
+        paintPauseButton();
+        addLog("pausing - the examiner is still speaking, so this question " +
+               "finishes first");
+        return;
+        //the request in flight is left entirely alone. It comes back, is
+        //painted and is spoken, and armMic takes the pause instead of the turn
+    }
+
+    enterPause();
+};
+
 endButton.onclick = () => {
     addLog("session ended");
 
@@ -1061,6 +1193,14 @@ function teardown() { //release everything this session allocated
     captureState = "idle";
     micReady = false;
     pendingArm = false;
+    pausePending = false;
+    examPaused = false;
+    examRemaining = null;
+    examTimer.classList.remove("paused");
+    //a session that died while paused - a dropped socket, a denied mic - must
+    //not leave a Resume button over an exam there is nothing left to resume.
+    //The clock is not restarted here: teardown's own setTurnState("idle")
+    //latches the button off, and End and expiry each reset the timer outright
     headCut = 0;
     tailCut = 0;
     pendingStop = false;

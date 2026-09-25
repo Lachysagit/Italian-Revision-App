@@ -518,6 +518,13 @@ h1 {
     color: #fff;
 }
 
+/* a paused clock is dimmed rather than coloured: it is not a warning, it is
+   simply not counting, and the low/expired reds must still read as urgent */
+#examTimer.paused {
+    border-style: dashed;
+    color: var(--muted);
+}
+
 /* The quick lookup box, parked in the empty margin to the right of the 46rem
    reading column. position:fixed rather than sticky so it is anchored to the
    viewport and not to the page: it stays exactly where it is however far the
