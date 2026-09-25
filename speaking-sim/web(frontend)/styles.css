@@ -960,3 +960,126 @@ body.gated { overflow: hidden; }
 }
 
 #authError[hidden] { display: none; }
+
+/* Account settings, opened from the nav corner. The button is the sign-out
+   button's twin so the pair reads as one control. */
+#acctOpenButton {
+    font: inherit;
+    padding: 0.2rem 0.6rem;
+    cursor: pointer;
+    background: none;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    color: inherit;
+    opacity: 0.75;
+}
+
+#acctOpenButton:hover { opacity: 1; }
+
+/* The dialog borrows the gate's overlay, one layer above it: the gate can be
+   up underneath during onboarding, and the settings card has to win. */
+#acctDialog {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(3px);
+}
+
+#acctDialog[hidden] { display: none; }
+
+#acctCard {
+    width: min(26rem, 100%);
+    padding: 1.75rem;
+    border-radius: 10px;
+    background: var(--bg, #fbf9f6);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+}
+
+#acctCard h2 { margin: 0 0 1.25rem; }
+#acctCard h3 { margin: 0 0 0.75rem; }
+
+#acctForm { display: flex; flex-direction: column; gap: 0.35rem; }
+
+/* both panels are flex, so [hidden] at the browser's weight loses to it and
+   has to be said outright - the same trap as the gate's two panels */
+#acctForm[hidden],
+#acctConfirm[hidden] { display: none; }
+
+#acctForm label {
+    margin-top: 0.6rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+#acctForm select {
+    font: inherit;
+    padding: 0.45rem;
+    color: inherit;
+    background: var(--panel, #fff);
+    border: 1px solid var(--line, #d9d4cc);
+    border-radius: 4px;
+}
+
+#acctChanges {
+    margin: 0 0 0.9rem;
+    padding-left: 1.2rem;
+    font-size: 0.95rem;
+}
+
+#acctChanges li { margin-bottom: 0.25rem; }
+
+#acctWarning {
+    margin: 0 0 0.5rem;
+    font-size: 0.9rem;
+    opacity: 0.8;
+}
+
+.acctActions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.6rem;
+    margin-top: 1.1rem;
+}
+
+#acctSave,
+#acctConfirmSave {
+    padding: 0.6rem 1.2rem;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    color: #fff;
+    background: #1a73e8;
+    border: none;
+    border-radius: 6px;
+}
+
+#acctSave:disabled,
+#acctConfirmSave:disabled { opacity: 0.6; cursor: default; }
+
+#acctCancel,
+#acctBack {
+    padding: 0.6rem 0.9rem;
+    font: inherit;
+    cursor: pointer;
+    color: inherit;
+    background: none;
+    border: 1px solid var(--line, #d9d4cc);
+    border-radius: 6px;
+    opacity: 0.8;
+}
+
+#acctCancel:hover,
+#acctBack:hover { opacity: 1; }
+
+#acctError {
+    margin: 0.9rem 0 0;
+    color: #b3261e;
+    font-size: 0.9rem;
+}
+
+#acctError[hidden] { display: none; }

@@ -24,6 +24,7 @@ function initAccount(options) {
 
     buildGate();
     buildAccountBox();
+    buildSettings();
     loadGateLanguages();
     // fetched up front rather than when the sign-up step opens: it is a small
     // request, it shares the connection with everything else the page is
@@ -363,6 +364,9 @@ function loadGateLanguages() {
             restoreDraft();
             // the draft may have been restored before this landed, so re-apply
             // it now that the options it names actually exist
+
+            fillSettingsLanguages();
+            // and the settings picker was built from the same empty list
         })
         .catch(() => {
             showGateError(
@@ -501,6 +505,15 @@ function paintAccountBox(user) {
     name.textContent = user.name || user.email;
     box.appendChild(name);
 
+    const settings = document.createElement("button");
+    settings.type = "button";
+    settings.id = "acctOpenButton";
+    settings.textContent = "Account settings";
+    settings.onclick = openSettings;
+    box.appendChild(settings);
+    // only for a signed-in account, and only beside the sign-out button: the
+    // three questions it asks have no answer to edit until there is one
+
     const form = document.createElement("form");
     form.method = "POST";
     form.action = "/auth/logout";
@@ -513,4 +526,253 @@ function paintAccountBox(user) {
     button.textContent = "Sign out";
     form.appendChild(button);
     box.appendChild(form);
+}
+
+// ---------------------------------------------------------------------------
+// account settings
+// ---------------------------------------------------------------------------
+//
+// The same three questions sign-up asks, reopened from the nav. It posts to
+// the same endpoint, so the server's rules - the closed lists, and the 403 for
+// a student whose teacher owns their cohort - hold here without restating.
+//
+// Changing year or subject level moves the student between cohorts, so a save
+// is confirmed before it is sent. The confirmation names the fields that
+// actually changed rather than asking in the abstract.
+
+const SETTINGS_FIELDS = [
+    { key: "preferred_language", id: "acctLanguage", label: "Language" },
+    { key: "year_level", id: "acctYear", label: "Year level" },
+    { key: "subject_level", id: "acctLevel", label: "Subject level" },
+];
+
+function buildSettings() {
+    if (document.getElementById("acctDialog")) return;
+
+    const dialog = document.createElement("div");
+    dialog.id = "acctDialog";
+    dialog.hidden = true;
+    dialog.innerHTML = `
+        <div id="acctCard" role="dialog" aria-modal="true"
+             aria-labelledby="acctTitle">
+            <h2 id="acctTitle">Account settings</h2>
+
+            <form id="acctForm">
+                <label for="acctLanguage">Language</label>
+                <select id="acctLanguage" required>
+                    <option value="">Choose...</option>
+                </select>
+
+                <label for="acctYear">Year level</label>
+                <select id="acctYear" required>
+                    <option value="">Choose...</option>
+                    <option value="7">Year 7</option>
+                    <option value="8">Year 8</option>
+                    <option value="9">Year 9</option>
+                    <option value="10">Year 10</option>
+                    <option value="11">Year 11</option>
+                    <option value="12">Year 12</option>
+                </select>
+
+                <label for="acctLevel">Subject level</label>
+                <select id="acctLevel" required>
+                    <option value="">Choose...</option>
+                    <option value="beginners">Beginners</option>
+                    <option value="continuers">Continuers</option>
+                    <option value="advanced">Advanced</option>
+                    <option value="extension">Extension</option>
+                </select>
+
+                <p id="acctError" hidden></p>
+
+                <div class="acctActions">
+                    <button type="button" id="acctCancel">Cancel</button>
+                    <button type="submit" id="acctSave">Save</button>
+                </div>
+            </form>
+
+            <div id="acctConfirm" hidden>
+                <h3 id="acctConfirmTitle">Are you sure?</h3>
+                <ul id="acctChanges"></ul>
+                <p id="acctWarning">
+                    These set the cohort your exams are built for.
+                </p>
+                <div class="acctActions">
+                    <button type="button" id="acctBack">Go back</button>
+                    <button type="button" id="acctConfirmSave">Yes, change</button>
+                </div>
+            </div>
+        </div>`;
+    document.body.appendChild(dialog);
+
+    fillSettingsLanguages();
+
+    document.getElementById("acctCancel").onclick = closeSettings;
+    document.getElementById("acctBack").onclick = () => showConfirm(false);
+    document.getElementById("acctForm").onsubmit = reviewSettings;
+    document.getElementById("acctConfirmSave").onclick = commitSettings;
+
+    dialog.onclick = (event) => {
+        if (event.target === dialog) closeSettings();
+        // the backdrop and nothing else: a click that began inside the card
+        // lands on the card, so dragging across a picker cannot close it
+    };
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !dialog.hidden) closeSettings();
+    });
+}
+
+// The language list is the one the gate already fetched, which can land after
+// this runs - loadGateLanguages calls back here for exactly that reason.
+function fillSettingsLanguages() {
+    const select = document.getElementById("acctLanguage");
+    if (!select) return;
+
+    const chosen = select.value;
+    select.textContent = "";
+
+    const blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "Choose...";
+    select.appendChild(blank);
+
+    gateLanguages.forEach((language) => {
+        const option = document.createElement("option");
+        option.value = language.id;
+        option.textContent = language.label;
+        select.appendChild(option);
+    });
+
+    setSelectValue("acctLanguage", chosen);
+    // a refill must not silently undo a choice made while the list was landing
+}
+
+function openSettings() {
+    if (!currentUser) return;
+
+    buildSettings();
+    hideSettingsError();
+    showConfirm(false);
+
+    SETTINGS_FIELDS.forEach((field) => {
+        setSelectValue(field.id, currentUser[field.key]);
+    });
+
+    document.getElementById("acctDialog").hidden = false;
+    document.body.classList.add("gated");
+    document.getElementById("acctLanguage").focus();
+}
+
+function closeSettings() {
+    const dialog = document.getElementById("acctDialog");
+    if (dialog) dialog.hidden = true;
+
+    const gate = document.getElementById("authGate");
+    if (!gate || gate.hidden) document.body.classList.remove("gated");
+    // the gate holds the same class, and only one of the two can be up at a
+    // time - but checking costs nothing and keeps the page scrollable
+}
+
+function showConfirm(on) {
+    document.getElementById("acctForm").hidden = Boolean(on);
+    document.getElementById("acctConfirm").hidden = !on;
+}
+
+// Save pressed: work out what actually changed and ask about that. Nothing is
+// sent until the confirmation is answered.
+function reviewSettings(event) {
+    event.preventDefault();
+    hideSettingsError();
+
+    const chosen = {};
+    SETTINGS_FIELDS.forEach((field) => {
+        chosen[field.key] = document.getElementById(field.id).value;
+    });
+
+    if (!chosen.preferred_language || !chosen.year_level ||
+        !chosen.subject_level) {
+        showSettingsError("Please answer all three.");
+        return;
+    }
+
+    const changes = SETTINGS_FIELDS.filter(
+        (field) => chosen[field.key] !== currentUser[field.key]);
+
+    if (changes.length === 0) {
+        closeSettings();
+        return;
+        // nothing to confirm, and nothing worth a request
+    }
+
+    const list = document.getElementById("acctChanges");
+    list.textContent = "";
+    changes.forEach((field) => {
+        const item = document.createElement("li");
+        item.textContent = field.label + ": " +
+            settingsLabelFor(field, currentUser[field.key]) + " → " +
+            settingsLabelFor(field, chosen[field.key]);
+        list.appendChild(item);
+    });
+
+    document.getElementById("acctConfirm").dataset.pending =
+        JSON.stringify(chosen);
+    showConfirm(true);
+    document.getElementById("acctBack").focus();
+}
+
+// What the picker shows for a value, so the confirmation reads "Year 10" and
+// "Continuers" rather than "10" and "continuers".
+function settingsLabelFor(field, value) {
+    const select = document.getElementById(field.id);
+    if (!select || !value) return "not set";
+
+    const option = Array.prototype.find.call(
+        select.options, (o) => o.value === value);
+    return option ? option.textContent : value;
+}
+
+function commitSettings() {
+    const confirm = document.getElementById("acctConfirm");
+    let chosen = null;
+    try {
+        chosen = JSON.parse(confirm.dataset.pending || "null");
+    } catch (ignored) {
+        chosen = null;
+    }
+    if (!chosen) {
+        showConfirm(false);
+        return;
+    }
+
+    const save = document.getElementById("acctConfirmSave");
+    save.disabled = true;
+
+    postProfile(chosen)
+        .then(() => {
+            window.location.reload();
+            // the language, the topic list and the exam's whole shape are read
+            // from the account at load. A reload is the one honest way to put
+            // every one of them on the new cohort
+        })
+        .catch((failure) => {
+            save.disabled = false;
+            showConfirm(false);
+            showSettingsError(failure.message);
+            // back to the form with the reason above the buttons: the server
+            // refuses a student whose teacher owns their cohort, and that
+            // answer has to be readable beside the pickers it is about
+        });
+}
+
+function showSettingsError(message) {
+    const error = document.getElementById("acctError");
+    if (!error) return;
+    error.textContent = message;
+    error.hidden = false;
+}
+
+function hideSettingsError() {
+    const error = document.getElementById("acctError");
+    if (error) error.hidden = true;
 }
