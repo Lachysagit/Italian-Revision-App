@@ -807,9 +807,11 @@ async function loadLanguages() {
 }
 
 async function applyPreferredLanguage(id) {
-    // the language picked at sign-up. Waits on the picker's own fetch rather
-    // than assuming it has landed: /api/me and /api/languages are two requests
-    // in flight at once, and either can win
+    // the language the account carries, which is the one the page opens on.
+    // Waits on the picker's own fetch rather than assuming it has landed:
+    // /api/me and /api/languages are two requests in flight at once, and
+    // either can win. An empty or unrecognised id leaves the picker on
+    // whatever loadLanguages settled on
     await languagesReady;
     if (!id || !languages.some((entry) => entry.id === id)) return;
 
@@ -822,8 +824,29 @@ async function applyPreferredLanguage(id) {
     // student's saved one would
 }
 
+function applyAccountName(fullName) {
+    //the examiner is told "lo studente si chiama {0}", so it wants the name
+    //you are called rather than the one on the enrolment form
+    if (studentName.value.trim()) return;
+    //something already typed wins: the account name is a starting point, not
+    //a correction. Blank-but-saved counts as typed only once it has content,
+    //so clearing the box and reloading offers the account name again
+
+    const first = (fullName || "").trim().split(/\s+/)[0] || "";
+    if (!first) return;
+
+    studentName.value = first;
+    localStorage.setItem(STUDENT_NAME_STORAGE, first);
+    //saved the same way typing it would, so the next load takes the early
+    //localStorage path above and never waits on /api/me
+}
+
 languageSelect.onchange = () => {
     localStorage.setItem(LANGUAGE_STORAGE, languageSelect.value);
+    savePreferredLanguage(languageSelect.value);
+    //to the account as well as this browser, so the next device opens on the
+    //same exam. localStorage stays as the offline answer for a page that
+    //loads before /api/me does
     setTranslateLanguage(translateCodeFor(languageSelect.value));
     updatePageTitle(languageSelect.value);
     //the translate box follows the exam: looking up an Italian word while

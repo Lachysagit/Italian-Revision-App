@@ -474,6 +474,29 @@ function postProfile(draft) {
             }));
 }
 
+// Persist a language change made from the exam page's own picker, so the
+// choice follows the student to their next device rather than living in one
+// browser's localStorage. The endpoint validates all three fields together, so
+// year and subject level are resent unchanged from the account we already hold.
+function savePreferredLanguage(id) {
+    if (!currentUser || !currentUser.onboarded) return Promise.resolve(null);
+    if (!id || id === currentUser.preferred_language) return Promise.resolve(null);
+
+    return postProfile({
+        preferred_language: id,
+        year_level: currentUser.year_level,
+        subject_level: currentUser.subject_level,
+    })
+        .then((body) => {
+            currentUser.preferred_language = id;
+            return body;
+        })
+        .catch(() => null);
+    // swallowed: the picker has already changed and the exam runs on what is
+    // on screen. A failed save costs the student nothing this session, and a
+    // 403 is the expected answer for a student whose teacher owns their cohort
+}
+
 // ---------------------------------------------------------------------------
 // the nav corner
 // ---------------------------------------------------------------------------

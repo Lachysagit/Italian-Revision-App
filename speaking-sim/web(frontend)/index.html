@@ -121,13 +121,15 @@
     <script>
         initAccount({
             onReady: (user) => {
-                // the language chosen at sign-up wins over the one left in
-                // localStorage, but only the first time: changing the picker
-                // afterwards is a deliberate act and must stick
-                if (user.preferred_language &&
-                    !localStorage.getItem("examLanguage")) {
-                    applyPreferredLanguage(user.preferred_language);
-                }
+                // the account is where the language lives, so it wins over
+                // whatever this particular browser last saved. A change made
+                // from the picker is written back to the account, which is
+                // what makes deferring to it here safe
+                applyPreferredLanguage(user.preferred_language);
+                applyAccountName(user.name);
+                // only fills an empty box, so it is an offer rather than an
+                // override: a student who goes by something other than their
+                // Google name types it once and keeps it
             },
         });
     </script>
