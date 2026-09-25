@@ -163,7 +163,7 @@
   }
 
   #siteNav{
-    display:flex; gap:6px; margin-bottom:18px;
+    display:flex; gap:6px; align-items:center; margin-bottom:18px;
     border-bottom:1px solid var(--line); padding-bottom:10px;
   }
   #siteNav a{
@@ -229,4 +229,141 @@
     #translateBox{box-shadow:none}
     #translateResult.error{border-color:#a8342a; background:#2a1714; color:#e79287}
     #translateCount.near{color:#e79287}
+  }
+
+  /* account.js builds the same nav corner and sign-in gate on both pages, and
+     their rules live in styles.css, which this page does not link. Restyled
+     here in the listening palette rather than pulling that sheet in. */
+  #accountBox{
+    margin-left:auto; display:inline-flex; align-items:center; gap:10px;
+    font-size:13px;
+  }
+  #accountName{color:var(--muted); font-weight:600}
+  #accountBox a{
+    font-size:13px; font-weight:600; text-decoration:none; color:var(--accent);
+  }
+  #signOutButton{
+    font:inherit; font-size:12px; cursor:pointer; color:var(--muted);
+    background:none; border:1px solid var(--line); border-radius:999px;
+    padding:4px 11px; white-space:nowrap;
+    transition:color .15s, border-color .15s;
+  }
+  #signOutButton:hover{color:var(--ink); border-color:var(--muted)}
+  #signOutButton:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  #accountBox form{margin:0; display:flex}
+
+  #authGate{
+    position:fixed; inset:0; z-index:50; padding:16px;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(0,0,0,.55); backdrop-filter:blur(3px);
+  }
+  #authGate[hidden]{display:none}
+  body.gated{overflow:hidden}
+
+  #authCard{
+    width:min(26rem,100%); padding:26px; border-radius:12px;
+    background:var(--bg); color:var(--ink);
+    box-shadow:0 10px 40px rgba(0,0,0,.35);
+  }
+  #authCard h2{font-family:var(--display); font-size:22px; margin:0 0 6px}
+  #authBlurb{margin:0 0 18px; color:var(--muted); font-size:13px}
+
+  #authChoice{display:flex; flex-direction:column; gap:10px}
+  /* [hidden] only carries the browser's default weight, which the display:flex
+     above beats, so both panels have to say it themselves. */
+  #authChoice[hidden],#authDetails[hidden]{display:none}
+
+  .authOption{
+    display:block; width:100%; padding:13px 15px; font:inherit; text-align:left;
+    text-decoration:none; cursor:pointer; color:inherit; background:var(--panel);
+    border:1px solid var(--line); border-radius:9px;
+    transition:border-color .15s;
+  }
+  .authOption:hover{border-color:var(--accent)}
+  .authOptionLabel{display:block; font-weight:600; font-size:14px}
+  .authOptionNote{display:block; margin-top:2px; font-size:12px; color:var(--muted)}
+
+  #authDetails{display:flex; flex-direction:column; gap:5px}
+  #authDetails label{margin-top:10px; font-size:12px; font-weight:600}
+  #authDetails select{background:var(--panel); width:100%}
+
+  #authNext{
+    margin-top:18px; padding:9px 18px; font:inherit; font-weight:600;
+    cursor:pointer; color:#fff; background:var(--accent); border:none;
+    border-radius:8px; align-self:flex-start;
+  }
+  #authNext:disabled{opacity:.55; cursor:default}
+  #authBack{
+    margin-top:8px; padding:6px; font:inherit; font-size:13px; cursor:pointer;
+    color:var(--muted); background:none; border:none; align-self:flex-start;
+  }
+  #authBack:hover{color:var(--ink)}
+  #authBack[hidden]{display:none}
+
+  #authError{margin:14px 0 0; color:#c0392b; font-size:13px}
+  #authError[hidden]{display:none}
+
+  @media (prefers-color-scheme:dark){
+    #authNext{color:#16171a}
+    #authError{color:#e79287}
+  }
+
+  /* Account settings, built by the same account.js. In the listening palette
+     for the same reason as everything above it. */
+  #acctOpenButton{
+    font:inherit; font-size:12px; cursor:pointer; color:var(--muted);
+    background:none; border:1px solid var(--line); border-radius:999px;
+    padding:4px 11px; white-space:nowrap;
+    transition:color .15s, border-color .15s;
+  }
+  #acctOpenButton:hover{color:var(--ink); border-color:var(--muted)}
+  #acctOpenButton:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  /* one layer above the gate, which can still be up underneath */
+  #acctDialog{
+    position:fixed; inset:0; z-index:60; padding:16px;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(0,0,0,.55); backdrop-filter:blur(3px);
+  }
+  #acctDialog[hidden]{display:none}
+
+  #acctCard{
+    width:min(26rem,100%); padding:26px; border-radius:12px;
+    background:var(--bg); color:var(--ink);
+    box-shadow:0 10px 40px rgba(0,0,0,.35);
+  }
+  #acctCard h2{font-family:var(--display); font-size:22px; margin:0 0 18px}
+  #acctCard h3{font-family:var(--display); font-size:18px; margin:0 0 10px}
+
+  #acctForm{display:flex; flex-direction:column; gap:5px}
+  /* both panels are flex, so [hidden] has to be said outright */
+  #acctForm[hidden],#acctConfirm[hidden]{display:none}
+  #acctForm label{margin-top:10px; font-size:12px; font-weight:600}
+  #acctForm select{background:var(--panel); width:100%}
+
+  #acctChanges{margin:0 0 12px; padding-left:20px; font-size:13px}
+  #acctChanges li{margin-bottom:3px}
+  #acctWarning{margin:0; font-size:12px; color:var(--muted)}
+
+  .acctActions{display:flex; justify-content:flex-end; gap:8px; margin-top:18px}
+
+  #acctSave,#acctConfirmSave{
+    padding:9px 18px; font:inherit; font-weight:600; cursor:pointer;
+    color:#fff; background:var(--accent); border:none; border-radius:8px;
+  }
+  #acctSave:disabled,#acctConfirmSave:disabled{opacity:.55; cursor:default}
+
+  #acctCancel,#acctBack{
+    padding:9px 14px; font:inherit; cursor:pointer; color:var(--muted);
+    background:none; border:1px solid var(--line); border-radius:8px;
+    transition:color .15s, border-color .15s;
+  }
+  #acctCancel:hover,#acctBack:hover{color:var(--ink); border-color:var(--muted)}
+
+  #acctError{margin:14px 0 0; color:#c0392b; font-size:13px}
+  #acctError[hidden]{display:none}
+
+  @media (prefers-color-scheme:dark){
+    #acctSave,#acctConfirmSave{color:#16171a}
+    #acctError{color:#e79287}
   }

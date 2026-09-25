@@ -58,7 +58,15 @@
 
 <script src="/translate.js"></script>
 <script src="/listening.js"></script>
-    <script src="account.js"></script>
-    <script>initAccount();</script>
+<script src="/account.js"></script>
+<script>
+  initAccount({
+    onReady: (user) => {
+      // the account is where the language lives, and a change made from the
+      // picker is written back to it, so deferring to it here is safe
+      applyListeningLanguage(user.preferred_language);
+    },
+  });
+</script>
 </body>
 </html>
