@@ -846,15 +846,34 @@ body.gated { overflow: hidden; }
 #authCard h2 { margin: 0 0 0.5rem; }
 #authBlurb { margin: 0 0 1.25rem; opacity: 0.8; }
 
-/* The two ways in. Both are full width cards rather than a button and a link,
-   so neither reads as the secondary option. */
-#authChoice { display: flex; flex-direction: column; gap: 0.75rem; }
+/* The two ways in, the student-or-teacher question, and the two teacher
+   panels. All full width cards rather than a button and a link, so nothing
+   reads as the secondary option. */
+#authChoice,
+#authRole,
+#authTeacher,
+#authTeacherWelcome { display: flex; flex-direction: column; gap: 0.75rem; }
 
 /* [hidden] is only display:none at the browser's default weight, which a
-   display:flex rule on the same element beats. Both panels are flex, so both
-   need saying explicitly or the sign-up form shows beside the two buttons. */
+   display:flex rule on the same element beats. Every panel here is flex, so
+   each needs saying explicitly or two steps show stacked on top of each other. */
 #authChoice[hidden],
+#authRole[hidden],
+#authTeacher[hidden],
+#authTeacherWelcome[hidden],
 #authDetails[hidden] { display: none; }
+
+/* the teacher panels are prose rather than pickers, so the paragraphs carry
+   the spacing the form's labels would otherwise provide */
+#authTeacher p,
+#authTeacherWelcome p {
+    margin: 0;
+    font-size: 0.9rem;
+    opacity: 0.8;
+}
+
+#authTeacherNote,
+#authTeacherWelcomeNote { font-size: 0.85rem; opacity: 0.65; }
 
 .authOption {
     display: block;
@@ -912,7 +931,10 @@ body.gated { overflow: hidden; }
 
 #authNext:disabled { opacity: 0.6; cursor: default; }
 
-#authBack {
+#authBack,
+#authRoleBack,
+#authTeacherBack,
+#authTeacherSignOut {
     margin-top: 0.5rem;
     padding: 0.4rem;
     font: inherit;
@@ -924,7 +946,11 @@ body.gated { overflow: hidden; }
     opacity: 0.7;
 }
 
-#authBack:hover { opacity: 1; }
+#authBack:hover,
+#authRoleBack:hover,
+#authTeacherBack:hover,
+#authTeacherSignOut:hover { opacity: 1; }
+
 #authBack[hidden] { display: none; }
 
 #authError {

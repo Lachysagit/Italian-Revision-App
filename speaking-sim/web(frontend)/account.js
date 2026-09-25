@@ -42,6 +42,15 @@ function initAccount(options) {
             if (!user.onboarded) {
                 return finishPendingSignup(onReady);
             }
+
+            discardDraft();
+            // somebody who pressed "create an account", answered the three
+            // pickers and then signed in with a Google account that already
+            // exists: the account they landed in wins and its preferences are
+            // left exactly as they were. The unused draft is dropped here
+            // rather than left in the tab, where the next un-onboarded sign-in
+            // would find it and quietly inherit this student's cohort
+
             hideGate();
             onReady(user);
             return user;
@@ -65,6 +74,14 @@ function finishPendingSignup(onReady) {
         draft = null;
     }
 
+    if (currentUser.is_teacher) {
+        showStep("teacherWelcome");
+        return null;
+        // year and subject level describe a student's cohort, so there is
+        // nothing here to ask a teacher. Any draft they carry in is a student
+        // answer set and must not be posted against a teacher account
+    }
+
     if (!draft) {
         showStep("details");
         return null;
@@ -74,17 +91,19 @@ function finishPendingSignup(onReady) {
 
     return postProfile(draft)
         .then(() => {
-            sessionStorage.removeItem(SIGNUP_DRAFT);
+            discardDraft();
             window.location.reload();
             // the page set itself up while the gate was raised and has no idea
             // a profile now exists. Once per account, so a reload is honest
             return null;
         })
         .catch(() => {
-            sessionStorage.removeItem(SIGNUP_DRAFT);
             showStep("details");
             showGateError("Those details could not be saved. Please try again.");
             return null;
+            // the draft is deliberately left in place: showStep restores it
+            // into the form, so "try again" is one click rather than three
+            // pickers. submitDetails clears it once the save lands
         });
 }
 
@@ -113,6 +132,54 @@ function buildGate() {
                     <span class="authOptionLabel">Create an account</span>
                     <span class="authOptionNote">First time here</span>
                 </button>
+            </div>
+
+            <div id="authRole" hidden>
+                <button type="button" class="authOption" id="authRoleStudent">
+                    <span class="authOptionLabel">I'm a student</span>
+                    <span class="authOptionNote">Sit practice exams and keep a record of them</span>
+                </button>
+
+                <button type="button" class="authOption" id="authRoleTeacher">
+                    <span class="authOptionLabel">I'm a teacher</span>
+                    <span class="authOptionNote">Set up classes and follow your students' progress</span>
+                </button>
+
+                <button type="button" id="authRoleBack">Back</button>
+            </div>
+
+            <div id="authTeacher" hidden>
+                <p id="authTeacherBlurb">
+                    Teacher accounts are set up by whoever runs this server, so
+                    there is nothing to fill in here. Sign in with your school
+                    Google account and your classes will be waiting.
+                </p>
+                <p id="authTeacherNote">
+                    If you sign in and land on the student questions instead,
+                    your address has not been added yet. Ask for it to be put on
+                    the teacher list, then sign in again.
+                </p>
+
+                <a class="authOption" href="/auth/login">
+                    <span class="authOptionLabel">Sign in with Google</span>
+                    <span class="authOptionNote">Use your school address</span>
+                </a>
+
+                <button type="button" id="authTeacherBack">Back</button>
+            </div>
+
+            <div id="authTeacherWelcome" hidden>
+                <p id="authTeacherWelcomeBlurb">
+                    You are signed in as a teacher. Classes are not built yet,
+                    so there is nothing to set up on this page for now.
+                </p>
+                <p id="authTeacherWelcomeNote">
+                    To try the practice exam the way your students see it, use
+                    a student account: this one has no year or subject level,
+                    which is what an exam runs on.
+                </p>
+
+                <button type="button" id="authTeacherSignOut">Sign in as someone else</button>
             </div>
 
             <form id="authDetails" hidden>
@@ -149,43 +216,116 @@ function buildGate() {
         </div>`;
     document.body.appendChild(gate);
 
-    document.getElementById("authCreate").onclick = () => showStep("details");
-    document.getElementById("authBack").onclick = () => showStep("choice");
+    document.getElementById("authCreate").onclick = () => showStep("role");
+    document.getElementById("authRoleStudent").onclick = () => showStep("details");
+    document.getElementById("authRoleTeacher").onclick = () => showStep("teacher");
+    document.getElementById("authRoleBack").onclick = () => showStep("choice");
+    document.getElementById("authTeacherBack").onclick = () => showStep("role");
+    document.getElementById("authTeacherSignOut").onclick = signOut;
+    document.getElementById("authBack").onclick = leaveDetails;
     document.getElementById("authDetails").onsubmit = submitDetails;
+}
+
+// "Back" from the details step, which is a different move depending on how the
+// student got there: one who has not signed in yet is just returning to the
+// choice screen, while one who is already signed in has to be signed out
+// before the choice screen means anything.
+function leaveDetails() {
+    if (!currentUser) {
+        showStep("role");
+        return;
+        // back to the question they came through, not all the way out: they
+        // picked "student" to get here and may have meant "teacher"
+    }
+
+    signOut();
+}
+
+// a real POST rather than a fetch: /auth/logout answers with a redirect to
+// "/", and letting the browser follow it reloads the page signed out, which is
+// exactly the state the choice screen expects
+function signOut() {
+    discardDraft();
+    // whatever they typed belonged to the account they are leaving
+
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = "/auth/logout";
+    form.hidden = true;
+    document.body.appendChild(form);
+    form.submit();
 }
 
 function showStep(step) {
     const gate = document.getElementById("authGate");
-    const choice = document.getElementById("authChoice");
-    const details = document.getElementById("authDetails");
+    const panels = {
+        choice: document.getElementById("authChoice"),
+        role: document.getElementById("authRole"),
+        teacher: document.getElementById("authTeacher"),
+        teacherWelcome: document.getElementById("authTeacherWelcome"),
+        details: document.getElementById("authDetails"),
+    };
     const title = document.getElementById("authTitle");
     const blurb = document.getElementById("authBlurb");
-    const next = document.getElementById("authNext");
 
     hideGateError();
 
-    if (step === "details") {
-        const signedIn = Boolean(currentUser);
-        title.textContent = signedIn ? "Almost there" : "Create an account";
-        blurb.textContent = signedIn
-            ? "Tell us what you are studying."
-            : "Tell us what you are studying, then sign in with Google.";
-        next.textContent = signedIn ? "Finish" : "Next";
-        // the button says what actually happens next: a signed-in student is
-        // saving, one who is not is about to be sent to Google
-        document.getElementById("authBack").hidden = signedIn;
-        choice.hidden = true;
-        details.hidden = false;
-        restoreDraft();
+    Object.keys(panels).forEach((name) => {
+        panels[name].hidden = name !== step;
+    });
+    // one pass over every panel rather than a hidden/shown pair per branch, so
+    // adding a step cannot leave an older one on screen underneath
+
+    if (step === "role") {
+        title.textContent = "Create an account";
+        blurb.textContent = "Which of these are you?";
+    } else if (step === "teacher") {
+        title.textContent = "Teacher accounts";
+        blurb.textContent = "How to get signed in.";
+    } else if (step === "teacherWelcome") {
+        title.textContent = "Signed in as a teacher";
+        blurb.textContent = currentUser && currentUser.name
+            ? "Welcome, " + currentUser.name + "."
+            : "Welcome.";
+    } else if (step === "details") {
+        prepareDetails();
     } else {
         title.textContent = "Welcome";
         blurb.textContent = "Practise speaking, and keep a record of your exams.";
-        choice.hidden = false;
-        details.hidden = true;
     }
 
     gate.hidden = false;
     document.body.classList.add("gated");
+}
+
+// The student questions, which are reached two ways: forwards from the role
+// step, and backwards by a signed-in account that has not onboarded yet. The
+// wording and the way out differ between those, so they are settled here
+// rather than at each call site.
+function prepareDetails() {
+    const signedIn = Boolean(currentUser);
+    const next = document.getElementById("authNext");
+
+    document.getElementById("authTitle").textContent =
+        signedIn ? "Almost there" : "Create an account";
+    document.getElementById("authBlurb").textContent = signedIn
+        ? "Tell us what you are studying."
+        : "Tell us what you are studying, then sign in with Google.";
+
+    next.textContent = signedIn ? "Finish" : "Next";
+    // the button says what actually happens next: a signed-in student is
+    // saving, one who is not is about to be sent to Google
+    next.disabled = false;
+    // submitDetails disables it on the way to Google; coming back to this
+    // step must not leave a dead button
+
+    const back = document.getElementById("authBack");
+    back.textContent = signedIn ? "Sign in as someone else" : "Back";
+    // a signed-in student has no choice screen to go back to, but they do
+    // need a way out of an account they did not mean to use: the gate
+    // covers the nav, so the sign-out button behind it is unreachable
+
+    restoreDraft();
 }
 
 function hideGate() {
@@ -244,6 +384,15 @@ function saveDraft(draft) {
     }
 }
 
+function discardDraft() {
+    try {
+        sessionStorage.removeItem(SIGNUP_DRAFT);
+    } catch (ignored) {
+        // private browsing can refuse storage outright. Nothing was saved in
+        // that case either, so there is nothing to drop
+    }
+}
+
 function restoreDraft() {
     let draft = null;
     try {
@@ -294,7 +443,7 @@ function submitDetails(event) {
 
     postProfile(draft)
         .then(() => {
-            sessionStorage.removeItem(SIGNUP_DRAFT);
+            discardDraft();
             window.location.reload();
         })
         .catch((failure) => {
