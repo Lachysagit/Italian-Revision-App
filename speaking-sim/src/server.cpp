@@ -955,7 +955,8 @@ void Server::handle_control(crow::websocket::connection& conn,
 
         persist_quietly("attempt start", [&] {
             session->set_attempt_id(store_->begin_attempt(
-                std::nullopt, session->language().id, session->gemini_key_name()));
+                std::nullopt, std::nullopt, session->language().id,
+                session->gemini_key_name()));
         });
         //opened here rather than on connect: the language is not known until
         //Start names one, and an attempt row that cannot say which exam it was
