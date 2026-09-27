@@ -175,6 +175,13 @@ void Server::register_class_routes() {
         return serve_attempt(req, attempt_id);
     });
 
+    CROW_ROUTE(app_, "/api/my-attempts") //HTTP ROUTE ---
+    ([this](const crow::request& req) {
+        return serve_my_attempts(req);
+    });
+    //the student's own exam history, for the classes page. No id in the path
+    //because the only history anyone may list here is their own
+
     CROW_ROUTE(app_, "/api/join").methods("POST"_method) //HTTP ROUTE ---
     ([this](const crow::request& req) {
         return serve_join(req);
@@ -507,6 +514,26 @@ crow::response Server::serve_class_attempts(const crow::request& req,
         crow::json::wvalue json;
         json["attempts"] = std::move(list);
         return json_response(json);
+    });
+}
+
+crow::response Server::serve_my_attempts(const crow::request& req) {
+    User user;
+    if (auto refusal = refuse_unless_signed_in(req, user)) {
+        return std::move(*refusal);
+    }
+
+    return guarded("my attempts", [&] {
+        std::vector<crow::json::wvalue> list;
+        for (const AttemptSummary& attempt :
+             store_->user_attempts(user.id, kAttemptListLimit)) {
+            list.push_back(attempt_json(attempt));
+        }
+        crow::json::wvalue json;
+        json["attempts"] = std::move(list);
+        return json_response(json);
+        //the caller's own id, never one from the request: a student cannot ask
+        //for somebody else's history by changing a number in the URL
     });
 }
 

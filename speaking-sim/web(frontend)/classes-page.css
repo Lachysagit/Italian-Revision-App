@@ -1,0 +1,151 @@
+/* My classes. Sits on top of styles.css and uses its tokens, so the paper tone,
+   the fonts and dark mode all come across unchanged; only the layout is new.
+   Deliberately narrower than the teacher dashboard: this page is a short list
+   of cards and one table, not two rosters side by side. */
+
+body.classesPage {
+    max-width: 56rem;
+}
+
+#classesMain[hidden] {
+    display: none;
+}
+
+#classesMain h2 {
+    margin: 0 0 0.75rem;
+    font-family: var(--display);
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+
+.pageHelp {
+    margin: 0 0 0.9rem;
+    font-size: 0.85rem;
+    color: var(--muted);
+    line-height: 1.5;
+}
+
+/* ---- the classes ------------------------------------------------------- */
+
+#classesHead {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+#joinFromPage {
+    padding: 0.4rem 0.9rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+}
+
+#joinFromPage:hover {
+    border-color: var(--muted);
+    color: var(--ink);
+}
+
+/* auto-fit rather than a fixed count: a student with one class gets one card at
+   a readable width, and a teacher with eight gets rows that fill the page. */
+#classCards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: 0.9rem;
+    margin-bottom: 2rem;
+}
+
+.classCard {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel);
+    box-shadow: var(--shadow);
+}
+
+.classCard h3 {
+    margin: 0;
+    font-family: var(--display);
+    font-size: 1.05rem;
+    font-weight: 600;
+}
+
+.classCardMeta {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+/* pushed to the bottom so the links line up across cards whose names wrap to
+   different heights */
+.classCardActions {
+    margin-top: auto;
+    padding-top: 0.5rem;
+}
+
+.classCardActions a {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--examiner-edge);
+}
+
+#classesEmpty,
+#historyEmpty {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--muted);
+    line-height: 1.5;
+}
+
+#classesEmpty[hidden],
+#historyEmpty[hidden],
+#historyTable[hidden] {
+    display: none;
+}
+
+/* ---- the exam history --------------------------------------------------- */
+
+#historySection {
+    margin-bottom: 2rem;
+}
+
+.tableWrap {
+    overflow-x: auto;
+}
+
+#historyTable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+}
+
+#historyTable th {
+    padding: 0.4rem 0.5rem;
+    border-bottom: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-align: left;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+#historyTable td {
+    padding: 0.5rem;
+    border-bottom: 1px solid var(--line);
+    vertical-align: middle;
+}
+
+/* the turn count, so the digits line up down the column */
+#historyTable td:nth-child(4) {
+    font-variant-numeric: tabular-nums;
+}

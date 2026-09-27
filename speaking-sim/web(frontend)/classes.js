@@ -8,6 +8,7 @@
 
 const CLASS_STORAGE = "examClass";
 const PENDING_JOIN = "pendingJoinCode";
+const PENDING_CLASS = "pendingExamClass";
 
 const classSelect = document.getElementById("classSelect");
 const joinClassButton = document.getElementById("joinClass");
@@ -17,9 +18,6 @@ const joinForm = document.getElementById("joinModal");
 const joinCodeInput = document.getElementById("joinCodeInput");
 const joinError = document.getElementById("joinError");
 const joinSubmit = document.getElementById("joinSubmit");
-const myClassesButton = document.getElementById("myClasses");
-const classesOverlay = document.getElementById("classesOverlay");
-const classesList = document.getElementById("classesList");
 
 let studentClasses = [];
 //[{id, name, language, language_label, role}] from /api/classes, archived ones
@@ -46,9 +44,27 @@ let studentClasses = [];
     // out of the address bar, so a refresh or a bookmark does not join again
 })();
 
+// A "Sit an exam for this class" link from /classes lands here as /?class=ID.
+// Parked and cleared like the join code above, and for the same reason: the
+// student may be about to go through Google, which does not keep the query.
+(function capturePendingClass() {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("class");
+    if (!id) return;
+
+    try {
+        sessionStorage.setItem(PENDING_CLASS, id);
+    } catch (ignored) {
+        // storage refused: the link then simply does not preselect anything
+    }
+    params.delete("class");
+    const rest = params.toString();
+    window.history.replaceState(null, "",
+        window.location.pathname + (rest ? `?${rest}` : "") + window.location.hash);
+})();
+
 function initClasses() {
     wireJoinBox();
-    wireClassesPanel();
     return loadStudentClasses().then(() => {
         let pending = null;
         try {
@@ -79,7 +95,8 @@ function loadStudentClasses() {
 }
 
 function paintClassSelect(preferId) {
-    const saved = preferId || localStorage.getItem(CLASS_STORAGE) || "";
+    const saved = preferId || takePendingClass() ||
+        localStorage.getItem(CLASS_STORAGE) || "";
     classSelect.textContent = "";
 
     const practice = document.createElement("option");
@@ -96,12 +113,29 @@ function paintClassSelect(preferId) {
 
     if (studentClasses.some((klass) => String(klass.id) === String(saved))) {
         classSelect.value = String(saved);
+        localStorage.setItem(CLASS_STORAGE, classSelect.value);
+        //written back so a class arrived at by link or by joining survives a
+        //refresh: only the change handler saved it before, which a link and a
+        //join both go around
     } else {
         classSelect.value = "";
         // a class the student has since left, or one that was archived, falls
         // back to private practice rather than to whichever class is first
     }
     applyClassChoice();
+}
+
+// Read once and dropped: the link picked the class for this visit, and the
+// student's own last choice takes over again afterwards.
+function takePendingClass() {
+    let id = null;
+    try {
+        id = sessionStorage.getItem(PENDING_CLASS);
+        sessionStorage.removeItem(PENDING_CLASS);
+    } catch (ignored) {
+        id = null;
+    }
+    return id;
 }
 
 function selectedClass() {
@@ -154,113 +188,6 @@ classSelect.onchange = () => {
     localStorage.setItem(CLASS_STORAGE, classSelect.value);
     applyClassChoice();
 };
-
-// ---------------------------------------------------------------------------
-// the class list
-// ---------------------------------------------------------------------------
-
-function wireClassesPanel() {
-    myClassesButton.onclick = openClassesPanel;
-    document.getElementById("classesClose").onclick = closeClassesPanel;
-    classesOverlay.onclick = (event) => {
-        if (event.target === classesOverlay) closeClassesPanel();
-    };
-
-    document.getElementById("classesJoin").onclick = () => {
-        closeClassesPanel();
-        openJoinBox();
-        // the two boxes are one flow: a student who opens the list and finds
-        // the class missing is one click from the code box
-    };
-}
-
-// The list a student cannot get from the picker: every class they are in, its
-// language and how many others are in it. Painted from studentClasses, which
-// loadStudentClasses has already fetched, so opening the box costs no request.
-function openClassesPanel() {
-    paintClassesList();
-    classesOverlay.hidden = false;
-}
-
-function closeClassesPanel() {
-    classesOverlay.hidden = true;
-}
-
-function paintClassesList() {
-    classesList.textContent = "";
-
-    if (studentClasses.length === 0) {
-        const empty = document.createElement("p");
-        empty.className = "classesEmpty";
-        empty.textContent = "You are not in a class yet. " +
-            "Join one with the code your teacher gives you, or keep " +
-            "practising on your own.";
-        classesList.appendChild(empty);
-        return;
-    }
-
-    const selected = classSelect.value;
-    studentClasses.forEach((klass) => {
-        const current = String(klass.id) === String(selected);
-
-        const row = document.createElement("div");
-        row.className = "classRow";
-        if (current) {
-            row.classList.add("current");
-            //the one exams are being sat for, marked so the list and the picker
-            //above it cannot appear to disagree
-        }
-
-        const name = document.createElement("span");
-        name.className = "classRowName";
-        name.textContent = klass.name;
-        row.appendChild(name);
-
-        const detail = document.createElement("span");
-        detail.className = "classRowDetail";
-        detail.textContent = classRowDetail(klass);
-        row.appendChild(detail);
-
-        const pick = document.createElement("button");
-        pick.type = "button";
-        pick.className = "classRowPick";
-        pick.textContent = current ? "Sitting for this" : "Sit for this";
-        pick.disabled = current || classSelect.disabled;
-        //classSelect.disabled is setTurnState's mid-session latch: the class
-        //rode on the start message, so it cannot be changed until the exam ends
-        pick.onclick = () => {
-            classSelect.value = String(klass.id);
-            classSelect.dispatchEvent(new Event("change"));
-            closeClassesPanel();
-            //through the picker's own change handler rather than around it, so
-            //the saved class, the language lock and the hint all still follow
-        };
-        row.appendChild(pick);
-
-        classesList.appendChild(row);
-    });
-}
-
-function classRowDetail(klass) {
-    const parts = [];
-    if (klass.language_label) parts.push(klass.language_label);
-    if (klass.role === "teacher") {
-        parts.push("You teach this");
-    } else {
-        parts.push(classmateCount(klass.student_count));
-    }
-    return parts.join(" · ");
-    //whatever the row carries, in a fixed order: a class with no language label
-    //must not render a stray separator
-}
-
-function classmateCount(count) {
-    const total = Number(count) || 0;
-    const others = Math.max(total - 1, 0);
-    //the student reading this is one of the count, and is not their own classmate
-    if (others === 0) return "You are the only student";
-    return others === 1 ? "1 classmate" : others + " classmates";
-}
 
 // ---------------------------------------------------------------------------
 // the join box

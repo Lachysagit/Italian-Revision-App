@@ -208,15 +208,20 @@ h1 {
     /* only More Settings is pushed to the far edge */
 }
 
+#examSetup #myClasses {
+    text-decoration: none;
+    /* a link to /classes wearing the same face as the buttons beside it: it
+       goes to a page, so it is an <a>, but it sits in a row of controls */
+}
+
 #examSetup #settings:hover:not(:disabled),
-#examSetup #myClasses:hover:not(:disabled),
+#examSetup #myClasses:hover,
 #examSetup #joinClass:hover:not(:disabled) {
     border-color: var(--muted);
     color: var(--ink);
 }
 
 #examSetup #settings:disabled,
-#examSetup #myClasses:disabled,
 #examSetup #joinClass:disabled {
     opacity: 0.45;
     cursor: not-allowed;
@@ -338,7 +343,6 @@ h1 {
    now - so its rules are gone rather than left styling nothing. */
 
 #settingsOverlay,
-#classesOverlay,
 #joinOverlay {
     position: fixed;
     inset: 0;
@@ -350,14 +354,12 @@ h1 {
 }
 
 #settingsOverlay[hidden],
-#joinOverlay[hidden],
-#classesOverlay[hidden] {
+#joinOverlay[hidden] {
     display: none;
 }
 
 #settingsModal,
-#joinModal,
-#classesModal {
+#joinModal {
     width: min(24rem, calc(100vw - 2.5rem));
     padding: 1.25rem 1.5rem 1.5rem;
     border: 1px solid var(--line);
@@ -372,12 +374,11 @@ h1 {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    #settingsModal, #joinModal, #classesModal { animation: none; }
+    #settingsModal, #joinModal { animation: none; }
 }
 
 #settingsModal h2,
-#joinModal h2,
-#classesModal h2 {
+#joinModal h2 {
     margin: 0 0 1.1rem;
     padding-bottom: 0.7rem;
     border-bottom: 1px solid var(--line);
@@ -427,77 +428,8 @@ h1 {
     display: none;
 }
 
-/* The class list. Wider than the two forms beside it: each row carries a name,
-   a detail line and a button, and at 24rem the button wraps under the name. */
-#classesModal {
-    width: min(30rem, calc(100vw - 2.5rem));
-}
-
-.classRow {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 0.15rem 0.75rem;
-    align-items: center;
-    padding: 0.7rem 0;
-    border-bottom: 1px solid var(--line);
-}
-
-.classRow:last-child {
-    border-bottom: 0;
-}
-
-.classRowName {
-    font-weight: 600;
-}
-
-.classRowDetail {
-    grid-column: 1;
-    font-size: 0.85rem;
-    color: var(--muted);
-}
-
-/* Spans both rows of the grid, so it sits beside the pair rather than under
-   the name and above the detail line. */
-.classRowPick {
-    grid-column: 2;
-    grid-row: 1 / span 2;
-    padding: 0.35rem 0.8rem;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: var(--panel);
-    color: var(--ink);
-    font: inherit;
-    font-size: 0.85rem;
-    cursor: pointer;
-    white-space: nowrap;
-}
-
-.classRowPick:hover:not(:disabled) {
-    border-color: var(--muted);
-}
-
-.classRowPick:disabled {
-    color: var(--muted);
-    cursor: default;
-}
-
-/* The class exams are being sat for. Marked on the row rather than only on its
-   button, so the eye finds it without reading every button. */
-.classRow.current .classRowName::after {
-    content: " ¹3";
-    color: #1a73e8;
-}
-
-.classesEmpty {
-    margin: 0;
-    font-size: 0.9rem;
-    color: var(--muted);
-    line-height: 1.5;
-}
-
 #settingsActions,
-#joinActions,
-#classesActions {
+#joinActions {
     display: flex;
     justify-content: flex-end;
     gap: 0.5rem;
@@ -505,8 +437,7 @@ h1 {
 }
 
 #settingsActions button,
-#joinActions button,
-#classesActions button {
+#joinActions button {
     padding: 0.5rem 1rem;
     border: 1px solid var(--line);
     border-radius: 6px;
@@ -895,7 +826,7 @@ h1 {
         border-color: var(--examiner-ink);
     }
 
-    #settingsOverlay, #joinOverlay, #classesOverlay { background: rgba(0, 0, 0, 0.6); }
+    #settingsOverlay, #joinOverlay { background: rgba(0, 0, 0, 0.6); }
     #joinCodeInput { background: var(--page-bg); }
     #joinError { color: #e79287; }
     #joinActions #joinSubmit { color: #0f1216; }

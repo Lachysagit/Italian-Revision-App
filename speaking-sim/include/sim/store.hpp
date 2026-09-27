@@ -205,6 +205,10 @@ public:
     // ---- exam history, read side ----------------------------------------
 
     std::vector<AttemptSummary> class_attempts(std::int64_t class_id, int limit);
+
+    std::vector<AttemptSummary> user_attempts(std::int64_t user_id, int limit);
+    //the student's own exams, class and private practice alike. Unlike the
+    //class list this needs no membership check: they sat every one of them
     std::optional<AttemptSummary> attempt_by_id(std::int64_t attempt_id);
     std::vector<AttemptTurn> attempt_turns(std::int64_t attempt_id);
 

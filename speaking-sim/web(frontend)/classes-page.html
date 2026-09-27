@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>My classes</title>
+    <link rel="stylesheet" href="/fonts.css">
+    <link rel="stylesheet" href="/styles.css">
+    <!-- styles.css for the shared tokens, nav and sign-in gate;
+         classes-page.css for this page's own layout on top -->
+    <link rel="stylesheet" href="/classes-page.css">
+</head>
+<body class="classesPage">
+    <nav id="siteNav">
+        <a href="/">Speaking</a>
+        <a href="/listening">Listening</a>
+        <a href="/classes" class="current">My classes</a>
+    </nav>
+    <!-- account.js adds the Teacher link, for a teacher, and the signed-in
+         corner. A teacher reaching this page sees their own classes listed as
+         the ones they teach, and the Teacher link is where they manage them -->
+
+    <h1>My classes</h1>
+
+    <main id="classesMain" hidden>
+        <section id="classesSection">
+            <div id="classesHead">
+                <h2>Classes you are in</h2>
+                <button type="button" id="joinFromPage">Join a class</button>
+            </div>
+
+            <div id="classCards"></div>
+            <p id="classesEmpty" hidden>
+                You are not in a class yet. Join one with the code your teacher
+                gives you, or keep practising on your own from the
+                <a href="/">Speaking</a> page.
+            </p>
+        </section>
+
+        <section id="historySection">
+            <h2>Exams you have sat</h2>
+            <p class="pageHelp">
+                Every exam you have started, newest first. The ones sat for a
+                class are visible to that class's teacher; private practice is
+                only ever yours.
+            </p>
+
+            <div class="tableWrap">
+                <table id="historyTable">
+                    <thead>
+                        <tr>
+                            <th>Started</th>
+                            <th>Class</th>
+                            <th>Language</th>
+                            <th>Turns</th>
+                            <th>How it ended</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <p id="historyEmpty" hidden>
+                You have not sat an exam yet. Start one from the
+                <a href="/">Speaking</a> page.
+            </p>
+        </section>
+    </main>
+
+    <div id="joinOverlay" hidden>
+        <form id="joinModal" role="dialog" aria-labelledby="joinTitle">
+            <h2 id="joinTitle">Join a class</h2>
+            <label for="joinCodeInput">Class code from your teacher</label>
+            <input id="joinCodeInput" type="text" autocomplete="off"
+                   autocapitalize="characters" spellcheck="false" maxlength="16"
+                   placeholder="ABCD-EFGH">
+            <p id="joinError" role="alert" hidden></p>
+            <div id="joinActions">
+                <button id="joinCancel" type="button">Cancel</button>
+                <button id="joinSubmit" type="submit">Join</button>
+            </div>
+        </form>
+    </div>
+    <!-- the same box as the exam page's, so a student who lands here from a
+         join link or a teacher's code has it where they are looking -->
+
+    <script src="/account.js"></script>
+    <script src="/classes-page.js"></script>
+    <script>
+        initAccount({ onReady: initClassesPage });
+    </script>
+</body>
+</html>

@@ -123,6 +123,7 @@ private:
     crow::response serve_archive(const crow::request& req, std::int64_t class_id);
     crow::response serve_class_attempts(const crow::request& req,
                                         std::int64_t class_id);
+    crow::response serve_my_attempts(const crow::request& req);
     crow::response serve_attempt(const crow::request& req, std::int64_t attempt_id);
     crow::response serve_join(const crow::request& req);
 

@@ -1185,6 +1185,27 @@ std::vector<AttemptSummary> Store::class_attempts(std::int64_t class_id,
     return attempts;
 }
 
+std::vector<AttemptSummary> Store::user_attempts(std::int64_t user_id,
+                                                 int limit) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    const std::string sql =
+        std::string("SELECT ") + kAttemptColumns +
+        " FROM exam_attempts a LEFT JOIN users u ON u.id = a.user_id "
+        "WHERE a.user_id = ? "
+        "ORDER BY a.started_at DESC, a.id DESC LIMIT ?";
+    //no membership clause: these are the caller's own attempts, so leaving a
+    //class hides them from that teacher but never from the student who sat them
+    Statement stmt(db_, sql.c_str());
+    stmt.int64(1, user_id).int64(2, limit);
+
+    std::vector<AttemptSummary> attempts;
+    while (stmt.row()) {
+        attempts.push_back(read_attempt(stmt));
+    }
+    return attempts;
+}
+
 std::optional<AttemptSummary> Store::attempt_by_id(std::int64_t attempt_id) {
     std::lock_guard<std::recursive_mutex> lock(m_);
 

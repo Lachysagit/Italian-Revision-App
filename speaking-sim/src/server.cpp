@@ -228,6 +228,25 @@ void Server::run()
         //on, so the redirect cannot be bent into anything but this site
     });
 
+    CROW_ROUTE(app_, "/classes") //HTTP ROUTE -----------------------------------
+    ([] {
+        return serve_static_file("web(frontend)/classes-page.html", "text/html");
+    });
+    //the student's side of what /teacher is for a teacher: the classes they are
+    //in and the exams they have sat. A page rather than a box on the exam page,
+    //so it can be linked to and come back to
+
+    CROW_ROUTE(app_, "/classes-page.js") //HTTP ROUTE -----------------------------------
+    ([] {
+        return serve_static_file("web(frontend)/classes-page.js", "application/javascript");
+    });
+    //named apart from classes.js, which is the exam page's picker
+
+    CROW_ROUTE(app_, "/classes-page.css") //HTTP ROUTE -----------------------------------
+    ([] {
+        return serve_static_file("web(frontend)/classes-page.css", "text/css");
+    });
+
     CROW_ROUTE(app_, "/teacher.js") //HTTP ROUTE -----------------------------------
     ([] {
         return serve_static_file("web(frontend)/teacher.js", "application/javascript");
