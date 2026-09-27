@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your Classes</title>
+<link rel="stylesheet" href="/fonts.css">
+<link rel="stylesheet" href="/classes.css">
+<!-- its own sheet, the way listening.html has one: styles.css is written for
+     the exam page's ids and its element rules would fight the grid below -->
+</head>
+<body>
+<div class="wrap">
+  <nav id="siteNav">
+    <a href="/">Speaking</a>
+    <a href="/listening">Listening</a>
+    <a href="/classes" class="current">Classes</a>
+  </nav>
+
+  <header>
+    <h1 id="pageTitle">Your classes</h1>
+    <p id="classesBlurb">Pick a class to go through to the practice exam.</p>
+  </header>
+
+  <div id="classGrid" aria-live="polite">
+    <p class="classesMsg">Loading&hellip;</p>
+  </div>
+</div>
+
+<script src="/account.js"></script>
+<script src="/classes.js"></script>
+<script>
+  initAccount({
+    // no exam starts from this page, so there is nothing here to onboard for:
+    // a teacher account, which never onboards at all, and a student who has not
+    // finished signing up both still have classes worth seeing
+    needsOnboarding: false,
+    onReady: (user) => {
+      // the gate is down and there is an account, so the list can be asked
+      // for. Nothing on this page needs the language the exam page reads
+      loadClasses(user);
+    },
+  });
+</script>
+</body>
+</html>
