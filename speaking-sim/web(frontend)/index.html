@@ -50,6 +50,7 @@
         <select id="classSelect">
             <option value="">Private practice</option>
         </select>
+        <button id="myClasses" type="button">My classes</button>
         <button id="joinClass" type="button">Join a class</button>
         <!-- the class decides which teacher sees the exam, and its language.
              Filled by classes.js once the account is known -->
@@ -75,6 +76,20 @@
             </div>
         </form>
     </div>
+
+
+    <div id="classesOverlay" hidden>
+        <div id="classesModal" role="dialog" aria-labelledby="classesTitle">
+            <h2 id="classesTitle">My classes</h2>
+            <div id="classesList"></div>
+            <div id="classesActions">
+                <button id="classesJoin" type="button">Join another</button>
+                <button id="classesClose" type="button">Close</button>
+            </div>
+        </div>
+    </div>
+    <!-- what the picker above cannot say: which classes this student is in,
+         who teaches each one and what language it examines -->
 
 
     <div id="settingsOverlay" hidden>

@@ -17,6 +17,9 @@ const joinForm = document.getElementById("joinModal");
 const joinCodeInput = document.getElementById("joinCodeInput");
 const joinError = document.getElementById("joinError");
 const joinSubmit = document.getElementById("joinSubmit");
+const myClassesButton = document.getElementById("myClasses");
+const classesOverlay = document.getElementById("classesOverlay");
+const classesList = document.getElementById("classesList");
 
 let studentClasses = [];
 //[{id, name, language, language_label, role}] from /api/classes, archived ones
@@ -45,6 +48,7 @@ let studentClasses = [];
 
 function initClasses() {
     wireJoinBox();
+    wireClassesPanel();
     return loadStudentClasses().then(() => {
         let pending = null;
         try {
@@ -150,6 +154,113 @@ classSelect.onchange = () => {
     localStorage.setItem(CLASS_STORAGE, classSelect.value);
     applyClassChoice();
 };
+
+// ---------------------------------------------------------------------------
+// the class list
+// ---------------------------------------------------------------------------
+
+function wireClassesPanel() {
+    myClassesButton.onclick = openClassesPanel;
+    document.getElementById("classesClose").onclick = closeClassesPanel;
+    classesOverlay.onclick = (event) => {
+        if (event.target === classesOverlay) closeClassesPanel();
+    };
+
+    document.getElementById("classesJoin").onclick = () => {
+        closeClassesPanel();
+        openJoinBox();
+        // the two boxes are one flow: a student who opens the list and finds
+        // the class missing is one click from the code box
+    };
+}
+
+// The list a student cannot get from the picker: every class they are in, its
+// language and how many others are in it. Painted from studentClasses, which
+// loadStudentClasses has already fetched, so opening the box costs no request.
+function openClassesPanel() {
+    paintClassesList();
+    classesOverlay.hidden = false;
+}
+
+function closeClassesPanel() {
+    classesOverlay.hidden = true;
+}
+
+function paintClassesList() {
+    classesList.textContent = "";
+
+    if (studentClasses.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "classesEmpty";
+        empty.textContent = "You are not in a class yet. " +
+            "Join one with the code your teacher gives you, or keep " +
+            "practising on your own.";
+        classesList.appendChild(empty);
+        return;
+    }
+
+    const selected = classSelect.value;
+    studentClasses.forEach((klass) => {
+        const current = String(klass.id) === String(selected);
+
+        const row = document.createElement("div");
+        row.className = "classRow";
+        if (current) {
+            row.classList.add("current");
+            //the one exams are being sat for, marked so the list and the picker
+            //above it cannot appear to disagree
+        }
+
+        const name = document.createElement("span");
+        name.className = "classRowName";
+        name.textContent = klass.name;
+        row.appendChild(name);
+
+        const detail = document.createElement("span");
+        detail.className = "classRowDetail";
+        detail.textContent = classRowDetail(klass);
+        row.appendChild(detail);
+
+        const pick = document.createElement("button");
+        pick.type = "button";
+        pick.className = "classRowPick";
+        pick.textContent = current ? "Sitting for this" : "Sit for this";
+        pick.disabled = current || classSelect.disabled;
+        //classSelect.disabled is setTurnState's mid-session latch: the class
+        //rode on the start message, so it cannot be changed until the exam ends
+        pick.onclick = () => {
+            classSelect.value = String(klass.id);
+            classSelect.dispatchEvent(new Event("change"));
+            closeClassesPanel();
+            //through the picker's own change handler rather than around it, so
+            //the saved class, the language lock and the hint all still follow
+        };
+        row.appendChild(pick);
+
+        classesList.appendChild(row);
+    });
+}
+
+function classRowDetail(klass) {
+    const parts = [];
+    if (klass.language_label) parts.push(klass.language_label);
+    if (klass.role === "teacher") {
+        parts.push("You teach this");
+    } else {
+        parts.push(classmateCount(klass.student_count));
+    }
+    return parts.join(" · ");
+    //whatever the row carries, in a fixed order: a class with no language label
+    //must not render a stray separator
+}
+
+function classmateCount(count) {
+    const total = Number(count) || 0;
+    const others = Math.max(total - 1, 0);
+    //the student reading this is one of the count, and is not their own classmate
+    if (others === 0) return "You are the only student";
+    return others === 1 ? "1 classmate" : others + " classmates";
+}
 
 // ---------------------------------------------------------------------------
 // the join box
