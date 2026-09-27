@@ -78,6 +78,10 @@ struct Config {
     //accounts, classes and exam history. A relative path resolves against the
     //working directory, which is speaking-sim/ like every other asset path here
 
+    int exam_duration_seconds = 300;
+    //EXAM_DURATION_SECONDS. The server's own clock, started when the opening
+    //question goes out; the browser is told the figure and counts down to it
+
     std::uint16_t port = 8080;
 
     std::size_t worker_threads = 2;

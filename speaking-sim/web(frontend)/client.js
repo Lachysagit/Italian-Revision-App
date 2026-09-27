@@ -16,6 +16,7 @@ const micRetry = document.getElementById("micRetry");
 const micDismiss = document.getElementById("micDismiss");
 const examTimer = document.getElementById("examTimer");
 const examLoading = document.getElementById("examLoading");
+const examNotice = document.getElementById("examNotice");
 const pageTitle = document.getElementById("pageTitle");
 //get references to HTML elements by their ID's
 //the translate box's own elements are looked up inside translate.js
@@ -34,6 +35,12 @@ const STUDENT_NAME_STORAGE = "studentName";
 //same treatment for the name, so it is typed once rather than every session
 
 let socket = null;
+let socketOpened = false;
+//whether this session's socket ever finished its handshake. A refused
+//handshake - signed out, or a page on the wrong origin - closes without a
+//single message, and this is the only way to tell that from a normal end
+let lastServerError = "";
+//the last error the server sent, read back when a "refused" status follows it
 let audioContext = null;
 let mediaStream = null;
 let micSource = null;
@@ -69,7 +76,9 @@ let turnState = "idle";
 //"idle" no session; "thinking" examiner is working and the mic is muted;
 //"armed" student's turn, mic live and frames streaming
 
-const EXAM_DURATION_MS = 5 * 60 * 1000;
+let examDurationMs = 5 * 60 * 1000;
+//the length the server last announced on an opening question. Five minutes
+//until one arrives, which is also the server's own default
 //one exam is five minutes of the student's time
 
 let examDeadline = null;
@@ -453,6 +462,16 @@ function addTurn(role, text) {
     }
 }
 
+function showExamNotice(text) {
+    examNotice.textContent = text;
+    examNotice.hidden = false;
+}
+
+function hideExamNotice() {
+    examNotice.hidden = true;
+    examNotice.textContent = "";
+}
+
 function setExamLoading(waiting) {
     examLoading.hidden = !waiting;
     //only the opening wait: later "thinking" gaps have a transcript above them
@@ -566,7 +585,7 @@ function startExamTimer() {
         //already running, or already spent: the clock belongs to the page, not
         //to the session, so a second session cannot buy another five minutes
     }
-    examDeadline = Date.now() + EXAM_DURATION_MS;
+    examDeadline = Date.now() + examDurationMs;
     examTimer.hidden = false;
     paintExamTimer();
     examTick = setInterval(paintExamTimer, 250);
@@ -583,16 +602,19 @@ function resetExamTimer() { //stop the clock and put five minutes back on it
     //a whole exam rather than the remainder of the one just abandoned
     examTimer.hidden = true;
     examTimer.classList.remove("low", "expired");
-    examTimer.textContent = "5:00";
+    examTimer.textContent = formatClock(examDurationMs);
     //repainted now rather than at the next start, so the pill does not flash
     //the abandoned session's last reading before the first question lands
 }
 
+function formatClock(ms) {
+    const seconds = Math.ceil(ms / 1000);
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
 function paintExamTimer() {
     const left = Math.max(0, examDeadline - Date.now());
-    const seconds = Math.ceil(left / 1000);
-    examTimer.textContent =
-        `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+    examTimer.textContent = formatClock(left);
     examTimer.classList.toggle("low", left > 0 && left <= 60 * 1000);
 
     if (left === 0) {
@@ -633,9 +655,14 @@ function setTurnState(state) {
     //the picked key rides on the "start" message only, so changing it once a
     //session is running would silently do nothing, and the modal holding it is
     //only reachable through this button
-    languageSelect.disabled = state !== "idle";
+    languageSelect.disabled = state !== "idle" || classLocksLanguage();
     //the language sits on the page rather than behind the modal now, so unlike
-    //the key it has to disable itself: it is read once at the start message
+    //the key it has to disable itself: it is read once at the start message.
+    //A class's exam is in the class's language, so a picked class holds it too
+    classSelect.disabled = state !== "idle";
+    joinClassButton.disabled = state !== "idle";
+    //the class rides on the start message like the language, so it is fixed
+    //for the rest of the session
 }
 
 async function loadGeminiKeys() {
@@ -820,6 +847,9 @@ startButton.onclick = async () => {
     }
     setTurnState("thinking");
     setExamLoading(true);
+    hideExamNotice();
+    socketOpened = false;
+    lastServerError = "";
 
     audioContext = new AudioContext({ sampleRate: CAPTURE_SAMPLE_RATE });
     //synchronous and permission-free, so it is built before the socket rather
@@ -835,6 +865,7 @@ startButton.onclick = async () => {
     //tell the socket to send binary data as an ArrayBuffer (raw bytes)
 
     socket.onopen = () => {
+        socketOpened = true;
         addLog("connected");
         socket.send(JSON.stringify({
             type: "start",
@@ -845,6 +876,9 @@ startButton.onclick = async () => {
             //falls back to its own default rather than failing the start
             gemini_key: geminiKeySelect.value || "",
             student_name: studentName.value.trim(),
+            class_id: selectedClassId() || undefined,
+            //undefined drops the key, which the server reads as private
+            //practice, rather than sending a 0 it would have to interpret
             //trimmed here so the server sees a real name or nothing at all;
             //Session treats a whitespace-only name as no name either way
         }));
@@ -854,6 +888,10 @@ startButton.onclick = async () => {
     };
     socket.onclose = () => {
         addLog("disconnected");
+        if (!socketOpened) {
+            showExamNotice("Could not start the exam. Check that you are " +
+                "signed in, then try again.");
+        }
         teardown();
         //a server-side drop must release the mic and the graph too, otherwise
         //the recording light stays on with nowhere to send the audio
@@ -1130,6 +1168,10 @@ function handleMessage(event) { //message from server
         }
 
         if (message.type === "examiner_text") {
+            if (message.exam_seconds) {
+                examDurationMs = message.exam_seconds * 1000;
+                //set before addTurn below, which is what starts the countdown
+            }
             if (message.payload) {
                 addTurn("examiner", message.payload);
             }
@@ -1143,6 +1185,18 @@ function handleMessage(event) { //message from server
                 armMic();
     
             }
+        }
+
+        if (message.type === "error") {
+            lastServerError = message.payload;
+        }
+
+        if (message.type === "status" && message.payload === "refused") {
+            showExamNotice(lastServerError || "The exam could not start.");
+            teardown();
+            //the server turned the Start down before asking anything - not
+            //signed up yet, or a class the student is not in. Said on the page,
+            //since an error otherwise only reaches the console
         }
 
         if (message.type === "status" && message.payload === "busy") {

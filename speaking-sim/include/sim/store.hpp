@@ -51,6 +51,75 @@ struct GoogleProfile {
     std::string picture_url;
 };
 
+const char* class_role_name(ClassRole role);
+std::optional<ClassRole> class_role_from_name(const std::string& name);
+//the strings class_members.role and class_invites.role hold. Kept beside the
+//enum so the two spellings cannot drift
+
+struct ClassInfo {
+    std::int64_t id = 0;
+    std::string name;
+    std::string language_id;
+    std::string join_code;
+    //empty when joining by code is switched off. Stored without the hyphen the
+    //page shows, so a code typed either way matches
+    std::int64_t owner_id = 0;
+    std::int64_t created_at = 0;
+    bool archived = false;
+    int student_count = 0;
+    std::optional<ClassRole> caller_role;
+    //filled when the class was listed for one user, so a page can tell the
+    //classes it teaches from the ones it sits in without a second query
+};
+
+struct ClassMember {
+    std::int64_t user_id = 0;
+    std::string email;
+    std::string display_name;
+    ClassRole role = ClassRole::Student;
+    std::string year_level;
+    std::string subject_level;
+    std::int64_t added_at = 0;
+    int attempt_count = 0;
+    std::int64_t last_attempt_at = 0;
+    //both counted within this class only: an exam a student sat privately, or
+    //for another class, is not this teacher's to see
+};
+
+struct ClassInvite {
+    std::int64_t id = 0;
+    std::string email;
+    std::int64_t created_at = 0;
+};
+
+struct InviteResult {
+    int invited = 0;   //no account yet: joins the class the first time they sign in
+    int added = 0;     //already had an account, so joined the class straight away
+    int existing = 0;  //already a member or already invited, nothing to do
+};
+
+struct AttemptSummary {
+    std::int64_t id = 0;
+    std::int64_t user_id = 0;
+    std::int64_t class_id = 0;
+    std::string student_name;
+    std::string student_email;
+    std::string language_id;
+    std::int64_t started_at = 0;
+    std::int64_t ended_at = 0;
+    //zero while the exam is still running
+    std::string end_reason;
+    int turn_count = 0;
+};
+
+struct AttemptTurn {
+    int turn_index = 0;
+    std::string role;
+    std::string text;
+    std::string topic;
+    std::int64_t created_at = 0;
+};
+
 class Store {
 public:
     explicit Store(const std::string& path);
@@ -79,7 +148,65 @@ public:
 
     bool is_in_any_class(std::int64_t user_id);
     //whether a profile edit is the user's own to make. A student in a class has
-    //to ask a teacher; one in no class may change freely
+    //to ask a teacher; one in no class may change freely. Counts student seats
+    //only: teaching a class says nothing about the teacher's own year level
+
+    // ---- classes ---------------------------------------------------------
+
+    ClassInfo create_class(std::int64_t owner_id,
+                           const std::string& name,
+                           const std::string& language_id);
+    //the owner is added as the class's teacher in the same transaction, so a
+    //class can never exist without somebody able to manage it
+
+    std::vector<ClassInfo> classes_for_user(std::int64_t user_id);
+    //every class the user sits in or teaches, archived ones included, with
+    //caller_role set. Which of them a page shows is the page's decision
+
+    std::optional<ClassInfo> class_by_id(std::int64_t class_id);
+
+    std::optional<ClassInfo> class_by_join_code(const std::string& code);
+    //the code as typed: case, spaces and hyphens are ignored. Archived classes
+    //never match, so last year's code cannot pull a student into a dead class
+
+    std::optional<ClassRole> class_role(std::int64_t class_id,
+                                        std::int64_t user_id);
+    //nullopt when the user is not in the class at all
+
+    bool add_member(std::int64_t class_id, std::int64_t user_id, ClassRole role);
+    //true when the user was newly added; an existing member keeps the role they
+    //already had, so joining with a code cannot demote a teacher to a student
+
+    bool remove_member(std::int64_t class_id, std::int64_t user_id);
+
+    std::vector<ClassMember> class_members(std::int64_t class_id);
+
+    std::string rotate_join_code(std::int64_t class_id);
+    //returns the new code. The old one stops working at once, which is the
+    //point: a code that leaked outside the class is replaced, not shared
+    void disable_join_code(std::int64_t class_id);
+
+    void set_archived(std::int64_t class_id, bool archived);
+
+    InviteResult invite_emails(std::int64_t class_id,
+                               const std::vector<std::string>& emails,
+                               std::int64_t invited_by);
+    //an address that already has an account is added to the class on the
+    //spot; the rest wait in class_invites until claim_invites() meets them
+
+    std::vector<ClassInvite> pending_invites(std::int64_t class_id);
+    bool revoke_invite(std::int64_t class_id, std::int64_t invite_id);
+
+    int claim_invites(const User& user);
+    //called at every sign-in. Matched on email, which is exactly the fallback
+    //upsert_google_user already uses to meet a roster entry. Returns how many
+    //classes were joined
+
+    // ---- exam history, read side ----------------------------------------
+
+    std::vector<AttemptSummary> class_attempts(std::int64_t class_id, int limit);
+    std::optional<AttemptSummary> attempt_by_id(std::int64_t attempt_id);
+    std::vector<AttemptTurn> attempt_turns(std::int64_t attempt_id);
 
     // ---- cookie sessions -------------------------------------------------
 
@@ -98,9 +225,12 @@ public:
     //phases that need them. These are the ones exam history needs.
 
     std::int64_t begin_attempt(std::optional<std::int64_t> user_id,
+                               std::optional<std::int64_t> class_id,
                                const std::string& language_id,
                                const std::string& gemini_key_name);
-    //user_id is nullopt until sign-in exists. Returns 0 if the row could not be
+    //user_id is nullopt for a browser that never signed in, which is only
+    //possible while AUTH_REQUIRED is off. class_id is nullopt for private
+    //practice, which no teacher can see. Returns 0 if the row could not be
     //written, which every caller below treats as "do not persist this attempt"
     //rather than as an error worth failing the exam over
 
@@ -129,6 +259,8 @@ private:
     void exec(const std::string& sql) { exec(sql.c_str()); }
     void migrate();
     void reconcile_crashed_attempts();
+    std::string unused_join_code();
+    //a fresh code no other class holds. Caller holds m_
 
     std::recursive_mutex m_;
     sqlite3* db_ = nullptr;

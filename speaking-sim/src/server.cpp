@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "sim/audio_encode.hpp"
+#include "sim/http_util.hpp"
 #include "sim/protocol.hpp"
 #include "sim/question_bank.hpp"
 #include "sim/static_files.hpp"
@@ -51,17 +52,20 @@ bool is_supported_language(const std::string& code) {
     //translate box answered every lookup with an unsupported-pair error
 }
 
-crow::response json_error(int status, const std::string& message) {
-    crow::json::wvalue json;
-    json["error"] = message;
-    crow::response response(status, json.dump());
-    response.set_header("Content-Type", "application/json");
-    return response;
-    //an error is JSON too, so the client can read .error the same way on every
-    //path instead of guessing whether a body is text or JSON by status code
-}
-
 constexpr const char* kSessionCookie = "sid";
+
+// The browser starts its countdown when the opening question arrives, a moment
+// after the server sent it. Without this slack an answer finished just inside
+// the student's five minutes could land just outside the server's.
+constexpr int kClockSlackSeconds = 10;
+
+// Who the websocket handshake found behind the session cookie. Allocated in
+// onaccept, which runs before the connection object exists, and handed across
+// through the connection's userdata pointer; onopen takes it straight back into
+// a unique_ptr. Zero is a browser that never signed in.
+struct SocketIdentity {
+    std::int64_t user_id = 0;
+};
 
 //TEACHER_EMAILS is a comma separated allowlist. A school deployment needs some
 //way to say who may create a class, and an env var needs no admin UI to go
@@ -195,6 +199,45 @@ void Server::run()
     //crow's <string> stops at a /, and is_safe_font_name keeps the rest of the
     //folder from being readable through a name the stylesheet never asks for
 
+    CROW_ROUTE(app_, "/teacher") //HTTP ROUTE -----------------------------------
+    ([] {
+        return serve_static_file("web(frontend)/teacher.html", "text/html");
+    });
+    //served to anyone, like every other page: the gate and the API decide what
+    //a visitor sees, and the page itself holds nothing but layout
+
+    CROW_ROUTE(app_, "/classes.js") //HTTP ROUTE -----------------------------------
+    ([] {
+        return serve_static_file("web(frontend)/classes.js", "application/javascript");
+    });
+    //the class picker and join box on the exam page
+
+    CROW_ROUTE(app_, "/join/<string>") //HTTP ROUTE -----------------------------------
+    ([](const std::string& code) {
+        std::string safe;
+        for (const char ch : code) {
+            if (std::isalnum(static_cast<unsigned char>(ch)) || ch == '-') {
+                safe.push_back(ch);
+            }
+        }
+        crow::response response(302);
+        response.set_header("Location", safe.empty() ? "/" : "/?join=" + safe);
+        return response;
+        //a link a teacher can paste anywhere. The exam page does the joining,
+        //after sign-in if need be; only letters, digits and hyphens are passed
+        //on, so the redirect cannot be bent into anything but this site
+    });
+
+    CROW_ROUTE(app_, "/teacher.js") //HTTP ROUTE -----------------------------------
+    ([] {
+        return serve_static_file("web(frontend)/teacher.js", "application/javascript");
+    });
+
+    CROW_ROUTE(app_, "/teacher.css") //HTTP ROUTE -----------------------------------
+    ([] {
+        return serve_static_file("web(frontend)/teacher.css", "text/css");
+    });
+
     CROW_ROUTE(app_, "/listening") //HTTP ROUTE -----------------------------------
     ([] {
         return serve_static_file("web(frontend)/listening.html", "text/html");
@@ -279,6 +322,10 @@ void Server::run()
     //where sign-up finishes: year, subject level and language. Until this has
     //been posted once the account is not onboarded, and no exam may start
 
+    register_class_routes();
+    //classes, join codes, rosters and exam history for the teacher dashboard,
+    //all in src/class_api.cpp
+
     CROW_ROUTE(app_, "/api/translate").methods("POST"_method) //HTTP ROUTE -----------------------------------
     ([this](const crow::request& req) {
         return serve_translate(req);
@@ -288,10 +335,61 @@ void Server::run()
     //take a worker away from a student who is mid-turn
 
     CROW_WEBSOCKET_ROUTE(app_, "/ws") //WEBSOCKET ROUTE ----------------------------------
+        .onaccept([this](const crow::request& req,
+                         std::optional<crow::response>& refusal,
+                         void** userdata)
+            {
+            const std::string origin = req.get_header_value("Origin");
+            if (!origin.empty() &&
+                !origin_allowed(origin, req.get_header_value("Host"),
+                                config_.public_origin)) {
+                refusal = crow::response(403, "cross-site websocket refused");
+                return;
+                //the session cookie rides on a websocket from any page, so
+                //without this another site could open an exam in a signed-in
+                //student's name and read their transcript back
+            }
+
+            std::int64_t user_id = 0;
+            const std::string token =
+                cookie_value(req.get_header_value("Cookie"), kSessionCookie);
+            if (!token.empty()) {
+                try {
+                    if (const auto user = store_->user_for_auth_token(token)) {
+                        user_id = user->id;
+                    }
+                } catch (const std::exception& e) {
+                    std::cerr << "ws: session lookup failed: " << e.what() << '\n';
+                    //treated as signed out: with AUTH_REQUIRED on that refuses
+                    //below, and with it off the exam still runs anonymously
+                }
+            }
+
+            if (user_id == 0 && config_.auth_required) {
+                refusal = crow::response(401, "sign in to start an exam");
+                return;
+            }
+
+            *userdata = new SocketIdentity{user_id};
+            //read here, at the handshake, because this is the one moment the
+            //socket carries the browser's cookies. Each exam opens a fresh
+            //socket, so the answer is never older than the exam it belongs to
+            }
+        ) //end of .onaccept
+
         .onopen([this](crow::websocket::connection& conn) //handles when websocket is opened
         
             {
+            std::unique_ptr<SocketIdentity> identity(
+                static_cast<SocketIdentity*>(conn.userdata()));
+            conn.userdata(nullptr);
+            //ownership taken back at once, so the identity is freed with this
+            //scope and nothing later can mistake the pointer for live data
+
             auto session = std::make_shared<Session>();
+            if (identity) {
+                session->set_user_id(identity->user_id);
+            }
             session->set_language(&languages_.default_pack());
             //the default until a Start message names one, so a client that
             //never sends a language still runs an exam rather than reaching a
@@ -689,6 +787,16 @@ crow::response Server::serve_auth_callback(const crow::request& req) {
     try {
         const bool is_teacher = is_teacher_email(config_, result.profile.email);
         const User user = store_->upsert_google_user(result.profile, is_teacher);
+        persist_quietly("invite claim", [&] {
+            const int joined = store_->claim_invites(user);
+            if (joined > 0) {
+                std::cerr << "oauth: " << user.email << " joined " << joined
+                          << " class(es) from invites\n";
+            }
+        });
+        //every sign-in, not only the first: a teacher can add an address to a
+        //class after that student already has an account and a live cookie.
+        //Quietly, because a failed claim must not cost the student their login
         const std::string token = store_->create_auth_session(
             user.id, req.get_header_value("User-Agent"));
 
@@ -772,10 +880,13 @@ crow::response Server::serve_me(const crow::request& req) {
 }
 
 crow::response Server::serve_set_profile(const crow::request& req) {
-    const std::optional<User> user = user_for_request(req);
-    if (!user) {
-        return json_error(401, "not signed in");
+    User signed_in;
+    if (auto refusal = refuse_unless_signed_in(req, signed_in)) {
+        return std::move(*refusal);
     }
+    const std::optional<User> user = std::move(signed_in);
+    //through the shared check so this POST gets the same cross-origin refusal
+    //as the class routes
 
     const crow::json::rvalue body = crow::json::load(req.body);
     if (!body) {
@@ -928,12 +1039,70 @@ void Server::handle_control(crow::websocket::connection& conn,
             return;
         } //the connection is already closing, so there is nowhere to send a reply
 
+        if (session->attempt_id() != 0) {
+            send_busy(handle);
+            return;
+            //one exam per socket. A second Start would open a second attempt
+            //and ask a second opening question inside an exam already running
+        }
+
+        std::optional<User> user;
+        std::optional<ClassInfo> klass;
+        std::string refusal;
+        try {
+            if (const auto user_id = session->user_id()) {
+                user = store_->user_by_id(*user_id);
+            }
+            if (message.class_id > 0 && user) {
+                klass = store_->class_by_id(message.class_id);
+                if (klass && (klass->archived ||
+                              !store_->class_role(klass->id, user->id))) {
+                    klass.reset();
+                }
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "start: account lookup failed: " << e.what() << '\n';
+            refusal = "could not check your account, please try again";
+        }
+
+        if (refusal.empty() && config_.auth_required && !user) {
+            refusal = "sign in to start an exam";
+        } else if (refusal.empty() && user && !user->onboarded &&
+                   !user->is_teacher) {
+            refusal = "finish signing up before starting an exam";
+            //the level chosen at sign-up is what decides which key an exam
+            //spends, so an account without one must not reach the examiner.
+            //Teachers are exempt: they try the exam out, they do not sit it
+        } else if (refusal.empty() && message.class_id > 0 && !klass) {
+            refusal = user ? "you are not in that class"
+                           : "sign in to sit an exam for a class";
+            //refused rather than quietly run as private practice: a student who
+            //thinks their teacher will see this exam must be told otherwise
+        }
+
+        if (!refusal.empty()) {
+            send_error(handle, refusal);
+            send_status(handle, "refused");
+            return;
+            //before try_begin_job, so a refused Start leaves nothing to release
+        }
+
         if (!session->try_begin_job()) {
             send_busy(handle);
             return;
         } //a job is already in flight on this session, so refuse this message
 
-        if (const LanguagePack* pack = languages_.find(message.language)) {
+        const LanguagePack* pack = nullptr;
+        if (klass) {
+            pack = languages_.find(klass->language_id);
+            session->set_class_id(klass->id);
+            //the class decides the language: an Italian class's exam is an
+            //Italian exam whatever the picker was left on
+        }
+        if (pack == nullptr) {
+            pack = languages_.find(message.language);
+        }
+        if (pack != nullptr) {
             session->set_language(pack);
         }
         //an unknown or absent language leaves the default set on open, rather
@@ -948,19 +1117,23 @@ void Server::handle_control(crow::websocket::connection& conn,
         //an absent name is resolved to the key the examiner would fall back to
         //anyway, so the attempt and the usage counter name the key actually
         //spent rather than recording an empty string against every default turn
-        session->set_student_name(message.student_name);
+        session->set_student_name(
+            message.student_name.empty() && user ? user->display_name
+                                                 : message.student_name);
+        //the name box wins, and a blank one falls back to the first name the
+        //account was created with, so a signed-in student is greeted either way
         //all three picked once, before the first job, and reused by every later
         //turn - Stop messages carry none of these fields of their own. Set
         //before the job is enqueued, so even the opening question knows them
 
         persist_quietly("attempt start", [&] {
             session->set_attempt_id(store_->begin_attempt(
-                std::nullopt, session->language().id, session->gemini_key_name()));
+                session->user_id(), session->class_id(), session->language().id,
+                session->gemini_key_name()));
         });
-        //opened here rather than on connect: the language is not known until
-        //Start names one, and an attempt row that cannot say which exam it was
-        //is worth less than the turn it delays. user_id is nullopt until
-        //sign-in exists, which is what the nullable column is for
+        //opened here rather than on connect: the language and the class are not
+        //known until Start names them, and an attempt row that cannot say which
+        //exam it was is worth less than the turn it delays
 
         std::shared_ptr<Session> claim(session.get(), [session](Session* s) { s->end_job(); });
         //not an owner, just an RAII handle whose deleter releases the claim
@@ -1001,14 +1174,24 @@ void Server::handle_control(crow::websocket::connection& conn,
 
     std::vector<std::int16_t> utterance_audio = session->take_audio();
     //take_audio() returns the completed audio buffer, clearing the session buffer
-    //taking the audio on the socket thread to seperate it from any new incoming audio\
+    //taking the audio on the socket thread to seperate it from any new incoming audio
+
+    if (!session->clock_started()) {
+        start_exam_clock(*session);
+        //the opening question failed, so the clock never started on it. The
+        //first answer starts it instead, or an exam whose first call errored
+        //would never end at all
+    }
+    const bool final = message.final || session->time_up(Session::Clock::now());
+    //either clock running out ends the exam. The browser's is the one the
+    //student watches; the server's is the one a modified page cannot stop
 
     enqueue_pipeline_job(std::move(handle), session, std::move(utterance_audio), true,
-                         std::move(claim), message.final);
+                         std::move(claim), final);
     //the handle rather than &conn: the job outlives handle_control, and by
-    //then the raw pointer may name a destroyed connection. message.final is
-    //the browser saying its clock has run out, which turns this into the
-    //last job of the session: transcribed, but never sent to the examiner
+    //then the raw pointer may name a destroyed connection. final turns this
+    //into the last job of the session: transcribed, but never sent to the
+    //examiner
 }
 
 void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
@@ -1110,6 +1293,15 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
 
                     send_error(handle, "didn't catch that, please try again");
                     if (answer_only) {
+                        if (session->attempt_id() != 0) {
+                            persist_quietly("attempt end (timer)", [&] {
+                                store_->end_attempt(session->attempt_id(),
+                                                    "timer");
+                            });
+                        }
+                        //closed here as well as on the heard path below: an
+                        //unheard last answer still ended on the clock, and
+                        //without this the socket closing relabels it
                         send_status(handle, "ended");
                         //nothing to re-arm for: the clock has run out and this
                         //job was the last one, heard or not
@@ -1222,8 +1414,17 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
             session->record_question(reply);
             session->note_question_topic(topic);
 
+            int exam_seconds = 0;
+            if (!session->clock_started()) {
+                start_exam_clock(*session);
+                exam_seconds = config_.exam_duration_seconds;
+            }
+            //the opening question: the exam starts now, so the wait for the
+            //first examiner call is not taken off the student's time
+
             send_examiner_text(handle, reply, true,
-                               tts_->sample_rate(language->piper_voice_path));
+                               tts_->sample_rate(language->piper_voice_path),
+                               exam_seconds);
             text_sent = true;
             //ahead of synthesis, not after it. The question is on screen while
             //piper is still working, so the wait the student actually sees is
@@ -1337,13 +1538,21 @@ void Server::send_transcript(const std::shared_ptr<ConnHandle>& handle,
     //MessageType::Transcript was never constructed, so the client branch was
 }
 
+void Server::start_exam_clock(Session& session) {
+    session.start_clock(
+        Session::Clock::now() +
+        std::chrono::seconds(config_.exam_duration_seconds + kClockSlackSeconds));
+}
+
 void Server::send_examiner_text(const std::shared_ptr<ConnHandle>& handle,
                                 const std::string& reply,
                                 bool speech_follows,
-                                int sample_rate) {
+                                int sample_rate,
+                                int exam_seconds) {
     Message message; //create Message Object
     message.type = MessageType::ExaminerText; //Set Message.type to Examiner Text
     message.payload = reply; //set payload to examiners reply
+    message.exam_seconds = exam_seconds;
     if (speech_follows) {
         message.sample_rate = sample_rate;
         //tell the browser what rate the PCM frame that follows was produced at.

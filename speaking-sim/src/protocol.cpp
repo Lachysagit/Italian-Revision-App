@@ -56,6 +56,12 @@ crow::json::wvalue to_json(const Message& message) {
     if (!message.student_name.empty()) {
         json["student_name"] = message.student_name;
     }
+    if (message.exam_seconds > 0) {
+        json["exam_seconds"] = message.exam_seconds;
+    }
+    if (message.class_id > 0) {
+        json["class_id"] = message.class_id;
+    }
     if (message.final) {
         json["final"] = true;
         //absent rather than false on an ordinary turn, the same discipline the
@@ -97,6 +103,12 @@ Message from_json(const crow::json::rvalue& json) {
         message.student_name = json["student_name"].s();
         //checked for presence AND type like every other field: a client that
         //sends a number here must leave the name empty, not throw on .s()
+    }
+
+    if (json.has("class_id") && json["class_id"].t() == crow::json::type::Number) {
+        message.class_id = json["class_id"].i();
+        //a string or a fraction leaves 0, which is private practice: a client
+        //that sends the wrong shape loses the class, not the exam
     }
 
     if (json.has("final") && json["final"].t() == crow::json::type::True) {

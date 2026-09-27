@@ -1,0 +1,385 @@
+/* Teacher dashboard. Sits on top of styles.css and uses its tokens, so the
+   paper tone, the fonts and dark mode all come across unchanged; only the
+   layout is new. */
+
+body.teacherPage {
+    max-width: 72rem;
+    /* wider than the exam page's reading column: two tables of names and
+       dates need the room, and nobody reads a paragraph here */
+}
+
+#teacherNotice {
+    margin: 1rem 0;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid #c0503f;
+    border-left-width: 4px;
+    border-radius: 8px;
+    background: #fbece9;
+    color: #8a2c20;
+}
+
+#teacherNotice[hidden],
+#dashboard[hidden] {
+    display: none;
+}
+
+#dashboard {
+    display: grid;
+    grid-template-columns: 17rem minmax(0, 1fr);
+    gap: 1.5rem;
+    align-items: start;
+    margin-top: 1rem;
+}
+
+#dashboard h2 {
+    margin: 0 0 0.75rem;
+    font-family: var(--display);
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+
+#dashboard h3 {
+    margin: 0 0 0.5rem;
+    font-size: 1rem;
+}
+
+#dashboard h4 {
+    margin: 1rem 0 0.4rem;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+/* ---- the class column --------------------------------------------------- */
+
+#classColumn {
+    position: sticky;
+    top: 1rem;
+}
+
+#classList {
+    margin: 0 0 0.75rem;
+    padding: 0;
+    list-style: none;
+}
+
+.classLink {
+    display: block;
+    margin-bottom: 0.35rem;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
+    color: var(--ink);
+    text-decoration: none;
+}
+
+.classLink:hover { border-color: var(--examiner-edge); }
+
+.classLink.current {
+    border-color: var(--examiner-edge);
+    background: var(--examiner-bg);
+}
+
+.classLinkName {
+    display: block;
+    font-weight: 600;
+}
+
+.classLinkMeta {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.inlineCheck {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+#newClassForm {
+    margin-top: 1.25rem;
+    padding: 0.9rem;
+    border: 1px dashed var(--line);
+    border-radius: 8px;
+}
+
+#newClassForm label {
+    display: block;
+    margin: 0.5rem 0 0.2rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--muted);
+}
+
+#newClassForm input,
+#newClassForm select,
+#inviteEmails {
+    width: 100%;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--ink);
+    font: inherit;
+}
+
+#newClassForm button {
+    margin-top: 0.75rem;
+}
+
+.formError {
+    margin: 0.5rem 0 0;
+    font-size: 0.85rem;
+    color: #b0392b;
+}
+
+.formError[hidden] { display: none; }
+
+/* ---- buttons ------------------------------------------------------------ */
+
+#dashboard button {
+    padding: 0.45rem 0.9rem;
+    border: 1px solid var(--examiner-edge);
+    border-radius: 7px;
+    background: var(--examiner-edge);
+    color: #fff;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#dashboard button.quiet {
+    border-color: var(--line);
+    background: var(--panel);
+    color: var(--ink);
+}
+
+#dashboard button.small {
+    padding: 0.2rem 0.55rem;
+    font-size: 0.78rem;
+}
+
+#dashboard button:hover:not(:disabled) { filter: brightness(1.08); }
+#dashboard button.quiet:hover:not(:disabled) { border-color: var(--muted); filter: none; }
+
+#dashboard button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+#dashboard button:focus-visible,
+#dashboard a:focus-visible,
+#dashboard input:focus-visible,
+#dashboard select:focus-visible,
+#dashboard textarea:focus-visible {
+    outline: 2px solid var(--examiner-edge);
+    outline-offset: 2px;
+}
+
+.buttonRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+/* ---- the class panel ---------------------------------------------------- */
+
+#classPanel[hidden],
+#attemptPanel[hidden],
+#noClassSelected[hidden],
+#archivedBanner[hidden],
+#pendingBlock[hidden],
+.empty[hidden],
+table[hidden] {
+    display: none;
+}
+
+#noClassSelected {
+    margin: 2rem 0;
+    color: var(--muted);
+}
+
+#classHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+#classHeader h2 { margin-bottom: 0.2rem; }
+
+#classMeta,
+#attemptMeta {
+    margin: 0 0 1rem;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+#archivedBanner {
+    padding: 0.6rem 0.8rem;
+    border-radius: 8px;
+    background: rgba(122, 115, 106, 0.12);
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.card {
+    margin-bottom: 1rem;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel);
+    box-shadow: var(--shadow);
+}
+
+.help {
+    margin: 0 0 0.5rem;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+.status {
+    min-height: 1.2em;
+    margin: 0.6rem 0 0;
+    font-size: 0.85rem;
+    color: var(--student-ink);
+}
+
+.status.error { color: #b0392b; }
+
+.joinCode {
+    display: inline-block;
+    padding: 0.35rem 0.8rem;
+    border: 2px solid var(--examiner-edge);
+    border-radius: 8px;
+    background: var(--examiner-bg);
+    color: var(--examiner-ink);
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 1.6rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    /* big enough to read from the back of a classroom off a projector */
+}
+
+.joinCode[hidden],
+#joinCodeOff[hidden] { display: none; }
+
+#joinCodeOff { color: var(--muted); }
+
+#joinCodeRow { margin-bottom: 0.6rem; }
+
+#pendingInvites {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+#pendingInvites li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 0.9rem;
+}
+
+/* ---- tables ------------------------------------------------------------- */
+
+.tableWrap {
+    position: relative;
+    overflow-x: auto;
+    /* relative so the absolutely placed .visuallyHidden headers stay inside
+       the scroll box; without it they escape and widen the whole page */
+}
+
+#dashboard table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+}
+
+#dashboard th {
+    padding: 0.4rem 0.5rem;
+    border-bottom: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-align: left;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+#dashboard td {
+    padding: 0.5rem;
+    border-bottom: 1px solid var(--line);
+    vertical-align: middle;
+}
+
+#dashboard td.muted { color: var(--muted); }
+#dashboard td.number { font-variant-numeric: tabular-nums; }
+#dashboard td.actions { text-align: right; white-space: nowrap; }
+
+#dashboard td a {
+    color: var(--examiner-edge);
+    font-weight: 600;
+}
+
+.empty {
+    margin: 0.25rem 0 0;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.visuallyHidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+/* ---- one exam ----------------------------------------------------------- */
+
+#attemptTurns .turn { margin-bottom: 0.6rem; }
+
+.topicTag {
+    margin-left: 0.5rem;
+    padding: 0.05rem 0.45rem;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
+    opacity: 0.8;
+}
+
+/* ---- narrow screens ----------------------------------------------------- */
+
+@media (max-width: 50rem) {
+    #dashboard { grid-template-columns: minmax(0, 1fr); }
+    /* minmax rather than 1fr: a bare 1fr track grows to fit the widest table,
+       and the page then scrolls sideways instead of the table inside its card */
+    #classColumn { position: static; }
+    #classHeader { flex-direction: column; }
+}
+
+@media (prefers-color-scheme: dark) {
+    #teacherNotice {
+        border-color: #a8342a;
+        background: #2a1714;
+        color: #e79287;
+    }
+
+    .formError,
+    .status.error { color: #e79287; }
+
+    #dashboard button:not(.quiet) { color: #0f1216; }
+}

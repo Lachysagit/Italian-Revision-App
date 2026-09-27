@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Teacher dashboard</title>
+    <link rel="stylesheet" href="/fonts.css">
+    <link rel="stylesheet" href="/styles.css">
+    <!-- styles.css for the shared tokens, nav, sign-in gate and turn cards;
+         teacher.css for the dashboard's own layout on top -->
+    <link rel="stylesheet" href="/teacher.css">
+</head>
+<body class="teacherPage">
+    <nav id="siteNav">
+        <a href="/">Speaking</a>
+        <a href="/listening">Listening</a>
+    </nav>
+    <!-- account.js adds the Teacher link and the signed-in corner -->
+
+    <h1 id="pageTitle">Teacher dashboard</h1>
+
+    <p id="teacherNotice" role="alert" hidden></p>
+
+    <main id="dashboard" hidden>
+        <aside id="classColumn">
+            <h2>Classes</h2>
+            <ul id="classList"></ul>
+            <p id="classListEmpty" hidden>No classes yet. Create your first one below.</p>
+
+            <label class="inlineCheck">
+                <input type="checkbox" id="showArchived"> Show archived classes
+            </label>
+
+            <form id="newClassForm">
+                <h3>New class</h3>
+                <label for="newClassName">Name</label>
+                <input id="newClassName" type="text" maxlength="80" required
+                       placeholder="e.g. Year 11 Italian Beginners">
+                <label for="newClassLanguage">Language</label>
+                <select id="newClassLanguage" required></select>
+                <button type="submit" id="newClassButton">Create class</button>
+                <p class="formError" id="newClassError" hidden></p>
+            </form>
+        </aside>
+
+        <section id="classPanel" hidden>
+            <header id="classHeader">
+                <div>
+                    <h2 id="className"></h2>
+                    <p id="classMeta"></p>
+                </div>
+                <button type="button" id="archiveButton" class="quiet"></button>
+            </header>
+
+            <p id="archivedBanner" hidden>
+                This class is archived. Its students no longer see it and nobody
+                can join it. Restore it to make changes.
+            </p>
+
+            <div class="card" id="joinCard">
+                <h3>Join code</h3>
+                <div id="joinCodeRow">
+                    <span id="joinCode" class="joinCode"></span>
+                    <span id="joinCodeOff" hidden>Joining by code is turned off.</span>
+                </div>
+                <p class="help" id="joinHelp">
+                    Students choose <strong>Join a class</strong> on the Speaking
+                    page and type this code, or open the join link.
+                </p>
+                <div class="buttonRow">
+                    <button type="button" id="copyJoinLink">Copy join link</button>
+                    <button type="button" id="rotateCode" class="quiet">New code</button>
+                    <button type="button" id="disableCode" class="quiet">Turn off joining</button>
+                </div>
+                <p class="status" id="joinStatus" role="status"></p>
+            </div>
+
+            <div class="card" id="inviteCard">
+                <h3>Add students by email</h3>
+                <p class="help">
+                    Paste school email addresses, separated by commas or new
+                    lines. Students who already have an account join straight
+                    away; everyone else joins the first time they sign in with
+                    Google.
+                </p>
+                <textarea id="inviteEmails" rows="4"
+                          placeholder="mia.rossi@school.nsw.edu.au&#10;leo.bianchi@school.nsw.edu.au"></textarea>
+                <div class="buttonRow">
+                    <button type="button" id="inviteButton">Add students</button>
+                </div>
+                <p class="status" id="inviteStatus" role="status"></p>
+
+                <div id="pendingBlock" hidden>
+                    <h4>Waiting to sign in</h4>
+                    <ul id="pendingInvites"></ul>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Students</h3>
+                <div class="tableWrap">
+                    <table id="membersTable">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Year</th>
+                                <th>Level</th>
+                                <th>Exams</th>
+                                <th>Last exam</th>
+                                <th><span class="visuallyHidden">Actions</span></th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <p class="empty" id="membersEmpty" hidden>No students yet.</p>
+            </div>
+
+            <div class="card">
+                <h3>Exams sat for this class</h3>
+                <p class="help">
+                    Only exams a student starts with this class selected appear
+                    here. Private practice stays private.
+                </p>
+                <div class="tableWrap">
+                    <table id="attemptsTable">
+                        <thead>
+                            <tr>
+                                <th>Student</th>
+                                <th>Started</th>
+                                <th>Turns</th>
+                                <th>How it ended</th>
+                                <th><span class="visuallyHidden">Open</span></th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <p class="empty" id="attemptsEmpty" hidden>No exams yet.</p>
+            </div>
+        </section>
+
+        <section id="attemptPanel" hidden>
+            <button type="button" id="attemptBack" class="quiet">&larr; Back to class</button>
+            <h2 id="attemptTitle"></h2>
+            <p id="attemptMeta"></p>
+            <div id="attemptTurns"></div>
+            <p class="empty" id="attemptEmpty" hidden>Nothing was said in this exam.</p>
+        </section>
+
+        <p id="noClassSelected">Choose a class, or create one.</p>
+    </main>
+
+    <script src="/account.js"></script>
+    <script src="/teacher.js"></script>
+    <script>
+        initAccount({ onReady: initTeacher });
+    </script>
+</body>
+</html>
