@@ -174,3 +174,51 @@ the WebSocket. Binary frames are appended to that connection's `Session` audio
 buffer. A text frame of `{"type":"stop"}` drains the buffer and hands it to a
 `WorkerPool` job, which runs STT, the examiner call and TTS off the socket
 thread, then writes the reply text and PCM audio back to the connection.
+
+## Classes and teachers
+
+Anyone who signs in with an address listed in `TEACHER_EMAILS` is a teacher and
+gets a **Teacher** link in the nav, which opens the dashboard at `/teacher`.
+Everyone else is a student.
+
+A teacher creates a class for one language. Students get into it one of three
+ways, all ending in the same `class_members` row:
+
+| Way in | How it works |
+| --- | --- |
+| Join code | Every class has an 8-character code, shown large on the dashboard. Students press **Join a class** on the Speaking page and type it; case, spaces and the hyphen are ignored. The teacher can replace the code or switch joining off. |
+| Join link | `/join/<code>` does the same from a link, and survives the sign-in round trip for a student who is not signed in yet. |
+| Email roster | The teacher pastes addresses. Anyone who already has an account joins at once; the rest join the first time they sign in with that address. |
+
+On the Speaking page the **Class** picker chooses who an exam is for. An exam
+sat for a class is stored with its `class_id`, uses the class's language, and
+appears on that class's dashboard; **Private practice** is visible to nobody
+but the student. A student removed from a class disappears from its dashboard
+along with their exams for it. Archiving hides a class from its students and
+stops joins without deleting anything.
+
+The websocket reads the session cookie at the handshake, so every attempt is
+stored against the signed-in user, and it refuses connections from other
+origins. The exam clock also runs on the server (`EXAM_DURATION_SECONDS`): an
+answer sent after it is transcribed but earns no further question.
+
+The routes behind the dashboard, all JSON and all cookie-authenticated:
+
+| Method and path | Who | Does |
+| --- | --- | --- |
+| `GET /api/classes` | anyone signed in | classes the caller teaches or sits in |
+| `POST /api/classes` | teacher | create a class `{name, language}` |
+| `GET /api/classes/<id>` | its teacher | class, members and pending invites |
+| `POST /api/classes/<id>/join-code` | its teacher | `{action: "rotate" \| "disable"}` |
+| `POST /api/classes/<id>/invites` | its teacher | `{emails}` as pasted text or a list |
+| `DELETE /api/classes/<id>/invites/<invite>` | its teacher | cancel an unclaimed invite |
+| `DELETE /api/classes/<id>/members/<user>` | its teacher | remove a student |
+| `POST /api/classes/<id>/archive` | its teacher | `{archived: true \| false}` |
+| `GET /api/classes/<id>/attempts` | its teacher | exams sat for the class |
+| `GET /api/attempts/<id>` | the student, or the class's teacher | one exam with its turns |
+| `POST /api/join` | anyone signed in | `{code}`, join as a student |
+
+A class that is not the caller's answers 404 rather than 403, so ids cannot be
+probed. Anything that changes state is refused from another origin. The route
+handlers live in `src/class_api.cpp`, apart from the rest of `Server`, so the
+group can move into a separate API service later without untangling it.
