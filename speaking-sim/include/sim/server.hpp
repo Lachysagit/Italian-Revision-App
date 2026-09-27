@@ -84,6 +84,11 @@ private:
     crow::response serve_auth_logout(const crow::request& req);
     crow::response serve_me(const crow::request& req);
     crow::response serve_set_profile(const crow::request& req);
+
+    crow::response serve_classes(const crow::request& req);
+    crow::response serve_create_class(const crow::request& req);
+    //the classes page and the teacher's create-a-class dialogue. Plain HTTP on
+    //a socket thread like the profile routes: a few indexed rows per call
     //sign-in. The token exchange in the callback is an outbound HTTPS call on a
     //crow socket thread, like /api/translate: once per sign-in, with explicit
     //timeouts, and never taking a worker from a student mid-turn

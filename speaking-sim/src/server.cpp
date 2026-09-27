@@ -61,6 +61,10 @@ crow::response json_error(int status, const std::string& message) {
     //path instead of guessing whether a body is text or JSON by status code
 }
 
+//a class name is a label on a card, not prose. Capped so a pasted paragraph
+//cannot become a row the page has to lay out.
+constexpr std::size_t kMaxClassNameChars = 80;
+
 constexpr const char* kSessionCookie = "sid";
 
 //TEACHER_EMAILS is a comma separated allowlist. A school deployment needs some
@@ -195,6 +199,24 @@ void Server::run()
     //crow's <string> stops at a /, and is_safe_font_name keeps the rest of the
     //folder from being readable through a name the stylesheet never asks for
 
+    CROW_ROUTE(app_, "/classes") //HTTP ROUTE -----------------------------------
+    ([] {
+        return serve_static_file("web(frontend)/classes.html", "text/html");
+    });
+    //the class list. Its own page rather than a panel on the exam page: it is
+    //where a teacher lands after making a class and where a student goes to
+    //find one, and both want a link they can come back to
+
+    CROW_ROUTE(app_, "/classes.js") //HTTP ROUTE -----------------------------------
+    ([] {
+        return serve_static_file("web(frontend)/classes.js", "application/javascript");
+    });
+
+    CROW_ROUTE(app_, "/classes.css") //HTTP ROUTE -----------------------------------
+    ([] {
+        return serve_static_file("web(frontend)/classes.css", "text/css");
+    });
+
     CROW_ROUTE(app_, "/listening") //HTTP ROUTE -----------------------------------
     ([] {
         return serve_static_file("web(frontend)/listening.html", "text/html");
@@ -278,6 +300,20 @@ void Server::run()
     });
     //where sign-up finishes: year, subject level and language. Until this has
     //been posted once the account is not onboarded, and no exam may start
+
+    CROW_ROUTE(app_, "/api/classes") //HTTP ROUTE -----------------------------------
+    ([this](const crow::request& req) {
+        return serve_classes(req);
+    });
+    //what the classes page lists: every class this account belongs to, whether
+    //it teaches them or is enrolled in them
+
+    CROW_ROUTE(app_, "/api/classes").methods("POST"_method) //HTTP ROUTE -----------------------------------
+    ([this](const crow::request& req) {
+        return serve_create_class(req);
+    });
+    //where the teacher's create-a-class dialogue posts. Teachers only, checked
+    //on the account rather than on anything the browser sends
 
     CROW_ROUTE(app_, "/api/translate").methods("POST"_method) //HTTP ROUTE -----------------------------------
     ([this](const crow::request& req) {
@@ -572,6 +608,110 @@ crow::response Server::serve_languages()
     return response;
 }
 
+crow::response Server::serve_classes(const crow::request& req) {
+    const std::optional<User> user = user_for_request(req);
+    if (!user) {
+        return json_error(401, "not signed in");
+    }
+
+    std::vector<ClassSummary> classes;
+    try {
+        classes = store_->classes_for_user(user->id);
+    } catch (const std::exception& e) {
+        std::cerr << "classes: could not list for user " << user->id << ": "
+                  << e.what() << '\n';
+        return json_error(500, "could not load your classes");
+    }
+
+    crow::json::wvalue json;
+    std::vector<crow::json::wvalue> rows;
+    rows.reserve(classes.size());
+    for (const ClassSummary& item : classes) {
+        crow::json::wvalue row;
+        row["id"] = item.id;
+        row["name"] = item.name;
+        row["language_id"] = item.language_id;
+        row["year_level"] = item.year_level;
+        row["subject_level"] = item.subject_level;
+        row["role"] = item.role == ClassRole::Teacher ? "teacher" : "student";
+        row["member_count"] = item.member_count;
+        rows.push_back(std::move(row));
+    }
+    json["classes"] = std::move(rows);
+    //an object with one key rather than a bare array, so a later addition -
+    //pending invites, say - does not change the shape the page reads
+
+    crow::response response(json.dump());
+    response.set_header("Content-Type", "application/json");
+    response.set_header("Cache-Control", "no-store");
+    return response;
+}
+
+crow::response Server::serve_create_class(const crow::request& req) {
+    const std::optional<User> user = user_for_request(req);
+    if (!user) {
+        return json_error(401, "not signed in");
+    }
+    if (!user->is_teacher) {
+        return json_error(403, "only teachers can create a class");
+        //read off the account, which only TEACHER_EMAILS can set. Nothing the
+        //browser sends takes part in this decision
+    }
+
+    const crow::json::rvalue body = crow::json::load(req.body);
+    if (!body) {
+        return json_error(400, "expected a JSON body");
+    }
+
+    const auto field = [&body](const char* key) -> std::string {
+        if (!body.has(key) || body[key].t() != crow::json::type::String) {
+            return std::string();
+        }
+        return body[key].s();
+    };
+
+    const std::string year = field("year_level");
+    const std::string level = field("subject_level");
+    const std::string language = field("language_id");
+
+    if (!is_valid_year_level(year)) {
+        return json_error(400, "pick a year level");
+    }
+    if (!is_valid_subject_level(level)) {
+        return json_error(400, "pick a subject level");
+    }
+    const LanguagePack* pack = languages_.find(language);
+    if (pack == nullptr) {
+        return json_error(400, "pick a language");
+    }
+
+    std::string name = field("name");
+    if (name.size() > kMaxClassNameChars) {
+        name = name.substr(0, kMaxClassNameChars);
+    }
+    if (name.empty()) {
+        name = pack->display_name + " Year " + year;
+        //the three answers already name the class well enough, so the dialogue
+        //does not ask for one. A teacher with two Year 10 classes renames later
+    }
+
+    std::int64_t class_id = 0;
+    try {
+        class_id = store_->create_class(user->id, name, language, year, level);
+    } catch (const std::exception& e) {
+        std::cerr << "classes: could not create for user " << user->id << ": "
+                  << e.what() << '\n';
+        return json_error(500, "could not create that class");
+    }
+
+    crow::json::wvalue json;
+    json["id"] = class_id;
+    json["name"] = name;
+    crow::response response(json.dump());
+    response.set_header("Content-Type", "application/json");
+    return response;
+}
+
 crow::response Server::serve_translate(const crow::request& req)
     {
     if (config_.translate_api_key.empty()) {
@@ -764,6 +904,20 @@ crow::response Server::serve_me(const crow::request& req) {
     json["subject_level"] = user->subject_level;
     json["preferred_language"] = user->preferred_language;
     json["onboarded"] = user->onboarded;
+
+    bool has_class = false;
+    try {
+        has_class = store_->has_created_class(user->id);
+    } catch (const std::exception& e) {
+        std::cerr << "classes: could not check ownership for user " << user->id
+                  << ": " << e.what() << '\n';
+        has_class = true;
+        //on a read failure claim they already have one: the offer is a one-off
+        //nicety and showing it wrongly is worse than not showing it
+    }
+    json["has_created_class"] = has_class;
+    //the gate shows its create-a-class offer only to a teacher with no class,
+    //which is what makes the offer first-time-only without a flag column
 
     crow::response response(json.dump());
     response.set_header("Content-Type", "application/json");
