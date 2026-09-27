@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <optional>
 #include <random>
@@ -57,6 +58,15 @@ public:
     //the exam_attempts row this session's turns are written against, opened by
     //Server when the exam starts. Zero means "not being recorded": the insert
     //failed, and a turn that cannot be stored still has to be answered
+
+    using Clock = std::chrono::steady_clock;
+
+    bool clock_started() const;
+    void start_clock(Clock::time_point deadline);
+    bool time_up(Clock::time_point now) const;
+    //the exam's own deadline. Started once, when the opening question has gone
+    //out, and read when each answer arrives: an answer submitted after it is
+    //transcribed but never earns another question, whatever the browser says
 
     int next_turn_index();
     //monotonic per session, handed to each stored turn. Not atomic on purpose -
@@ -139,6 +149,7 @@ private:
     std::string partial_byte_;
 
 
+    std::optional<Clock::time_point> deadline_;
     std::int64_t user_id_ = 0;
     std::int64_t class_id_ = 0;
     //zero for "none": row ids start at 1, so zero is never a real one

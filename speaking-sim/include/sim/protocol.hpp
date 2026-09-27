@@ -35,6 +35,10 @@ struct Message {
     //what the examiner calls the student, sent with Start only. Same discipline
     //again: absent rather than empty when the settings field was left blank,
     //which is how the session tells "no name given" from "named nothing"
+    int exam_seconds = 0;
+    //from the server, on the opening question only: how long the exam runs.
+    //The server's clock is the one that counts; the browser's countdown is a
+    //display of it, so a page left on an old default still shows the truth
     std::int64_t class_id = 0;
     //sent with Start only: the class this exam is being sat for, or absent for
     //private practice. A claim the server checks against class_members before

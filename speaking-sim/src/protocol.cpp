@@ -56,6 +56,9 @@ crow::json::wvalue to_json(const Message& message) {
     if (!message.student_name.empty()) {
         json["student_name"] = message.student_name;
     }
+    if (message.exam_seconds > 0) {
+        json["exam_seconds"] = message.exam_seconds;
+    }
     if (message.class_id > 0) {
         json["class_id"] = message.class_id;
     }

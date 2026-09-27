@@ -76,7 +76,9 @@ let turnState = "idle";
 //"idle" no session; "thinking" examiner is working and the mic is muted;
 //"armed" student's turn, mic live and frames streaming
 
-const EXAM_DURATION_MS = 5 * 60 * 1000;
+let examDurationMs = 5 * 60 * 1000;
+//the length the server last announced on an opening question. Five minutes
+//until one arrives, which is also the server's own default
 //one exam is five minutes of the student's time
 
 let examDeadline = null;
@@ -583,7 +585,7 @@ function startExamTimer() {
         //already running, or already spent: the clock belongs to the page, not
         //to the session, so a second session cannot buy another five minutes
     }
-    examDeadline = Date.now() + EXAM_DURATION_MS;
+    examDeadline = Date.now() + examDurationMs;
     examTimer.hidden = false;
     paintExamTimer();
     examTick = setInterval(paintExamTimer, 250);
@@ -600,16 +602,19 @@ function resetExamTimer() { //stop the clock and put five minutes back on it
     //a whole exam rather than the remainder of the one just abandoned
     examTimer.hidden = true;
     examTimer.classList.remove("low", "expired");
-    examTimer.textContent = "5:00";
+    examTimer.textContent = formatClock(examDurationMs);
     //repainted now rather than at the next start, so the pill does not flash
     //the abandoned session's last reading before the first question lands
 }
 
+function formatClock(ms) {
+    const seconds = Math.ceil(ms / 1000);
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
 function paintExamTimer() {
     const left = Math.max(0, examDeadline - Date.now());
-    const seconds = Math.ceil(left / 1000);
-    examTimer.textContent =
-        `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+    examTimer.textContent = formatClock(left);
     examTimer.classList.toggle("low", left > 0 && left <= 60 * 1000);
 
     if (left === 0) {
@@ -1155,6 +1160,10 @@ function handleMessage(event) { //message from server
         }
 
         if (message.type === "examiner_text") {
+            if (message.exam_seconds) {
+                examDurationMs = message.exam_seconds * 1000;
+                //set before addTurn below, which is what starts the countdown
+            }
             if (message.payload) {
                 addTurn("examiner", message.payload);
             }

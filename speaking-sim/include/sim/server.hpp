@@ -138,7 +138,14 @@ private:
     void send_examiner_text(const std::shared_ptr<ConnHandle>& handle,
                             const std::string& reply,
                             bool speech_follows,
-                            int sample_rate);
+                            int sample_rate,
+                            int exam_seconds = 0);
+    //exam_seconds rides on the opening question only, the moment the server's
+    //clock starts, so the browser's countdown starts from the same instant
+
+    void start_exam_clock(Session& session);
+    //the deadline is the configured length plus a few seconds of slack for the
+    //question reaching the browser, whose countdown starts on arrival
     //sample_rate is the session's own voice rate, passed in because two
     //languages on one server produce different ones. Ignored when
     //speech_follows is false, since no frame is coming to describe

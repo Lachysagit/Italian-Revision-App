@@ -54,6 +54,11 @@ bool is_supported_language(const std::string& code) {
 
 constexpr const char* kSessionCookie = "sid";
 
+// The browser starts its countdown when the opening question arrives, a moment
+// after the server sent it. Without this slack an answer finished just inside
+// the student's five minutes could land just outside the server's.
+constexpr int kClockSlackSeconds = 10;
+
 // Who the websocket handshake found behind the session cookie. Allocated in
 // onaccept, which runs before the connection object exists, and handed across
 // through the connection's userdata pointer; onopen takes it straight back into
@@ -1125,12 +1130,22 @@ void Server::handle_control(crow::websocket::connection& conn,
     //take_audio() returns the completed audio buffer, clearing the session buffer
     //taking the audio on the socket thread to seperate it from any new incoming audio\
 
+    if (!session->clock_started()) {
+        start_exam_clock(*session);
+        //the opening question failed, so the clock never started on it. The
+        //first answer starts it instead, or an exam whose first call errored
+        //would never end at all
+    }
+    const bool final = message.final || session->time_up(Session::Clock::now());
+    //either clock running out ends the exam. The browser's is the one the
+    //student watches; the server's is the one a modified page cannot stop
+
     enqueue_pipeline_job(std::move(handle), session, std::move(utterance_audio), true,
-                         std::move(claim), message.final);
+                         std::move(claim), final);
     //the handle rather than &conn: the job outlives handle_control, and by
-    //then the raw pointer may name a destroyed connection. message.final is
-    //the browser saying its clock has run out, which turns this into the
-    //last job of the session: transcribed, but never sent to the examiner
+    //then the raw pointer may name a destroyed connection. final turns this
+    //into the last job of the session: transcribed, but never sent to the
+    //examiner
 }
 
 void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
@@ -1232,6 +1247,15 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
 
                     send_error(handle, "didn't catch that, please try again");
                     if (answer_only) {
+                        if (session->attempt_id() != 0) {
+                            persist_quietly("attempt end (timer)", [&] {
+                                store_->end_attempt(session->attempt_id(),
+                                                    "timer");
+                            });
+                        }
+                        //closed here as well as on the heard path below: an
+                        //unheard last answer still ended on the clock, and
+                        //without this the socket closing relabels it
                         send_status(handle, "ended");
                         //nothing to re-arm for: the clock has run out and this
                         //job was the last one, heard or not
@@ -1344,8 +1368,17 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
             session->record_question(reply);
             session->note_question_topic(topic);
 
+            int exam_seconds = 0;
+            if (!session->clock_started()) {
+                start_exam_clock(*session);
+                exam_seconds = config_.exam_duration_seconds;
+            }
+            //the opening question: the exam starts now, so the wait for the
+            //first examiner call is not taken off the student's time
+
             send_examiner_text(handle, reply, true,
-                               tts_->sample_rate(language->piper_voice_path));
+                               tts_->sample_rate(language->piper_voice_path),
+                               exam_seconds);
             text_sent = true;
             //ahead of synthesis, not after it. The question is on screen while
             //piper is still working, so the wait the student actually sees is
@@ -1459,13 +1492,21 @@ void Server::send_transcript(const std::shared_ptr<ConnHandle>& handle,
     //MessageType::Transcript was never constructed, so the client branch was
 }
 
+void Server::start_exam_clock(Session& session) {
+    session.start_clock(
+        Session::Clock::now() +
+        std::chrono::seconds(config_.exam_duration_seconds + kClockSlackSeconds));
+}
+
 void Server::send_examiner_text(const std::shared_ptr<ConnHandle>& handle,
                                 const std::string& reply,
                                 bool speech_follows,
-                                int sample_rate) {
+                                int sample_rate,
+                                int exam_seconds) {
     Message message; //create Message Object
     message.type = MessageType::ExaminerText; //Set Message.type to Examiner Text
     message.payload = reply; //set payload to examiners reply
+    message.exam_seconds = exam_seconds;
     if (speech_follows) {
         message.sample_rate = sample_rate;
         //tell the browser what rate the PCM frame that follows was produced at.
