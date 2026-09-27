@@ -801,8 +801,6 @@ h1 {
     font-size: 0.9rem;
 }
 
-#accountName { opacity: 0.8; }
-
 #signOutButton {
     font: inherit;
     padding: 0.2rem 0.6rem;
@@ -852,7 +850,9 @@ body.gated { overflow: hidden; }
 #authChoice,
 #authRole,
 #authTeacher,
-#authTeacherWelcome { display: flex; flex-direction: column; gap: 0.75rem; }
+#authTeacherWelcome,
+#authClassOffer,
+#authClassDone { display: flex; flex-direction: column; gap: 0.75rem; }
 
 /* [hidden] is only display:none at the browser's default weight, which a
    display:flex rule on the same element beats. Every panel here is flex, so
@@ -861,16 +861,54 @@ body.gated { overflow: hidden; }
 #authRole[hidden],
 #authTeacher[hidden],
 #authTeacherWelcome[hidden],
-#authDetails[hidden] { display: none; }
+#authDetails[hidden],
+#authClassOffer[hidden],
+#authClassForm[hidden],
+#authClassDone[hidden] { display: none; }
 
 /* the teacher panels are prose rather than pickers, so the paragraphs carry
    the spacing the form's labels would otherwise provide */
 #authTeacher p,
-#authTeacherWelcome p {
+#authTeacherWelcome p,
+#authClassOffer p,
+#authClassDone p {
     margin: 0;
     font-size: 0.9rem;
     opacity: 0.8;
 }
+
+/* The create-a-class step, which is the student form's twin: the same three
+   pickers, so it borrows that form's shape rather than restating it. */
+#authClassForm { display: flex; flex-direction: column; gap: 0.35rem; }
+
+#authClassForm label {
+    margin-top: 0.6rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+#authClassForm select {
+    font: inherit;
+    padding: 0.45rem;
+    color: inherit;
+    background: var(--panel, #fff);
+    border: 1px solid var(--line, #d9d4cc);
+    border-radius: 4px;
+}
+
+#authClassCreate {
+    margin-top: 1.1rem;
+    padding: 0.6rem 1.2rem;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    color: #fff;
+    background: #1a73e8;
+    border: none;
+    border-radius: 6px;
+}
+
+#authClassCreate:disabled { opacity: 0.6; cursor: default; }
 
 #authTeacherNote,
 #authTeacherWelcomeNote { font-size: 0.85rem; opacity: 0.65; }
@@ -934,7 +972,9 @@ body.gated { overflow: hidden; }
 #authBack,
 #authRoleBack,
 #authTeacherBack,
-#authTeacherSignOut {
+#authTeacherSignOut,
+#authClassBack,
+#authClassSkip {
     margin-top: 0.5rem;
     padding: 0.4rem;
     font: inherit;
@@ -949,7 +989,9 @@ body.gated { overflow: hidden; }
 #authBack:hover,
 #authRoleBack:hover,
 #authTeacherBack:hover,
-#authTeacherSignOut:hover { opacity: 1; }
+#authTeacherSignOut:hover,
+#authClassBack:hover,
+#authClassSkip:hover { opacity: 1; }
 
 #authBack[hidden] { display: none; }
 
@@ -960,6 +1002,21 @@ body.gated { overflow: hidden; }
 }
 
 #authError[hidden] { display: none; }
+
+/* The way through to the class list, beside the same pair. A link rather than
+   a button: it goes to a page, and nothing about it is an action. */
+#classesLink {
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.2rem 0.6rem;
+    text-decoration: none;
+    color: #1a73e8;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+}
+
+#classesLink:hover { background: rgba(26, 115, 232, 0.08); }
 
 /* Account settings, opened from the nav corner. The button is the sign-out
    button's twin so the pair reads as one control. */

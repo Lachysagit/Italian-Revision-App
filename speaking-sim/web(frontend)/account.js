@@ -21,6 +21,12 @@ let gateLanguages = [];
 function initAccount(options) {
     const settings = options || {};
     const onReady = settings.onReady || function () {};
+    const needsOnboarding = settings.needsOnboarding !== false;
+    // the gate's job is to stop an un-onboarded account starting an exam, so a
+    // page that cannot start one has nothing to hold anybody at. The classes
+    // page is that page, and passes false: a teacher account never onboards at
+    // all - year and subject level describe a student - and a student who has
+    // not finished signing up is still allowed to see which classes they are in
 
     buildGate();
     buildAccountBox();
@@ -40,7 +46,7 @@ function initAccount(options) {
                 showStep("choice");
                 return null;
             }
-            if (!user.onboarded) {
+            if (!user.onboarded && needsOnboarding) {
                 return finishPendingSignup(onReady);
             }
 
@@ -76,11 +82,16 @@ function finishPendingSignup(onReady) {
     }
 
     if (currentUser.is_teacher) {
-        showStep("teacherWelcome");
+        showStep(currentUser.has_created_class ? "teacherWelcome" : "classOffer");
         return null;
         // year and subject level describe a student's cohort, so there is
         // nothing here to ask a teacher. Any draft they carry in is a student
-        // answer set and must not be posted against a teacher account
+        // answer set and must not be posted against a teacher account.
+        //
+        // A teacher account never becomes onboarded - there is no profile for
+        // it to save - so this branch is every sign-in, not just the first. The
+        // offer is what has to be first-time-only, and owning a class already
+        // is what says it has been made
     }
 
     if (!draft) {
@@ -171,16 +182,80 @@ function buildGate() {
 
             <div id="authTeacherWelcome" hidden>
                 <p id="authTeacherWelcomeBlurb">
-                    You are signed in as a teacher. Classes are not built yet,
-                    so there is nothing to set up on this page for now.
+                    You are signed in as a teacher. Your classes are on the
+                    classes page, and the practice exam itself is open to you
+                    the same way it is to a student.
                 </p>
                 <p id="authTeacherWelcomeNote">
-                    To try the practice exam the way your students see it, use
-                    a student account: this one has no year or subject level,
-                    which is what an exam runs on.
+                    An exam runs on a year and subject level, which a teacher
+                    account has none of, so start one from a class rather than
+                    from this page.
                 </p>
 
+                <a class="authOption" href="/classes">
+                    <span class="authOptionLabel">View your classes</span>
+                    <span class="authOptionNote">Everything you teach, in one place</span>
+                </a>
+
                 <button type="button" id="authTeacherSignOut">Sign in as someone else</button>
+            </div>
+
+            <div id="authClassOffer" hidden>
+                <p id="authClassOfferBlurb">
+                    Would you like to create a class? You can add students to
+                    it later.
+                </p>
+
+                <button type="button" class="authOption" id="authClassYes">
+                    <span class="authOptionLabel">Yes, create a class</span>
+                    <span class="authOptionNote">Pick a year level, subject level and language</span>
+                </button>
+
+                <button type="button" class="authOption" id="authClassNo">
+                    <span class="authOptionLabel">No, not now</span>
+                    <span class="authOptionNote">Go straight to the site</span>
+                </button>
+            </div>
+
+            <form id="authClassForm" hidden>
+                <label for="authClassYear">Year level</label>
+                <select id="authClassYear" required>
+                    <option value="">Choose...</option>
+                    <option value="7">Year 7</option>
+                    <option value="8">Year 8</option>
+                    <option value="9">Year 9</option>
+                    <option value="10">Year 10</option>
+                    <option value="11">Year 11</option>
+                    <option value="12">Year 12</option>
+                </select>
+
+                <label for="authClassLevel">Subject level</label>
+                <select id="authClassLevel" required>
+                    <option value="">Choose...</option>
+                    <option value="beginners">Beginners</option>
+                    <option value="continuers">Continuers</option>
+                    <option value="advanced">Advanced</option>
+                    <option value="extension">Extension</option>
+                </select>
+
+                <label for="authClassLanguage">Language</label>
+                <select id="authClassLanguage" required>
+                    <option value="">Choose...</option>
+                </select>
+
+                <button type="submit" id="authClassCreate">Create class</button>
+                <button type="button" id="authClassBack">Back</button>
+            </form>
+
+            <div id="authClassDone" hidden>
+                <p id="authClassDoneBlurb"></p>
+
+                <a class="authOption" href="/classes">
+                    <span class="authOptionLabel">View your classes</span>
+                    <span class="authOptionNote">Go through to the class you just made</span>
+                </a>
+
+                <button type="button" id="authClassSkip">Skip for now</button>
             </div>
 
             <form id="authDetails" hidden>
@@ -225,6 +300,12 @@ function buildGate() {
     document.getElementById("authTeacherSignOut").onclick = signOut;
     document.getElementById("authBack").onclick = leaveDetails;
     document.getElementById("authDetails").onsubmit = submitDetails;
+
+    document.getElementById("authClassYes").onclick = () => showStep("classForm");
+    document.getElementById("authClassNo").onclick = dismissClassOffer;
+    document.getElementById("authClassBack").onclick = () => showStep("classOffer");
+    document.getElementById("authClassSkip").onclick = dismissClassOffer;
+    document.getElementById("authClassForm").onsubmit = submitClass;
 }
 
 // "Back" from the details step, which is a different move depending on how the
@@ -264,6 +345,9 @@ function showStep(step) {
         role: document.getElementById("authRole"),
         teacher: document.getElementById("authTeacher"),
         teacherWelcome: document.getElementById("authTeacherWelcome"),
+        classOffer: document.getElementById("authClassOffer"),
+        classForm: document.getElementById("authClassForm"),
+        classDone: document.getElementById("authClassDone"),
         details: document.getElementById("authDetails"),
     };
     const title = document.getElementById("authTitle");
@@ -288,6 +372,17 @@ function showStep(step) {
         blurb.textContent = currentUser && currentUser.name
             ? "Welcome, " + currentUser.name + "."
             : "Welcome.";
+    } else if (step === "classOffer") {
+        title.textContent = currentUser && currentUser.name
+            ? "Welcome, " + currentUser.name
+            : "Welcome";
+        blurb.textContent = "One thing before you start.";
+    } else if (step === "classForm") {
+        title.textContent = "Create a class";
+        blurb.textContent = "What does this class study?";
+    } else if (step === "classDone") {
+        title.textContent = "Class created";
+        blurb.textContent = "That is everything.";
     } else if (step === "details") {
         prepareDetails();
     } else {
@@ -366,7 +461,9 @@ function loadGateLanguages() {
             // it now that the options it names actually exist
 
             fillSettingsLanguages();
-            // and the settings picker was built from the same empty list
+            fillClassLanguages();
+            // and the settings and create-a-class pickers were both built from
+            // the same empty list
         })
         .catch(() => {
             showGateError(
@@ -498,6 +595,111 @@ function savePreferredLanguage(id) {
 }
 
 // ---------------------------------------------------------------------------
+// the teacher's create-a-class offer
+// ---------------------------------------------------------------------------
+//
+// Shown on a teacher's sign-in until they own a class, which is what makes it a
+// first-time prompt without a column to record that it was answered: creating
+// one is the only thing that stops it coming back. "No" therefore only settles
+// the current page load, which is the honest scope for a question the teacher
+// has not answered either way.
+
+// "No, not now", and the same button on the confirmation. Either way the gate
+// comes down and the page runs as it would for anybody signed in.
+function dismissClassOffer() {
+    hideGate();
+    classOfferDone();
+}
+
+// The page was set up behind the gate and its onReady never fired, because a
+// teacher signing in is not an onboarded account. Nothing on the exam page
+// works for a teacher anyway - an exam runs on a year and subject level - so
+// this only lowers the gate rather than calling back into the page.
+function classOfferDone() {
+    paintAccountBox(currentUser);
+    // the corner was painted before the offer went up, and the classes button
+    // it carries is the way back here
+}
+
+function submitClass(event) {
+    event.preventDefault();
+    hideGateError();
+
+    const wanted = {
+        year_level: document.getElementById("authClassYear").value,
+        subject_level: document.getElementById("authClassLevel").value,
+        language_id: document.getElementById("authClassLanguage").value,
+    };
+
+    if (!wanted.year_level || !wanted.subject_level || !wanted.language_id) {
+        showGateError("Please answer all three.");
+        return;
+    }
+
+    const create = document.getElementById("authClassCreate");
+    create.disabled = true;
+
+    fetch("/api/classes", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(wanted),
+    })
+        .then((response) =>
+            response
+                .json()
+                .catch(() => ({}))
+                .then((body) => {
+                    if (!response.ok) {
+                        throw new Error(body.error || "could not create that class");
+                    }
+                    return body;
+                }))
+        .then((body) => {
+            currentUser.has_created_class = true;
+            // so a second pass through the gate this page load does not offer
+            // again. The server is the real record; this keeps the two in step
+
+            document.getElementById("authClassDoneBlurb").textContent =
+                body.name
+                    ? body.name + " is ready. Add students to it whenever you like."
+                    : "Your class is ready.";
+            showStep("classDone");
+            // the class page is a link on this panel rather than a redirect: a
+            // teacher who only wanted the class made can skip straight past it
+        })
+        .catch((failure) => {
+            create.disabled = false;
+            showGateError(failure.message);
+        });
+}
+
+// The gate's language picker is filled from /api/languages, and so is this one.
+// Called from loadGateLanguages for the same reason fillSettingsLanguages is:
+// the list can land after the panels were built.
+function fillClassLanguages() {
+    const select = document.getElementById("authClassLanguage");
+    if (!select) return;
+
+    const chosen = select.value;
+    select.textContent = "";
+
+    const blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "Choose...";
+    select.appendChild(blank);
+
+    gateLanguages.forEach((language) => {
+        const option = document.createElement("option");
+        option.value = language.id;
+        option.textContent = language.label;
+        select.appendChild(option);
+    });
+
+    setSelectValue("authClassLanguage", chosen);
+}
+
+// ---------------------------------------------------------------------------
 // the nav corner
 // ---------------------------------------------------------------------------
 
@@ -523,10 +725,16 @@ function paintAccountBox(user) {
         return;
     }
 
-    const name = document.createElement("span");
-    name.id = "accountName";
-    name.textContent = user.name || user.email;
-    box.appendChild(name);
+    if (window.location.pathname !== "/classes") {
+        const classes = document.createElement("a");
+        classes.id = "classesLink";
+        classes.href = "/classes";
+        classes.textContent = "View classes";
+        box.appendChild(classes);
+    }
+    // for both roles: a student uses it to find the classes they are in and a
+    // teacher the ones they teach, and the page itself already says which is
+    // which. Left off on the classes page, where it would link to itself
 
     const settings = document.createElement("button");
     settings.type = "button";

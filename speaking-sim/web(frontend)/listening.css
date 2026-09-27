@@ -238,7 +238,6 @@
     margin-left:auto; display:inline-flex; align-items:center; gap:10px;
     font-size:13px;
   }
-  #accountName{color:var(--muted); font-weight:600}
   #accountBox a{
     font-size:13px; font-weight:600; text-decoration:none; color:var(--accent);
   }
@@ -268,10 +267,14 @@
   #authCard h2{font-family:var(--display); font-size:22px; margin:0 0 6px}
   #authBlurb{margin:0 0 18px; color:var(--muted); font-size:13px}
 
-  #authChoice{display:flex; flex-direction:column; gap:10px}
+  #authChoice,#authRole,#authTeacher,#authTeacherWelcome,
+  #authClassOffer,#authClassDone{display:flex; flex-direction:column; gap:10px}
   /* [hidden] only carries the browser's default weight, which the display:flex
      above beats, so both panels have to say it themselves. */
-  #authChoice[hidden],#authDetails[hidden]{display:none}
+  #authChoice[hidden],#authRole[hidden],#authTeacher[hidden],
+  #authTeacherWelcome[hidden],#authDetails[hidden],
+  #authClassOffer[hidden],#authClassForm[hidden],
+  #authClassDone[hidden]{display:none}
 
   .authOption{
     display:block; width:100%; padding:13px 15px; font:inherit; text-align:left;
@@ -300,13 +303,44 @@
   #authBack:hover{color:var(--ink)}
   #authBack[hidden]{display:none}
 
+  #authTeacher p,#authTeacherWelcome p,
+  #authClassOffer p,#authClassDone p{margin:0; font-size:13px; color:var(--muted)}
+
+  /* the create-a-class step is the student form's twin, so it takes that
+     form's shape rather than restating it */
+  #authClassForm{display:flex; flex-direction:column; gap:5px}
+  #authClassForm label{margin-top:10px; font-size:12px; font-weight:600}
+  #authClassForm select{background:var(--panel); width:100%}
+
+  #authClassCreate{
+    margin-top:18px; padding:9px 18px; font:inherit; font-weight:600;
+    cursor:pointer; color:#fff; background:var(--accent); border:none;
+    border-radius:8px; align-self:flex-start;
+  }
+  #authClassCreate:disabled{opacity:.55; cursor:default}
+
+  #authRoleBack,#authTeacherBack,#authTeacherSignOut,
+  #authClassBack,#authClassSkip{
+    margin-top:8px; padding:6px; font:inherit; font-size:13px; cursor:pointer;
+    color:var(--muted); background:none; border:none; align-self:flex-start;
+  }
+  #authRoleBack:hover,#authTeacherBack:hover,#authTeacherSignOut:hover,
+  #authClassBack:hover,#authClassSkip:hover{color:var(--ink)}
+
   #authError{margin:14px 0 0; color:#c0392b; font-size:13px}
   #authError[hidden]{display:none}
 
   @media (prefers-color-scheme:dark){
-    #authNext{color:#16171a}
+    #authNext,#authClassCreate{color:#16171a}
     #authError{color:#e79287}
   }
+
+  #classesLink{
+    font:inherit; font-size:12px; font-weight:600; text-decoration:none;
+    color:var(--accent); border:1px solid var(--accent); border-radius:999px;
+    padding:4px 11px; white-space:nowrap;
+  }
+  #classesLink:hover{background:var(--accent-soft)}
 
   /* Account settings, built by the same account.js. In the listening palette
      for the same reason as everything above it. */
