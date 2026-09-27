@@ -682,6 +682,21 @@ h1 {
     display: none;
 }
 
+#examNotice {
+    margin-top: 1rem;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid #c0503f;
+    border-left-width: 4px;
+    border-radius: 8px;
+    background: #fbece9;
+    color: #8a2c20;
+    font-size: 0.9rem;
+}
+
+#examNotice[hidden] {
+    display: none;
+}
+
 .dots {
     display: inline-flex;
     gap: 0.25rem;
@@ -751,6 +766,12 @@ h1 {
     #examTimer.low, #examTimer.expired { border-color: #e06c5c; }
     #examTimer.low { color: #e06c5c; }
     #examTimer.expired { background: #a8342a; color: #fff; }
+
+    #examNotice {
+        border-color: #a8342a;
+        background: #2a1714;
+        color: #e79287;
+    }
 
     #translateCount.near { color: #e79287; }
     #translateResult.error {

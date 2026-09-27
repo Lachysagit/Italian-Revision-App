@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 #include "crow/json.h"
@@ -34,6 +35,10 @@ struct Message {
     //what the examiner calls the student, sent with Start only. Same discipline
     //again: absent rather than empty when the settings field was left blank,
     //which is how the session tells "no name given" from "named nothing"
+    std::int64_t class_id = 0;
+    //sent with Start only: the class this exam is being sat for, or absent for
+    //private practice. A claim the server checks against class_members before
+    //it believes it, since it decides which teacher can read the transcript
     bool final = false;
     //sent with Stop only, and only once the exam clock has run out: transcribe
     //this answer and record it, but make no examiner request from it. The

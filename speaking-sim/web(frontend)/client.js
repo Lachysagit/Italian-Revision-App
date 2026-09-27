@@ -16,6 +16,7 @@ const micRetry = document.getElementById("micRetry");
 const micDismiss = document.getElementById("micDismiss");
 const examTimer = document.getElementById("examTimer");
 const examLoading = document.getElementById("examLoading");
+const examNotice = document.getElementById("examNotice");
 const pageTitle = document.getElementById("pageTitle");
 //get references to HTML elements by their ID's
 //the translate box's own elements are looked up inside translate.js
@@ -34,6 +35,12 @@ const STUDENT_NAME_STORAGE = "studentName";
 //same treatment for the name, so it is typed once rather than every session
 
 let socket = null;
+let socketOpened = false;
+//whether this session's socket ever finished its handshake. A refused
+//handshake - signed out, or a page on the wrong origin - closes without a
+//single message, and this is the only way to tell that from a normal end
+let lastServerError = "";
+//the last error the server sent, read back when a "refused" status follows it
 let audioContext = null;
 let mediaStream = null;
 let micSource = null;
@@ -453,6 +460,16 @@ function addTurn(role, text) {
     }
 }
 
+function showExamNotice(text) {
+    examNotice.textContent = text;
+    examNotice.hidden = false;
+}
+
+function hideExamNotice() {
+    examNotice.hidden = true;
+    examNotice.textContent = "";
+}
+
 function setExamLoading(waiting) {
     examLoading.hidden = !waiting;
     //only the opening wait: later "thinking" gaps have a transcript above them
@@ -820,6 +837,9 @@ startButton.onclick = async () => {
     }
     setTurnState("thinking");
     setExamLoading(true);
+    hideExamNotice();
+    socketOpened = false;
+    lastServerError = "";
 
     audioContext = new AudioContext({ sampleRate: CAPTURE_SAMPLE_RATE });
     //synchronous and permission-free, so it is built before the socket rather
@@ -835,6 +855,7 @@ startButton.onclick = async () => {
     //tell the socket to send binary data as an ArrayBuffer (raw bytes)
 
     socket.onopen = () => {
+        socketOpened = true;
         addLog("connected");
         socket.send(JSON.stringify({
             type: "start",
@@ -854,6 +875,10 @@ startButton.onclick = async () => {
     };
     socket.onclose = () => {
         addLog("disconnected");
+        if (!socketOpened) {
+            showExamNotice("Could not start the exam. Check that you are " +
+                "signed in, then try again.");
+        }
         teardown();
         //a server-side drop must release the mic and the graph too, otherwise
         //the recording light stays on with nowhere to send the audio
@@ -1143,6 +1168,18 @@ function handleMessage(event) { //message from server
                 armMic();
     
             }
+        }
+
+        if (message.type === "error") {
+            lastServerError = message.payload;
+        }
+
+        if (message.type === "status" && message.payload === "refused") {
+            showExamNotice(lastServerError || "The exam could not start.");
+            teardown();
+            //the server turned the Start down before asking anything - not
+            //signed up yet, or a class the student is not in. Said on the page,
+            //since an error otherwise only reaches the console
         }
 
         if (message.type === "status" && message.payload === "busy") {

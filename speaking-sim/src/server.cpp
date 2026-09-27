@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "sim/audio_encode.hpp"
+#include "sim/http_util.hpp"
 #include "sim/protocol.hpp"
 #include "sim/question_bank.hpp"
 #include "sim/static_files.hpp"
@@ -51,17 +52,15 @@ bool is_supported_language(const std::string& code) {
     //translate box answered every lookup with an unsupported-pair error
 }
 
-crow::response json_error(int status, const std::string& message) {
-    crow::json::wvalue json;
-    json["error"] = message;
-    crow::response response(status, json.dump());
-    response.set_header("Content-Type", "application/json");
-    return response;
-    //an error is JSON too, so the client can read .error the same way on every
-    //path instead of guessing whether a body is text or JSON by status code
-}
-
 constexpr const char* kSessionCookie = "sid";
+
+// Who the websocket handshake found behind the session cookie. Allocated in
+// onaccept, which runs before the connection object exists, and handed across
+// through the connection's userdata pointer; onopen takes it straight back into
+// a unique_ptr. Zero is a browser that never signed in.
+struct SocketIdentity {
+    std::int64_t user_id = 0;
+};
 
 //TEACHER_EMAILS is a comma separated allowlist. A school deployment needs some
 //way to say who may create a class, and an env var needs no admin UI to go
@@ -288,10 +287,61 @@ void Server::run()
     //take a worker away from a student who is mid-turn
 
     CROW_WEBSOCKET_ROUTE(app_, "/ws") //WEBSOCKET ROUTE ----------------------------------
+        .onaccept([this](const crow::request& req,
+                         std::optional<crow::response>& refusal,
+                         void** userdata)
+            {
+            const std::string origin = req.get_header_value("Origin");
+            if (!origin.empty() &&
+                !origin_allowed(origin, req.get_header_value("Host"),
+                                config_.public_origin)) {
+                refusal = crow::response(403, "cross-site websocket refused");
+                return;
+                //the session cookie rides on a websocket from any page, so
+                //without this another site could open an exam in a signed-in
+                //student's name and read their transcript back
+            }
+
+            std::int64_t user_id = 0;
+            const std::string token =
+                cookie_value(req.get_header_value("Cookie"), kSessionCookie);
+            if (!token.empty()) {
+                try {
+                    if (const auto user = store_->user_for_auth_token(token)) {
+                        user_id = user->id;
+                    }
+                } catch (const std::exception& e) {
+                    std::cerr << "ws: session lookup failed: " << e.what() << '\n';
+                    //treated as signed out: with AUTH_REQUIRED on that refuses
+                    //below, and with it off the exam still runs anonymously
+                }
+            }
+
+            if (user_id == 0 && config_.auth_required) {
+                refusal = crow::response(401, "sign in to start an exam");
+                return;
+            }
+
+            *userdata = new SocketIdentity{user_id};
+            //read here, at the handshake, because this is the one moment the
+            //socket carries the browser's cookies. Each exam opens a fresh
+            //socket, so the answer is never older than the exam it belongs to
+            }
+        ) //end of .onaccept
+
         .onopen([this](crow::websocket::connection& conn) //handles when websocket is opened
         
             {
+            std::unique_ptr<SocketIdentity> identity(
+                static_cast<SocketIdentity*>(conn.userdata()));
+            conn.userdata(nullptr);
+            //ownership taken back at once, so the identity is freed with this
+            //scope and nothing later can mistake the pointer for live data
+
             auto session = std::make_shared<Session>();
+            if (identity) {
+                session->set_user_id(identity->user_id);
+            }
             session->set_language(&languages_.default_pack());
             //the default until a Start message names one, so a client that
             //never sends a language still runs an exam rather than reaching a
@@ -689,6 +739,16 @@ crow::response Server::serve_auth_callback(const crow::request& req) {
     try {
         const bool is_teacher = is_teacher_email(config_, result.profile.email);
         const User user = store_->upsert_google_user(result.profile, is_teacher);
+        persist_quietly("invite claim", [&] {
+            const int joined = store_->claim_invites(user);
+            if (joined > 0) {
+                std::cerr << "oauth: " << user.email << " joined " << joined
+                          << " class(es) from invites\n";
+            }
+        });
+        //every sign-in, not only the first: a teacher can add an address to a
+        //class after that student already has an account and a live cookie.
+        //Quietly, because a failed claim must not cost the student their login
         const std::string token = store_->create_auth_session(
             user.id, req.get_header_value("User-Agent"));
 
@@ -928,12 +988,70 @@ void Server::handle_control(crow::websocket::connection& conn,
             return;
         } //the connection is already closing, so there is nowhere to send a reply
 
+        if (session->attempt_id() != 0) {
+            send_busy(handle);
+            return;
+            //one exam per socket. A second Start would open a second attempt
+            //and ask a second opening question inside an exam already running
+        }
+
+        std::optional<User> user;
+        std::optional<ClassInfo> klass;
+        std::string refusal;
+        try {
+            if (const auto user_id = session->user_id()) {
+                user = store_->user_by_id(*user_id);
+            }
+            if (message.class_id > 0 && user) {
+                klass = store_->class_by_id(message.class_id);
+                if (klass && (klass->archived ||
+                              !store_->class_role(klass->id, user->id))) {
+                    klass.reset();
+                }
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "start: account lookup failed: " << e.what() << '\n';
+            refusal = "could not check your account, please try again";
+        }
+
+        if (refusal.empty() && config_.auth_required && !user) {
+            refusal = "sign in to start an exam";
+        } else if (refusal.empty() && user && !user->onboarded &&
+                   !user->is_teacher) {
+            refusal = "finish signing up before starting an exam";
+            //the level chosen at sign-up is what decides which key an exam
+            //spends, so an account without one must not reach the examiner.
+            //Teachers are exempt: they try the exam out, they do not sit it
+        } else if (refusal.empty() && message.class_id > 0 && !klass) {
+            refusal = user ? "you are not in that class"
+                           : "sign in to sit an exam for a class";
+            //refused rather than quietly run as private practice: a student who
+            //thinks their teacher will see this exam must be told otherwise
+        }
+
+        if (!refusal.empty()) {
+            send_error(handle, refusal);
+            send_status(handle, "refused");
+            return;
+            //before try_begin_job, so a refused Start leaves nothing to release
+        }
+
         if (!session->try_begin_job()) {
             send_busy(handle);
             return;
         } //a job is already in flight on this session, so refuse this message
 
-        if (const LanguagePack* pack = languages_.find(message.language)) {
+        const LanguagePack* pack = nullptr;
+        if (klass) {
+            pack = languages_.find(klass->language_id);
+            session->set_class_id(klass->id);
+            //the class decides the language: an Italian class's exam is an
+            //Italian exam whatever the picker was left on
+        }
+        if (pack == nullptr) {
+            pack = languages_.find(message.language);
+        }
+        if (pack != nullptr) {
             session->set_language(pack);
         }
         //an unknown or absent language leaves the default set on open, rather
@@ -948,20 +1066,23 @@ void Server::handle_control(crow::websocket::connection& conn,
         //an absent name is resolved to the key the examiner would fall back to
         //anyway, so the attempt and the usage counter name the key actually
         //spent rather than recording an empty string against every default turn
-        session->set_student_name(message.student_name);
+        session->set_student_name(
+            message.student_name.empty() && user ? user->display_name
+                                                 : message.student_name);
+        //the name box wins, and a blank one falls back to the first name the
+        //account was created with, so a signed-in student is greeted either way
         //all three picked once, before the first job, and reused by every later
         //turn - Stop messages carry none of these fields of their own. Set
         //before the job is enqueued, so even the opening question knows them
 
         persist_quietly("attempt start", [&] {
             session->set_attempt_id(store_->begin_attempt(
-                std::nullopt, std::nullopt, session->language().id,
+                session->user_id(), session->class_id(), session->language().id,
                 session->gemini_key_name()));
         });
-        //opened here rather than on connect: the language is not known until
-        //Start names one, and an attempt row that cannot say which exam it was
-        //is worth less than the turn it delays. user_id is nullopt until
-        //sign-in exists, which is what the nullable column is for
+        //opened here rather than on connect: the language and the class are not
+        //known until Start names them, and an attempt row that cannot say which
+        //exam it was is worth less than the turn it delays
 
         std::shared_ptr<Session> claim(session.get(), [session](Session* s) { s->end_job(); });
         //not an owner, just an RAII handle whose deleter releases the claim

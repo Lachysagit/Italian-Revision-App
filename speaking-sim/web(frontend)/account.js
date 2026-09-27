@@ -39,9 +39,11 @@ function initAccount(options) {
                 showStep("choice");
                 return null;
             }
-            if (!user.onboarded) {
+            if (!user.onboarded && !user.is_teacher) {
                 return finishPendingSignup(onReady);
             }
+            // teachers skip the year and level questions: those describe a
+            // student, and the server lets a teacher start an exam without them
             hideGate();
             onReady(user);
             return user;

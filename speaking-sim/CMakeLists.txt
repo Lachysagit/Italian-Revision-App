@@ -255,6 +255,7 @@ add_executable(speaking-sim
     src/main.cpp
     src/audio_encode.cpp
     src/config.cpp
+    src/http_util.cpp
     src/language.cpp
     src/protocol.cpp
     src/question_bank.cpp

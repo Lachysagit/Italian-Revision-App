@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <random>
 #include <cstddef>
 #include <cstdint>
@@ -40,6 +41,16 @@ public:
 
     void record_answer(std::string answer);
     void record_question(std::string question);
+
+    void set_user_id(std::int64_t id);
+    std::optional<std::int64_t> user_id() const;
+    //who is sitting the exam, read from the session cookie when the websocket
+    //was accepted. nullopt for a browser that never signed in, which only a
+    //server with AUTH_REQUIRED off lets through
+    void set_class_id(std::int64_t id);
+    std::optional<std::int64_t> class_id() const;
+    //the class the Start message named, once Server has checked the user is in
+    //it. nullopt is private practice
 
     void set_attempt_id(std::int64_t id);
     std::int64_t attempt_id() const;
@@ -128,6 +139,9 @@ private:
     std::string partial_byte_;
 
 
+    std::int64_t user_id_ = 0;
+    std::int64_t class_id_ = 0;
+    //zero for "none": row ids start at 1, so zero is never a real one
     std::int64_t attempt_id_ = 0;
     int turn_index_ = 0;
     //plain data, deliberately: Session holds no pointer to the Store. The
