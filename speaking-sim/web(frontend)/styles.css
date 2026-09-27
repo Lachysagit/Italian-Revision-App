@@ -48,6 +48,8 @@ h1 {
 
 #siteNav {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     gap: 0.4rem;
     padding: 1.25rem 0 0.75rem;
     border-bottom: 1px solid var(--line);
@@ -818,6 +820,7 @@ h1 {
 #accountName { opacity: 0.8; }
 
 #signOutButton {
+    white-space: nowrap;
     font: inherit;
     padding: 0.2rem 0.6rem;
     cursor: pointer;

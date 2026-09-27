@@ -199,6 +199,23 @@ void Server::run()
     //crow's <string> stops at a /, and is_safe_font_name keeps the rest of the
     //folder from being readable through a name the stylesheet never asks for
 
+    CROW_ROUTE(app_, "/teacher") //HTTP ROUTE -----------------------------------
+    ([] {
+        return serve_static_file("web(frontend)/teacher.html", "text/html");
+    });
+    //served to anyone, like every other page: the gate and the API decide what
+    //a visitor sees, and the page itself holds nothing but layout
+
+    CROW_ROUTE(app_, "/teacher.js") //HTTP ROUTE -----------------------------------
+    ([] {
+        return serve_static_file("web(frontend)/teacher.js", "application/javascript");
+    });
+
+    CROW_ROUTE(app_, "/teacher.css") //HTTP ROUTE -----------------------------------
+    ([] {
+        return serve_static_file("web(frontend)/teacher.css", "text/css");
+    });
+
     CROW_ROUTE(app_, "/listening") //HTTP ROUTE -----------------------------------
     ([] {
         return serve_static_file("web(frontend)/listening.html", "text/html");

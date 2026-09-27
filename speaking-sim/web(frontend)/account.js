@@ -34,6 +34,7 @@ function initAccount(options) {
         .then((user) => {
             currentUser = user;
             paintAccountBox(user);
+            paintTeacherLink(user);
 
             if (!user) {
                 showStep("choice");
@@ -334,6 +335,25 @@ function buildAccountBox() {
     const box = document.createElement("span");
     box.id = "accountBox";
     nav.appendChild(box);
+}
+
+// The dashboard link, for teachers only. Added to whichever page is open so the
+// nav is the same everywhere, and marked current on the dashboard itself.
+function paintTeacherLink(user) {
+    const nav = document.getElementById("siteNav");
+    if (!nav || !user || !user.is_teacher || document.getElementById("teacherLink")) {
+        return;
+    }
+    const link = document.createElement("a");
+    link.id = "teacherLink";
+    link.href = "/teacher";
+    link.textContent = "Teacher";
+    if (window.location.pathname === "/teacher") {
+        link.className = "current";
+    }
+    const box = document.getElementById("accountBox");
+    nav.insertBefore(link, box);
+    // before the account corner, which pushes itself to the right edge
 }
 
 function paintAccountBox(user) {
