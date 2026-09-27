@@ -655,9 +655,14 @@ function setTurnState(state) {
     //the picked key rides on the "start" message only, so changing it once a
     //session is running would silently do nothing, and the modal holding it is
     //only reachable through this button
-    languageSelect.disabled = state !== "idle";
+    languageSelect.disabled = state !== "idle" || classLocksLanguage();
     //the language sits on the page rather than behind the modal now, so unlike
-    //the key it has to disable itself: it is read once at the start message
+    //the key it has to disable itself: it is read once at the start message.
+    //A class's exam is in the class's language, so a picked class holds it too
+    classSelect.disabled = state !== "idle";
+    joinClassButton.disabled = state !== "idle";
+    //the class rides on the start message like the language, so it is fixed
+    //for the rest of the session
 }
 
 async function loadGeminiKeys() {
@@ -871,6 +876,9 @@ startButton.onclick = async () => {
             //falls back to its own default rather than failing the start
             gemini_key: geminiKeySelect.value || "",
             student_name: studentName.value.trim(),
+            class_id: selectedClassId() || undefined,
+            //undefined drops the key, which the server reads as private
+            //practice, rather than sending a 0 it would have to interpret
             //trimmed here so the server sees a real name or nothing at all;
             //Session treats a whitespace-only name as no name either way
         }));

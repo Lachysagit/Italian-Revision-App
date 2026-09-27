@@ -187,7 +187,8 @@ h1 {
     /* mid-session these are already spent: read once at the start message */
 }
 
-#examSetup #settings {
+#examSetup #settings,
+#examSetup #joinClass {
     margin-left: auto;
     padding: 0.4rem 0.9rem;
     border: 1px solid var(--line);
@@ -200,12 +201,19 @@ h1 {
     transition: border-color 0.15s, color 0.15s;
 }
 
-#examSetup #settings:hover:not(:disabled) {
+#examSetup #joinClass {
+    margin-left: 0;
+    /* only Advanced is pushed to the far edge */
+}
+
+#examSetup #settings:hover:not(:disabled),
+#examSetup #joinClass:hover:not(:disabled) {
     border-color: var(--muted);
     color: var(--ink);
 }
 
-#examSetup #settings:disabled {
+#examSetup #settings:disabled,
+#examSetup #joinClass:disabled {
     opacity: 0.45;
     cursor: not-allowed;
 }
@@ -213,6 +221,16 @@ h1 {
 #examSetup :focus-visible {
     outline: 2px solid var(--examiner-edge);
     outline-offset: 2px;
+}
+
+#classHint {
+    margin: 0.6rem 0 0;
+    font-size: 0.85rem;
+    color: var(--student-ink);
+}
+
+#classHint[hidden] {
+    display: none;
 }
 
 #transcript {
@@ -315,7 +333,8 @@ h1 {
 /* the #log surface was removed from the page - addLog() writes to the console
    now - so its rules are gone rather than left styling nothing. */
 
-#settingsOverlay {
+#settingsOverlay,
+#joinOverlay {
     position: fixed;
     inset: 0;
     z-index: 20;
@@ -325,11 +344,13 @@ h1 {
     background: rgba(28, 30, 33, 0.45);
 }
 
-#settingsOverlay[hidden] {
+#settingsOverlay[hidden],
+#joinOverlay[hidden] {
     display: none;
 }
 
-#settingsModal {
+#settingsModal,
+#joinModal {
     width: min(24rem, calc(100vw - 2.5rem));
     padding: 1.25rem 1.5rem 1.5rem;
     border: 1px solid var(--line);
@@ -344,10 +365,11 @@ h1 {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    #settingsModal { animation: none; }
+    #settingsModal, #joinModal { animation: none; }
 }
 
-#settingsModal h2 {
+#settingsModal h2,
+#joinModal h2 {
     margin: 0 0 1.1rem;
     padding-bottom: 0.7rem;
     border-bottom: 1px solid var(--line);
@@ -356,7 +378,8 @@ h1 {
     font-weight: 600;
 }
 
-#settingsModal label {
+#settingsModal label,
+#joinModal label {
     display: block;
     margin-bottom: 0.35rem;
     font-size: 0.85rem;
@@ -373,13 +396,39 @@ h1 {
     box-sizing: border-box;
 }
 
-#settingsActions {
+#joinCodeInput {
+    width: 100%;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--ink);
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 1.2rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+#joinError {
+    margin: 0.6rem 0 0;
+    font-size: 0.85rem;
+    color: #b0392b;
+}
+
+#joinError[hidden] {
+    display: none;
+}
+
+#settingsActions,
+#joinActions {
     display: flex;
     justify-content: flex-end;
+    gap: 0.5rem;
     margin-top: 1.25rem;
 }
 
-#settingsActions button {
+#settingsActions button,
+#joinActions button {
     padding: 0.5rem 1rem;
     border: 1px solid var(--line);
     border-radius: 6px;
@@ -390,7 +439,15 @@ h1 {
     cursor: pointer;
 }
 
-#settingsActions button:hover {
+#joinActions #joinSubmit {
+    border-color: var(--examiner-edge);
+    background: var(--examiner-edge);
+    color: #fff;
+    /* two ids, so it outranks the shared button rule above without !important */
+}
+
+#settingsActions button:hover,
+#joinActions button:hover {
     border-color: var(--muted);
 }
 
@@ -753,7 +810,10 @@ h1 {
         border-color: var(--examiner-ink);
     }
 
-    #settingsOverlay { background: rgba(0, 0, 0, 0.6); }
+    #settingsOverlay, #joinOverlay { background: rgba(0, 0, 0, 0.6); }
+    #joinCodeInput { background: var(--page-bg); }
+    #joinError { color: #e79287; }
+    #joinActions #joinSubmit { color: #0f1216; }
 
     #settingsModal select,
     #examSetup select,

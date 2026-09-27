@@ -206,6 +206,28 @@ void Server::run()
     //served to anyone, like every other page: the gate and the API decide what
     //a visitor sees, and the page itself holds nothing but layout
 
+    CROW_ROUTE(app_, "/classes.js") //HTTP ROUTE -----------------------------------
+    ([] {
+        return serve_static_file("web(frontend)/classes.js", "application/javascript");
+    });
+    //the class picker and join box on the exam page
+
+    CROW_ROUTE(app_, "/join/<string>") //HTTP ROUTE -----------------------------------
+    ([](const std::string& code) {
+        std::string safe;
+        for (const char ch : code) {
+            if (std::isalnum(static_cast<unsigned char>(ch)) || ch == '-') {
+                safe.push_back(ch);
+            }
+        }
+        crow::response response(302);
+        response.set_header("Location", safe.empty() ? "/" : "/?join=" + safe);
+        return response;
+        //a link a teacher can paste anywhere. The exam page does the joining,
+        //after sign-in if need be; only letters, digits and hyphens are passed
+        //on, so the redirect cannot be bent into anything but this site
+    });
+
     CROW_ROUTE(app_, "/teacher.js") //HTTP ROUTE -----------------------------------
     ([] {
         return serve_static_file("web(frontend)/teacher.js", "application/javascript");
