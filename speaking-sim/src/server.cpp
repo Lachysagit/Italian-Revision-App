@@ -283,6 +283,10 @@ void Server::run()
     //where sign-up finishes: year, subject level and language. Until this has
     //been posted once the account is not onboarded, and no exam may start
 
+    register_class_routes();
+    //classes, join codes, rosters and exam history for the teacher dashboard,
+    //all in src/class_api.cpp
+
     CROW_ROUTE(app_, "/api/translate").methods("POST"_method) //HTTP ROUTE -----------------------------------
     ([this](const crow::request& req) {
         return serve_translate(req);
@@ -837,10 +841,13 @@ crow::response Server::serve_me(const crow::request& req) {
 }
 
 crow::response Server::serve_set_profile(const crow::request& req) {
-    const std::optional<User> user = user_for_request(req);
-    if (!user) {
-        return json_error(401, "not signed in");
+    User signed_in;
+    if (auto refusal = refuse_unless_signed_in(req, signed_in)) {
+        return std::move(*refusal);
     }
+    const std::optional<User> user = std::move(signed_in);
+    //through the shared check so this POST gets the same cross-origin refusal
+    //as the class routes
 
     const crow::json::rvalue body = crow::json::load(req.body);
     if (!body) {
@@ -1128,7 +1135,7 @@ void Server::handle_control(crow::websocket::connection& conn,
 
     std::vector<std::int16_t> utterance_audio = session->take_audio();
     //take_audio() returns the completed audio buffer, clearing the session buffer
-    //taking the audio on the socket thread to seperate it from any new incoming audio\
+    //taking the audio on the socket thread to seperate it from any new incoming audio
 
     if (!session->clock_started()) {
         start_exam_clock(*session);
