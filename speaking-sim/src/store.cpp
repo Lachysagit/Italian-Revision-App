@@ -65,6 +65,8 @@ CREATE TABLE classes (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
   language_id TEXT NOT NULL DEFAULT '',
+  year_level    TEXT NOT NULL DEFAULT '',
+  subject_level TEXT NOT NULL DEFAULT '',
   gemini_key_name TEXT NOT NULL DEFAULT '',
   daily_attempt_cap INTEGER,
   join_code TEXT UNIQUE,
@@ -222,13 +224,13 @@ void Store::migrate() {
         exec("BEGIN");
         try {
             exec(kSchemaV1);
-            exec("PRAGMA user_version=2");
+            exec("PRAGMA user_version=3");
             exec("COMMIT");
         } catch (...) {
             exec("ROLLBACK");
             throw;
         }
-        std::cerr << "store: created schema version 2\n";
+        std::cerr << "store: created schema version 3\n";
         return;
         //a fresh database gets the current shape in one step and skips the
         //migration below, which only exists to carry an older file forward
@@ -246,6 +248,24 @@ void Store::migrate() {
             throw;
         }
         std::cerr << "store: migrated schema to version 2\n";
+    }
+
+    if (version < 3) {
+        exec("BEGIN");
+        try {
+            exec("ALTER TABLE classes ADD COLUMN year_level "
+                 "TEXT NOT NULL DEFAULT ''");
+            exec("ALTER TABLE classes ADD COLUMN subject_level "
+                 "TEXT NOT NULL DEFAULT ''");
+            exec("PRAGMA user_version=3");
+            exec("COMMIT");
+        } catch (...) {
+            exec("ROLLBACK");
+            throw;
+        }
+        std::cerr << "store: migrated schema to version 3\n";
+        //a class is defined by the cohort it teaches, so the two levels
+        //sit on the class row beside the language it already carried
     }
 }
 
@@ -473,6 +493,131 @@ bool Store::is_in_any_class(std::int64_t user_id) {
     const bool found = sqlite3_step(stmt) == SQLITE_ROW;
     sqlite3_finalize(stmt);
     return found;
+}
+
+std::int64_t Store::create_class(std::int64_t owner_id,
+                                 const std::string& name,
+                                 const std::string& language_id,
+                                 const std::string& year_level,
+                                 const std::string& subject_level) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    exec("BEGIN IMMEDIATE");
+    try {
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(db_,
+                "INSERT INTO classes "
+                "(name, language_id, year_level, subject_level, owner_id, "
+                " created_at) "
+                "VALUES (?, ?, ?, ?, ?, "
+                "        CAST(strftime('%s','now') AS INTEGER))",
+                -1, &stmt, nullptr) != SQLITE_OK) {
+            throw std::runtime_error(std::string("create_class prepare: ") +
+                                     sqlite3_errmsg(db_));
+        }
+        sqlite3_bind_text(stmt, 1, name.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, language_id.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 3, year_level.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 4, subject_level.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int64(stmt, 5, owner_id);
+
+        const int rc = sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+        if (rc != SQLITE_DONE) {
+            throw std::runtime_error(std::string("create_class step: ") +
+                                     sqlite3_errmsg(db_));
+        }
+        const std::int64_t class_id = sqlite3_last_insert_rowid(db_);
+
+        sqlite3_stmt* member = nullptr;
+        if (sqlite3_prepare_v2(db_,
+                "INSERT INTO class_members (class_id, user_id, role, added_at) "
+                "VALUES (?, ?, 'teacher', "
+                "        CAST(strftime('%s','now') AS INTEGER))",
+                -1, &member, nullptr) != SQLITE_OK) {
+            throw std::runtime_error(std::string("create_class member: ") +
+                                     sqlite3_errmsg(db_));
+        }
+        sqlite3_bind_int64(member, 1, class_id);
+        sqlite3_bind_int64(member, 2, owner_id);
+
+        const int member_rc = sqlite3_step(member);
+        sqlite3_finalize(member);
+        if (member_rc != SQLITE_DONE) {
+            throw std::runtime_error(std::string("create_class member step: ") +
+                                     sqlite3_errmsg(db_));
+        }
+        //the owner is a member as well as the owner: classes_for_user reads
+        //class_members, so skipping this would hide the class from the very
+        //teacher who just made it
+
+        exec("COMMIT");
+        return class_id;
+    } catch (...) {
+        exec("ROLLBACK");
+        throw;
+    }
+}
+
+std::vector<ClassSummary> Store::classes_for_user(std::int64_t user_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_,
+            "SELECT classes.id, classes.name, classes.language_id, "
+            "       classes.year_level, classes.subject_level, mine.role, "
+            "       (SELECT COUNT(*) FROM class_members "
+            "         WHERE class_members.class_id = classes.id) "
+            "  FROM classes "
+            "  JOIN class_members AS mine ON mine.class_id = classes.id "
+            " WHERE mine.user_id = ? AND classes.archived_at IS NULL "
+            " ORDER BY classes.created_at DESC, classes.id DESC",
+            -1, &stmt, nullptr) != SQLITE_OK) {
+        throw std::runtime_error(std::string("classes_for_user prepare: ") +
+                                 sqlite3_errmsg(db_));
+    }
+    sqlite3_bind_int64(stmt, 1, user_id);
+
+    const auto text = [stmt](int col) {
+        const unsigned char* value = sqlite3_column_text(stmt, col);
+        return value ? std::string(reinterpret_cast<const char*>(value))
+                     : std::string();
+    };
+
+    std::vector<ClassSummary> found;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        ClassSummary summary;
+        summary.id = sqlite3_column_int64(stmt, 0);
+        summary.name = text(1);
+        summary.language_id = text(2);
+        summary.year_level = text(3);
+        summary.subject_level = text(4);
+        summary.role = text(5) == "teacher" ? ClassRole::Teacher
+                                            : ClassRole::Student;
+        summary.member_count = sqlite3_column_int(stmt, 6);
+        found.push_back(std::move(summary));
+    }
+    sqlite3_finalize(stmt);
+    return found;
+}
+
+bool Store::has_created_class(std::int64_t user_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_,
+            "SELECT 1 FROM classes WHERE owner_id = ? LIMIT 1",
+            -1, &stmt, nullptr) != SQLITE_OK) {
+        throw std::runtime_error(std::string("has_created_class prepare: ") +
+                                 sqlite3_errmsg(db_));
+    }
+    sqlite3_bind_int64(stmt, 1, user_id);
+
+    const bool found = sqlite3_step(stmt) == SQLITE_ROW;
+    sqlite3_finalize(stmt);
+    return found;
+    //owner_id rather than class_members, and archived classes count: a teacher
+    //who made a class and archived it has still been asked once
 }
 
 std::string Store::create_auth_session(std::int64_t user_id,

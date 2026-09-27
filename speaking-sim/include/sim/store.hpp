@@ -44,6 +44,20 @@ struct User {
     //which is what stops a brand new account spending anything
 };
 
+//a class as the classes page lists it. member_count is the roster size, which
+//is what a card shows rather than the roster itself
+struct ClassSummary {
+    std::int64_t id = 0;
+    std::string name;
+    std::string language_id;
+    std::string year_level;
+    std::string subject_level;
+    ClassRole role = ClassRole::Student;
+    //this viewer's own role in this class, so the page can label a card
+    //"teaching" or "enrolled" without a second query per row
+    int member_count = 0;
+};
+
 struct GoogleProfile {
     std::string subject;   //Google's `sub`, stable forever - the join key
     std::string email;
@@ -80,6 +94,24 @@ public:
     bool is_in_any_class(std::int64_t user_id);
     //whether a profile edit is the user's own to make. A student in a class has
     //to ask a teacher; one in no class may change freely
+
+    // ---- classes ---------------------------------------------------------
+
+    std::int64_t create_class(std::int64_t owner_id,
+                              const std::string& name,
+                              const std::string& language_id,
+                              const std::string& year_level,
+                              const std::string& subject_level);
+    //creates the class and enrols the owner as its teacher in one transaction,
+    //so a class can never exist with nobody able to open it
+
+    std::vector<ClassSummary> classes_for_user(std::int64_t user_id);
+    //every class this account is a member of, teaching or enrolled, newest
+    //first. Archived classes are left out
+
+    bool has_created_class(std::int64_t user_id);
+    //whether this teacher owns a class already. What decides if the create-a-
+    //class offer is shown: it is a first-time prompt, not a permanent one
 
     // ---- cookie sessions -------------------------------------------------
 
