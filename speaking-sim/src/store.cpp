@@ -5,6 +5,9 @@
 #include <openssl/sha.h>
 #include <sqlite3.h>
 
+#include <openssl/rand.h>
+
+#include <cctype>
 #include <iostream>
 #include <stdexcept>
 
@@ -14,8 +17,8 @@ namespace {
 
 //the whole schema, applied once under PRAGMA user_version. A migration
 //framework would be more machinery than a single-file database for one
-//classroom needs: version 1 is everything, and a version 2 would be an ALTER
-//block guarded the same way.
+//classroom needs: version 1 is everything, and until this ships the way to
+//change it is to edit here and delete the database file.
 constexpr const char* kSchemaV1 = R"SQL(
 CREATE TABLE users (
   id INTEGER PRIMARY KEY,
@@ -163,6 +166,9 @@ CREATE TABLE key_usage_daily (
   call_count INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (day, gemini_key_name)
 );
+
+CREATE INDEX class_members_user ON class_members(user_id);
+CREATE INDEX class_invites_open ON class_invites(email) WHERE claimed_at IS NULL;
 )SQL";
 //rooms is declared before exam_attempts because the latter references it.
 //SQLite would accept either order, but the readable order is the one where a
@@ -224,49 +230,16 @@ void Store::migrate() {
         exec("BEGIN");
         try {
             exec(kSchemaV1);
-            exec("PRAGMA user_version=3");
+            exec("PRAGMA user_version=1");
             exec("COMMIT");
         } catch (...) {
             exec("ROLLBACK");
             throw;
         }
-        std::cerr << "store: created schema version 3\n";
-        return;
-        //a fresh database gets the current shape in one step and skips the
-        //migration below, which only exists to carry an older file forward
+        std::cerr << "store: created schema version 1\n";
     }
-
-    if (version < 2) {
-        exec("BEGIN");
-        try {
-            exec("ALTER TABLE users ADD COLUMN preferred_language "
-                 "TEXT NOT NULL DEFAULT ''");
-            exec("PRAGMA user_version=2");
-            exec("COMMIT");
-        } catch (...) {
-            exec("ROLLBACK");
-            throw;
-        }
-        std::cerr << "store: migrated schema to version 2\n";
-    }
-
-    if (version < 3) {
-        exec("BEGIN");
-        try {
-            exec("ALTER TABLE classes ADD COLUMN year_level "
-                 "TEXT NOT NULL DEFAULT ''");
-            exec("ALTER TABLE classes ADD COLUMN subject_level "
-                 "TEXT NOT NULL DEFAULT ''");
-            exec("PRAGMA user_version=3");
-            exec("COMMIT");
-        } catch (...) {
-            exec("ROLLBACK");
-            throw;
-        }
-        std::cerr << "store: migrated schema to version 3\n";
-        //a class is defined by the cohort it teaches, so the two levels
-        //sit on the class row beside the language it already carried
-    }
+    //one version, one CREATE: the database is still only ever made from
+    //scratch, so an older file is deleted rather than carried forward
 }
 
 void Store::reconcile_crashed_attempts() {
@@ -483,7 +456,8 @@ bool Store::is_in_any_class(std::int64_t user_id) {
 
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db_,
-            "SELECT 1 FROM class_members WHERE user_id = ? LIMIT 1",
+            "SELECT 1 FROM class_members "
+            "WHERE user_id = ? AND role = 'student' LIMIT 1",
             -1, &stmt, nullptr) != SQLITE_OK) {
         throw std::runtime_error(std::string("is_in_any_class prepare: ") +
                                  sqlite3_errmsg(db_));
@@ -491,112 +465,6 @@ bool Store::is_in_any_class(std::int64_t user_id) {
     sqlite3_bind_int64(stmt, 1, user_id);
 
     const bool found = sqlite3_step(stmt) == SQLITE_ROW;
-    sqlite3_finalize(stmt);
-    return found;
-}
-
-std::int64_t Store::create_class(std::int64_t owner_id,
-                                 const std::string& name,
-                                 const std::string& language_id,
-                                 const std::string& year_level,
-                                 const std::string& subject_level) {
-    std::lock_guard<std::recursive_mutex> lock(m_);
-
-    exec("BEGIN IMMEDIATE");
-    try {
-        sqlite3_stmt* stmt = nullptr;
-        if (sqlite3_prepare_v2(db_,
-                "INSERT INTO classes "
-                "(name, language_id, year_level, subject_level, owner_id, "
-                " created_at) "
-                "VALUES (?, ?, ?, ?, ?, "
-                "        CAST(strftime('%s','now') AS INTEGER))",
-                -1, &stmt, nullptr) != SQLITE_OK) {
-            throw std::runtime_error(std::string("create_class prepare: ") +
-                                     sqlite3_errmsg(db_));
-        }
-        sqlite3_bind_text(stmt, 1, name.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 2, language_id.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 3, year_level.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 4, subject_level.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int64(stmt, 5, owner_id);
-
-        const int rc = sqlite3_step(stmt);
-        sqlite3_finalize(stmt);
-        if (rc != SQLITE_DONE) {
-            throw std::runtime_error(std::string("create_class step: ") +
-                                     sqlite3_errmsg(db_));
-        }
-        const std::int64_t class_id = sqlite3_last_insert_rowid(db_);
-
-        sqlite3_stmt* member = nullptr;
-        if (sqlite3_prepare_v2(db_,
-                "INSERT INTO class_members (class_id, user_id, role, added_at) "
-                "VALUES (?, ?, 'teacher', "
-                "        CAST(strftime('%s','now') AS INTEGER))",
-                -1, &member, nullptr) != SQLITE_OK) {
-            throw std::runtime_error(std::string("create_class member: ") +
-                                     sqlite3_errmsg(db_));
-        }
-        sqlite3_bind_int64(member, 1, class_id);
-        sqlite3_bind_int64(member, 2, owner_id);
-
-        const int member_rc = sqlite3_step(member);
-        sqlite3_finalize(member);
-        if (member_rc != SQLITE_DONE) {
-            throw std::runtime_error(std::string("create_class member step: ") +
-                                     sqlite3_errmsg(db_));
-        }
-        //the owner is a member as well as the owner: classes_for_user reads
-        //class_members, so skipping this would hide the class from the very
-        //teacher who just made it
-
-        exec("COMMIT");
-        return class_id;
-    } catch (...) {
-        exec("ROLLBACK");
-        throw;
-    }
-}
-
-std::vector<ClassSummary> Store::classes_for_user(std::int64_t user_id) {
-    std::lock_guard<std::recursive_mutex> lock(m_);
-
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db_,
-            "SELECT classes.id, classes.name, classes.language_id, "
-            "       classes.year_level, classes.subject_level, mine.role, "
-            "       (SELECT COUNT(*) FROM class_members "
-            "         WHERE class_members.class_id = classes.id) "
-            "  FROM classes "
-            "  JOIN class_members AS mine ON mine.class_id = classes.id "
-            " WHERE mine.user_id = ? AND classes.archived_at IS NULL "
-            " ORDER BY classes.created_at DESC, classes.id DESC",
-            -1, &stmt, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(std::string("classes_for_user prepare: ") +
-                                 sqlite3_errmsg(db_));
-    }
-    sqlite3_bind_int64(stmt, 1, user_id);
-
-    const auto text = [stmt](int col) {
-        const unsigned char* value = sqlite3_column_text(stmt, col);
-        return value ? std::string(reinterpret_cast<const char*>(value))
-                     : std::string();
-    };
-
-    std::vector<ClassSummary> found;
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        ClassSummary summary;
-        summary.id = sqlite3_column_int64(stmt, 0);
-        summary.name = text(1);
-        summary.language_id = text(2);
-        summary.year_level = text(3);
-        summary.subject_level = text(4);
-        summary.role = text(5) == "teacher" ? ClassRole::Teacher
-                                            : ClassRole::Student;
-        summary.member_count = sqlite3_column_int(stmt, 6);
-        found.push_back(std::move(summary));
-    }
     sqlite3_finalize(stmt);
     return found;
 }
@@ -695,6 +563,7 @@ void Store::delete_auth_session(const std::string& token) {
 }
 
 std::int64_t Store::begin_attempt(std::optional<std::int64_t> user_id,
+                                  std::optional<std::int64_t> class_id,
                                   const std::string& language_id,
                                   const std::string& gemini_key_name) {
     std::lock_guard<std::recursive_mutex> lock(m_);
@@ -702,8 +571,8 @@ std::int64_t Store::begin_attempt(std::optional<std::int64_t> user_id,
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db_,
             "INSERT INTO exam_attempts "
-            "(user_id, language_id, gemini_key_name, started_at) "
-            "VALUES (?, ?, ?, CAST(strftime('%s','now') AS INTEGER))",
+            "(user_id, class_id, language_id, gemini_key_name, started_at) "
+            "VALUES (?, ?, ?, ?, CAST(strftime('%s','now') AS INTEGER))",
             -1, &stmt, nullptr) != SQLITE_OK) {
         throw std::runtime_error(std::string("begin_attempt prepare: ") +
                                  sqlite3_errmsg(db_));
@@ -713,11 +582,17 @@ std::int64_t Store::begin_attempt(std::optional<std::int64_t> user_id,
         sqlite3_bind_int64(stmt, 1, *user_id);
     } else {
         sqlite3_bind_null(stmt, 1);
-        //anonymous until sign-in lands. The column is nullable for exactly this
-        //phase, and tightens once every attempt has a user behind it
+        //a browser that never signed in, which AUTH_REQUIRED=false still
+        //allows. The column tightens once that switch is gone
     }
-    sqlite3_bind_text(stmt, 2, language_id.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 3, gemini_key_name.c_str(), -1, SQLITE_TRANSIENT);
+    if (class_id.has_value()) {
+        sqlite3_bind_int64(stmt, 2, *class_id);
+    } else {
+        sqlite3_bind_null(stmt, 2);
+        //private practice: no class, so no teacher can see it
+    }
+    sqlite3_bind_text(stmt, 3, language_id.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, gemini_key_name.c_str(), -1, SQLITE_TRANSIENT);
 
     const int rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
@@ -826,6 +701,522 @@ void Store::end_attempt(std::int64_t attempt_id, const std::string& reason) {
         throw std::runtime_error(std::string("end_attempt step: ") +
                                  sqlite3_errmsg(db_));
     }
+}
+
+// ---- classes ---------------------------------------------------------------
+
+namespace {
+
+// Owns one prepared statement for the length of a scope. The methods above
+// finalize by hand; the class methods below take several steps each, and a
+// throw between prepare and finalize is exactly where a hand-written finalize
+// gets skipped.
+class Statement {
+public:
+    Statement(sqlite3* db, const char* sql) : db_(db) {
+        if (sqlite3_prepare_v2(db, sql, -1, &stmt_, nullptr) != SQLITE_OK) {
+            throw std::runtime_error(std::string("prepare: ") +
+                                     sqlite3_errmsg(db) + " in: " + sql);
+        }
+    }
+    ~Statement() { sqlite3_finalize(stmt_); }
+
+    Statement(const Statement&) = delete;
+    Statement& operator=(const Statement&) = delete;
+
+    Statement& int64(int index, std::int64_t value) {
+        sqlite3_bind_int64(stmt_, index, value);
+        return *this;
+    }
+    Statement& text(int index, const std::string& value) {
+        sqlite3_bind_text(stmt_, index, value.c_str(), -1, SQLITE_TRANSIENT);
+        return *this;
+    }
+
+    bool row() {
+        const int rc = sqlite3_step(stmt_);
+        if (rc == SQLITE_ROW) return true;
+        if (rc == SQLITE_DONE) return false;
+        throw std::runtime_error(std::string("step: ") + sqlite3_errmsg(db_));
+    }
+    //true while there is a row to read, false once the statement is done
+
+    void run() {
+        while (row()) {
+        }
+    }
+
+    std::int64_t col_int64(int col) { return sqlite3_column_int64(stmt_, col); }
+    std::string col_text(int col) {
+        const unsigned char* value = sqlite3_column_text(stmt_, col);
+        return value ? std::string(reinterpret_cast<const char*>(value))
+                     : std::string();
+    }
+
+private:
+    sqlite3* db_;
+    sqlite3_stmt* stmt_ = nullptr;
+};
+
+// Eight characters from 31 symbols: about 8.5 * 10^11 codes, far past guessing
+// range. 0/O and 1/I/L are left out because the code is read off a board.
+constexpr char kJoinAlphabet[] = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+constexpr std::size_t kJoinAlphabetSize = sizeof(kJoinAlphabet) - 1;
+constexpr std::size_t kJoinCodeLength = 8;
+
+std::string random_join_code() {
+    unsigned char bytes[kJoinCodeLength];
+    if (RAND_bytes(bytes, static_cast<int>(sizeof(bytes))) != 1) {
+        throw std::runtime_error("RAND_bytes failed: no secure randomness");
+    }
+    std::string code;
+    code.reserve(kJoinCodeLength);
+    for (const unsigned char byte : bytes) {
+        code.push_back(kJoinAlphabet[byte % kJoinAlphabetSize]);
+    }
+    return code;
+    //256 is not a multiple of 31, so the modulo leans very slightly towards the
+    //first few symbols. The code is a door handle, not a secret key
+}
+
+// What a student typed, as the column stores it: upper case, separators gone.
+std::string normalise_join_code(const std::string& typed) {
+    std::string code;
+    for (const char ch : typed) {
+        const unsigned char c = static_cast<unsigned char>(ch);
+        if (std::isalnum(c)) {
+            code.push_back(static_cast<char>(std::toupper(c)));
+        }
+    }
+    return code;
+}
+
+constexpr const char* kClassColumns =
+    "c.id, c.name, c.language_id, COALESCE(c.join_code, ''), c.owner_id, "
+    "c.created_at, c.archived_at IS NOT NULL, "
+    "(SELECT COUNT(*) FROM class_members s "
+    "  WHERE s.class_id = c.id AND s.role = 'student')";
+//one list, read by read_class, so the indices cannot drift from the queries
+
+ClassInfo read_class(Statement& stmt) {
+    ClassInfo info;
+    info.id = stmt.col_int64(0);
+    info.name = stmt.col_text(1);
+    info.language_id = stmt.col_text(2);
+    info.join_code = stmt.col_text(3);
+    info.owner_id = stmt.col_int64(4);
+    info.created_at = stmt.col_int64(5);
+    info.archived = stmt.col_int64(6) != 0;
+    info.student_count = static_cast<int>(stmt.col_int64(7));
+    return info;
+}
+
+constexpr const char* kAttemptColumns =
+    "a.id, COALESCE(a.user_id, 0), COALESCE(a.class_id, 0), "
+    "COALESCE(u.display_name, ''), COALESCE(u.email, ''), a.language_id, "
+    "a.started_at, COALESCE(a.ended_at, 0), COALESCE(a.end_reason, ''), "
+    "a.turn_count";
+
+AttemptSummary read_attempt(Statement& stmt) {
+    AttemptSummary attempt;
+    attempt.id = stmt.col_int64(0);
+    attempt.user_id = stmt.col_int64(1);
+    attempt.class_id = stmt.col_int64(2);
+    attempt.student_name = stmt.col_text(3);
+    attempt.student_email = stmt.col_text(4);
+    attempt.language_id = stmt.col_text(5);
+    attempt.started_at = stmt.col_int64(6);
+    attempt.ended_at = stmt.col_int64(7);
+    attempt.end_reason = stmt.col_text(8);
+    attempt.turn_count = static_cast<int>(stmt.col_int64(9));
+    return attempt;
+}
+
+}  // namespace
+
+const char* class_role_name(ClassRole role) {
+    return role == ClassRole::Teacher ? "teacher" : "student";
+}
+
+std::optional<ClassRole> class_role_from_name(const std::string& name) {
+    if (name == "teacher") return ClassRole::Teacher;
+    if (name == "student") return ClassRole::Student;
+    return std::nullopt;
+}
+
+std::string Store::unused_join_code() {
+    for (int tries = 0; tries < 8; ++tries) {
+        std::string code = random_join_code();
+        Statement taken(db_, "SELECT 1 FROM classes WHERE join_code = ?");
+        taken.text(1, code);
+        if (!taken.row()) {
+            return code;
+        }
+    }
+    throw std::runtime_error("could not find an unused join code");
+    //eight collisions in a row among 8.5 * 10^11 codes means something other than
+    //bad luck is wrong, and looping forever would hide it
+}
+
+ClassInfo Store::create_class(std::int64_t owner_id,
+                              const std::string& name,
+                              const std::string& language_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    exec("BEGIN IMMEDIATE");
+    std::int64_t class_id = 0;
+    try {
+        Statement insert(db_,
+            "INSERT INTO classes (name, language_id, join_code, owner_id, "
+            " created_at) "
+            "VALUES (?, ?, ?, ?, CAST(strftime('%s','now') AS INTEGER))");
+        insert.text(1, name).text(2, language_id).text(3, unused_join_code())
+              .int64(4, owner_id).run();
+        class_id = sqlite3_last_insert_rowid(db_);
+
+        Statement member(db_,
+            "INSERT INTO class_members (class_id, user_id, role, added_at) "
+            "VALUES (?, ?, 'teacher', CAST(strftime('%s','now') AS INTEGER))");
+        member.int64(1, class_id).int64(2, owner_id).run();
+
+        exec("COMMIT");
+    } catch (...) {
+        exec("ROLLBACK");
+        throw;
+    }
+
+    auto created = class_by_id(class_id);
+    if (!created) {
+        throw std::runtime_error("class vanished immediately after insert");
+    }
+    created->caller_role = ClassRole::Teacher;
+    return *created;
+}
+
+std::vector<ClassInfo> Store::classes_for_user(std::int64_t user_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    const std::string sql =
+        std::string("SELECT ") + kClassColumns + ", m.role "
+        "FROM classes c JOIN class_members m ON m.class_id = c.id "
+        "WHERE m.user_id = ? "
+        "ORDER BY c.archived_at IS NOT NULL, c.name COLLATE NOCASE";
+    Statement stmt(db_, sql.c_str());
+    stmt.int64(1, user_id);
+
+    std::vector<ClassInfo> classes;
+    while (stmt.row()) {
+        ClassInfo info = read_class(stmt);
+        info.caller_role = class_role_from_name(stmt.col_text(8));
+        classes.push_back(std::move(info));
+    }
+    return classes;
+}
+
+std::optional<ClassInfo> Store::class_by_id(std::int64_t class_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    const std::string sql =
+        std::string("SELECT ") + kClassColumns + " FROM classes c WHERE c.id = ?";
+    Statement stmt(db_, sql.c_str());
+    stmt.int64(1, class_id);
+    if (!stmt.row()) return std::nullopt;
+    return read_class(stmt);
+}
+
+std::optional<ClassInfo> Store::class_by_join_code(const std::string& code) {
+    const std::string normalised = normalise_join_code(code);
+    if (normalised.size() != kJoinCodeLength) return std::nullopt;
+    //the wrong length can never match, so it is not worth a query
+
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    const std::string sql =
+        std::string("SELECT ") + kClassColumns +
+        " FROM classes c WHERE c.join_code = ? AND c.archived_at IS NULL";
+    Statement stmt(db_, sql.c_str());
+    stmt.text(1, normalised);
+    if (!stmt.row()) return std::nullopt;
+    return read_class(stmt);
+}
+
+std::optional<ClassRole> Store::class_role(std::int64_t class_id,
+                                           std::int64_t user_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement stmt(db_,
+        "SELECT role FROM class_members WHERE class_id = ? AND user_id = ?");
+    stmt.int64(1, class_id).int64(2, user_id);
+    if (!stmt.row()) return std::nullopt;
+    return class_role_from_name(stmt.col_text(0));
+}
+
+bool Store::add_member(std::int64_t class_id, std::int64_t user_id,
+                       ClassRole role) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement stmt(db_,
+        "INSERT OR IGNORE INTO class_members (class_id, user_id, role, added_at) "
+        "VALUES (?, ?, ?, CAST(strftime('%s','now') AS INTEGER))");
+    stmt.int64(1, class_id).int64(2, user_id).text(3, class_role_name(role)).run();
+    return sqlite3_changes(db_) > 0;
+    //OR IGNORE on the (class_id, user_id) key: a second join is a no-op rather
+    //than an error, and never rewrites the role already held
+}
+
+bool Store::remove_member(std::int64_t class_id, std::int64_t user_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement stmt(db_,
+        "DELETE FROM class_members WHERE class_id = ? AND user_id = ?");
+    stmt.int64(1, class_id).int64(2, user_id).run();
+    return sqlite3_changes(db_) > 0;
+    //the student's attempts keep their class_id, but class_attempts only lists
+    //current members, so a removed student's history leaves the teacher's view
+}
+
+std::vector<ClassMember> Store::class_members(std::int64_t class_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement stmt(db_,
+        "SELECT u.id, u.email, u.display_name, m.role, u.year_level, "
+        "       u.subject_level, m.added_at, "
+        "       (SELECT COUNT(*) FROM exam_attempts a "
+        "         WHERE a.class_id = m.class_id AND a.user_id = u.id), "
+        "       (SELECT COALESCE(MAX(a.started_at), 0) FROM exam_attempts a "
+        "         WHERE a.class_id = m.class_id AND a.user_id = u.id) "
+        "FROM class_members m JOIN users u ON u.id = m.user_id "
+        "WHERE m.class_id = ? "
+        "ORDER BY m.role = 'student', u.display_name COLLATE NOCASE, u.email");
+    //teachers first: role = 'student' is 0 for them
+    stmt.int64(1, class_id);
+
+    std::vector<ClassMember> members;
+    while (stmt.row()) {
+        ClassMember member;
+        member.user_id = stmt.col_int64(0);
+        member.email = stmt.col_text(1);
+        member.display_name = stmt.col_text(2);
+        member.role =
+            class_role_from_name(stmt.col_text(3)).value_or(ClassRole::Student);
+        member.year_level = stmt.col_text(4);
+        member.subject_level = stmt.col_text(5);
+        member.added_at = stmt.col_int64(6);
+        member.attempt_count = static_cast<int>(stmt.col_int64(7));
+        member.last_attempt_at = stmt.col_int64(8);
+        members.push_back(std::move(member));
+    }
+    return members;
+}
+
+std::string Store::rotate_join_code(std::int64_t class_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    const std::string code = unused_join_code();
+    Statement stmt(db_, "UPDATE classes SET join_code = ? WHERE id = ?");
+    stmt.text(1, code).int64(2, class_id).run();
+    return code;
+}
+
+void Store::disable_join_code(std::int64_t class_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement stmt(db_, "UPDATE classes SET join_code = NULL WHERE id = ?");
+    stmt.int64(1, class_id).run();
+    //NULL rather than '': the column is UNIQUE, and SQLite lets any number of
+    //rows hold NULL where only one could hold the empty string
+}
+
+void Store::set_archived(std::int64_t class_id, bool archived) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement stmt(db_,
+        archived
+            ? "UPDATE classes SET archived_at = COALESCE(archived_at, "
+              "  CAST(strftime('%s','now') AS INTEGER)) WHERE id = ?"
+            : "UPDATE classes SET archived_at = NULL WHERE id = ?");
+    stmt.int64(1, class_id).run();
+}
+
+InviteResult Store::invite_emails(std::int64_t class_id,
+                                  const std::vector<std::string>& emails,
+                                  std::int64_t invited_by) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    InviteResult result;
+    exec("BEGIN IMMEDIATE");
+    try {
+        for (const std::string& email : emails) {
+            Statement find(db_, "SELECT id FROM users WHERE email = ?");
+            find.text(1, email);
+
+            if (find.row()) {
+                const std::int64_t user_id = find.col_int64(0);
+                Statement member(db_,
+                    "INSERT OR IGNORE INTO class_members "
+                    "(class_id, user_id, role, added_at) "
+                    "VALUES (?, ?, 'student', "
+                    "        CAST(strftime('%s','now') AS INTEGER))");
+                member.int64(1, class_id).int64(2, user_id).run();
+                (sqlite3_changes(db_) > 0 ? result.added : result.existing)++;
+                continue;
+                //an account already exists, so there is nobody to wait for.
+                //users.email is COLLATE NOCASE, so the capitals a teacher typed
+                //still find the row
+            }
+
+            Statement invite(db_,
+                "INSERT OR IGNORE INTO class_invites "
+                "(class_id, email, role, invited_by, created_at) "
+                "VALUES (?, ?, 'student', ?, "
+                "        CAST(strftime('%s','now') AS INTEGER))");
+            invite.int64(1, class_id).text(2, email).int64(3, invited_by).run();
+            (sqlite3_changes(db_) > 0 ? result.invited : result.existing)++;
+        }
+        exec("COMMIT");
+    } catch (...) {
+        exec("ROLLBACK");
+        throw;
+    }
+    return result;
+    //one transaction for the whole paste, so a list that fails half way leaves
+    //no half-invited class behind it
+}
+
+std::vector<ClassInvite> Store::pending_invites(std::int64_t class_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement stmt(db_,
+        "SELECT id, email, created_at FROM class_invites "
+        "WHERE class_id = ? AND claimed_at IS NULL ORDER BY email");
+    stmt.int64(1, class_id);
+
+    std::vector<ClassInvite> invites;
+    while (stmt.row()) {
+        invites.push_back(ClassInvite{stmt.col_int64(0), stmt.col_text(1),
+                                      stmt.col_int64(2)});
+    }
+    return invites;
+}
+
+bool Store::revoke_invite(std::int64_t class_id, std::int64_t invite_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement stmt(db_,
+        "DELETE FROM class_invites "
+        "WHERE id = ? AND class_id = ? AND claimed_at IS NULL");
+    stmt.int64(1, invite_id).int64(2, class_id).run();
+    return sqlite3_changes(db_) > 0;
+    //class_id in the WHERE as well as the id, so a teacher of one class cannot
+    //revoke another class's invite by guessing its number
+}
+
+int Store::claim_invites(const User& user) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    int joined = 0;
+    exec("BEGIN IMMEDIATE");
+    try {
+        Statement open(db_,
+            "SELECT i.id, i.class_id, i.role FROM class_invites i "
+            "JOIN classes c ON c.id = i.class_id "
+            "WHERE i.email = ? AND i.claimed_at IS NULL "
+            "  AND c.archived_at IS NULL");
+        open.text(1, user.email);
+
+        struct Pending {
+            std::int64_t id;
+            std::int64_t class_id;
+            std::string role;
+        };
+        std::vector<Pending> pending;
+        while (open.row()) {
+            pending.push_back(
+                Pending{open.col_int64(0), open.col_int64(1), open.col_text(2)});
+        }
+        //read out in full before writing: inserting while the SELECT is still
+        //stepping over the same tables is legal in SQLite but easy to get wrong
+
+        for (const Pending& invite : pending) {
+            const ClassRole role =
+                class_role_from_name(invite.role).value_or(ClassRole::Student);
+            Statement member(db_,
+                "INSERT OR IGNORE INTO class_members "
+                "(class_id, user_id, role, added_at) "
+                "VALUES (?, ?, ?, CAST(strftime('%s','now') AS INTEGER))");
+            member.int64(1, invite.class_id).int64(2, user.id)
+                  .text(3, class_role_name(role)).run();
+            joined += sqlite3_changes(db_) > 0 ? 1 : 0;
+
+            Statement claim(db_,
+                "UPDATE class_invites "
+                "SET claimed_at = CAST(strftime('%s','now') AS INTEGER) "
+                "WHERE id = ?");
+            claim.int64(1, invite.id).run();
+        }
+        exec("COMMIT");
+    } catch (...) {
+        exec("ROLLBACK");
+        throw;
+    }
+    return joined;
+}
+
+std::vector<AttemptSummary> Store::class_attempts(std::int64_t class_id,
+                                                  int limit) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    const std::string sql =
+        std::string("SELECT ") + kAttemptColumns +
+        " FROM exam_attempts a LEFT JOIN users u ON u.id = a.user_id "
+        "WHERE a.class_id = ? "
+        "  AND a.user_id IN (SELECT user_id FROM class_members "
+        "                    WHERE class_id = a.class_id) "
+        "ORDER BY a.started_at DESC, a.id DESC LIMIT ?";
+    //current members only: removing a student from the class is also what
+    //takes their exams out of the teacher's view
+    Statement stmt(db_, sql.c_str());
+    stmt.int64(1, class_id).int64(2, limit);
+
+    std::vector<AttemptSummary> attempts;
+    while (stmt.row()) {
+        attempts.push_back(read_attempt(stmt));
+    }
+    return attempts;
+}
+
+std::optional<AttemptSummary> Store::attempt_by_id(std::int64_t attempt_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    const std::string sql =
+        std::string("SELECT ") + kAttemptColumns +
+        " FROM exam_attempts a LEFT JOIN users u ON u.id = a.user_id "
+        "WHERE a.id = ?";
+    Statement stmt(db_, sql.c_str());
+    stmt.int64(1, attempt_id);
+    if (!stmt.row()) return std::nullopt;
+    return read_attempt(stmt);
+}
+
+std::vector<AttemptTurn> Store::attempt_turns(std::int64_t attempt_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement stmt(db_,
+        "SELECT turn_index, role, text, topic, created_at FROM attempt_turns "
+        "WHERE attempt_id = ? ORDER BY turn_index");
+    stmt.int64(1, attempt_id);
+
+    std::vector<AttemptTurn> turns;
+    while (stmt.row()) {
+        AttemptTurn turn;
+        turn.turn_index = static_cast<int>(stmt.col_int64(0));
+        turn.role = stmt.col_text(1);
+        turn.text = stmt.col_text(2);
+        turn.topic = stmt.col_text(3);
+        turn.created_at = stmt.col_int64(4);
+        turns.push_back(std::move(turn));
+    }
+    return turns;
 }
 
 }  // namespace sim

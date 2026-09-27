@@ -84,11 +84,6 @@ private:
     crow::response serve_auth_logout(const crow::request& req);
     crow::response serve_me(const crow::request& req);
     crow::response serve_set_profile(const crow::request& req);
-
-    crow::response serve_classes(const crow::request& req);
-    crow::response serve_create_class(const crow::request& req);
-    //the classes page and the teacher's create-a-class dialogue. Plain HTTP on
-    //a socket thread like the profile routes: a few indexed rows per call
     //sign-in. The token exchange in the callback is an outbound HTTPS call on a
     //crow socket thread, like /api/translate: once per sign-in, with explicit
     //timeouts, and never taking a worker from a student mid-turn
@@ -96,6 +91,40 @@ private:
     std::optional<User> user_for_request(const crow::request& req);
     //the cookie -> user lookup every protected route starts with. nullopt means
     //not signed in, which each caller turns into its own 401 or redirect
+
+    // ---- classes: src/class_api.cpp ---------------------------------------
+    //kept in their own file so the route table here stays readable, and so the
+    //whole group can move into a separate API service without untangling it
+
+    void register_class_routes();
+
+    std::optional<crow::response> refuse_unless_signed_in(
+        const crow::request& req, User& user);
+    //nullopt means go ahead, with user filled in; a response means send that
+    //instead. Also refuses a state-changing request from another origin, so a
+    //route cannot forget the check by forgetting to call a second helper
+    std::optional<crow::response> refuse_unless_teaches(
+        const crow::request& req, std::int64_t class_id,
+        User& user, ClassInfo& klass);
+    //the same, plus: the class exists and the caller is one of its teachers.
+    //A class that is not theirs is a 404 rather than a 403, so class ids
+    //cannot be probed for existence
+
+    crow::response serve_classes(const crow::request& req);
+    crow::response serve_class(const crow::request& req, std::int64_t class_id);
+    crow::response serve_join_code(const crow::request& req, std::int64_t class_id);
+    crow::response serve_invites(const crow::request& req, std::int64_t class_id);
+    crow::response serve_revoke_invite(const crow::request& req,
+                                       std::int64_t class_id,
+                                       std::int64_t invite_id);
+    crow::response serve_remove_member(const crow::request& req,
+                                       std::int64_t class_id,
+                                       std::int64_t user_id);
+    crow::response serve_archive(const crow::request& req, std::int64_t class_id);
+    crow::response serve_class_attempts(const crow::request& req,
+                                        std::int64_t class_id);
+    crow::response serve_attempt(const crow::request& req, std::int64_t attempt_id);
+    crow::response serve_join(const crow::request& req);
 
     auth::LoginStates login_states_;
     //the PKCE verifier and state for sign-ins in flight, in memory: they live
@@ -143,7 +172,14 @@ private:
     void send_examiner_text(const std::shared_ptr<ConnHandle>& handle,
                             const std::string& reply,
                             bool speech_follows,
-                            int sample_rate);
+                            int sample_rate,
+                            int exam_seconds = 0);
+    //exam_seconds rides on the opening question only, the moment the server's
+    //clock starts, so the browser's countdown starts from the same instant
+
+    void start_exam_clock(Session& session);
+    //the deadline is the configured length plus a few seconds of slack for the
+    //question reaching the browser, whose countdown starts on arrival
     //sample_rate is the session's own voice rate, passed in because two
     //languages on one server produce different ones. Ignored when
     //speech_follows is false, since no frame is coming to describe

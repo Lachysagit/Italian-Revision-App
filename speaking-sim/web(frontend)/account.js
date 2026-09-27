@@ -41,6 +41,7 @@ function initAccount(options) {
         .then((user) => {
             currentUser = user;
             paintAccountBox(user);
+            paintTeacherLink(user);
 
             if (!user) {
                 showStep("choice");
@@ -48,6 +49,9 @@ function initAccount(options) {
             }
             if (!user.onboarded && needsOnboarding) {
                 return finishPendingSignup(onReady);
+                // teachers included: it is what offers them a first class.
+                // The year and level questions are a student's, and that
+                // function is where the two paths part
             }
 
             discardDraft();
@@ -192,7 +196,7 @@ function buildGate() {
                     from this page.
                 </p>
 
-                <a class="authOption" href="/classes">
+                <a class="authOption" href="/teacher">
                     <span class="authOptionLabel">View your classes</span>
                     <span class="authOptionNote">Everything you teach, in one place</span>
                 </a>
@@ -250,7 +254,7 @@ function buildGate() {
             <div id="authClassDone" hidden>
                 <p id="authClassDoneBlurb"></p>
 
-                <a class="authOption" href="/classes">
+                <a class="authOption" href="/teacher">
                     <span class="authOptionLabel">View your classes</span>
                     <span class="authOptionNote">Go through to the class you just made</span>
                 </a>
@@ -712,6 +716,25 @@ function buildAccountBox() {
     nav.appendChild(box);
 }
 
+// The dashboard link, for teachers only. Added to whichever page is open so the
+// nav is the same everywhere, and marked current on the dashboard itself.
+function paintTeacherLink(user) {
+    const nav = document.getElementById("siteNav");
+    if (!nav || !user || !user.is_teacher || document.getElementById("teacherLink")) {
+        return;
+    }
+    const link = document.createElement("a");
+    link.id = "teacherLink";
+    link.href = "/teacher";
+    link.textContent = "Teacher";
+    if (window.location.pathname === "/teacher") {
+        link.className = "current";
+    }
+    const box = document.getElementById("accountBox");
+    nav.insertBefore(link, box);
+    // before the account corner, which pushes itself to the right edge
+}
+
 function paintAccountBox(user) {
     const box = document.getElementById("accountBox");
     if (!box) return;
@@ -725,16 +748,6 @@ function paintAccountBox(user) {
         return;
     }
 
-    if (window.location.pathname !== "/classes") {
-        const classes = document.createElement("a");
-        classes.id = "classesLink";
-        classes.href = "/classes";
-        classes.textContent = "View classes";
-        box.appendChild(classes);
-    }
-    // for both roles: a student uses it to find the classes they are in and a
-    // teacher the ones they teach, and the page itself already says which is
-    // which. Left off on the classes page, where it would link to itself
 
     const settings = document.createElement("button");
     settings.type = "button";

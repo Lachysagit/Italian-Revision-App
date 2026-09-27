@@ -46,7 +46,34 @@
              and never has to ask "come ti chiami". Blank is allowed: the
              backend then simply tells the examiner nothing about a name -->
 
+        <label for="classSelect">Class</label>
+        <select id="classSelect">
+            <option value="">Private practice</option>
+        </select>
+        <button id="joinClass" type="button">Join a class</button>
+        <!-- the class decides which teacher sees the exam, and its language.
+             Filled by classes.js once the account is known -->
+
         <button id="settings" type="button">More Settings</button>
+    </div>
+
+    <p id="classHint" role="status" hidden></p>
+    <!-- says out loud that a class exam is visible to the teacher, so nobody
+         sits one thinking it is private -->
+
+    <div id="joinOverlay" hidden>
+        <form id="joinModal" role="dialog" aria-labelledby="joinTitle">
+            <h2 id="joinTitle">Join a class</h2>
+            <label for="joinCodeInput">Class code from your teacher</label>
+            <input id="joinCodeInput" type="text" autocomplete="off"
+                   autocapitalize="characters" spellcheck="false" maxlength="16"
+                   placeholder="ABCD-EFGH">
+            <p id="joinError" role="alert" hidden></p>
+            <div id="joinActions">
+                <button id="joinCancel" type="button">Cancel</button>
+                <button id="joinSubmit" type="submit">Join</button>
+            </div>
+        </form>
     </div>
 
 
@@ -103,6 +130,10 @@
     </div>
 
 
+    <div id="examNotice" role="alert" hidden></div>
+    <!-- why an exam did not start, in words a student can act on. Filled by
+         client.js when the server refuses a Start -->
+
     <div id="examLoading" hidden>
         <span class="dots"><i></i><i></i><i></i></span>
         <span>Preparing your exam - waiting for the examiner's first question</span>
@@ -116,6 +147,8 @@
 
     <script src="translate.js"></script>
     <!-- before client.js, which calls initTranslate() as it runs -->
+    <script src="classes.js"></script>
+    <!-- before client.js too: setTurnState reads the class picker -->
     <script src="client.js"></script>
     <script src="account.js"></script>
     <script>
@@ -130,6 +163,7 @@
                 // only fills an empty box, so it is an offer rather than an
                 // override: a student who goes by something other than their
                 // Google name types it once and keeps it
+                initClasses();
             },
         });
     </script>

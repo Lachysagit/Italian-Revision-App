@@ -141,6 +141,37 @@ const std::string& Session::gemini_key_name() const {
     return gemini_key_name_;
 }
 
+bool Session::clock_started() const {
+    return deadline_.has_value();
+}
+
+void Session::start_clock(Clock::time_point deadline) {
+    if (!deadline_) {
+        deadline_ = deadline;
+    }
+    //first call wins: a second start must not buy the student more time
+}
+
+bool Session::time_up(Clock::time_point now) const {
+    return deadline_.has_value() && now >= *deadline_;
+}
+
+void Session::set_user_id(std::int64_t id) {
+    user_id_ = id;
+}
+
+std::optional<std::int64_t> Session::user_id() const {
+    return user_id_ > 0 ? std::optional<std::int64_t>(user_id_) : std::nullopt;
+}
+
+void Session::set_class_id(std::int64_t id) {
+    class_id_ = id;
+}
+
+std::optional<std::int64_t> Session::class_id() const {
+    return class_id_ > 0 ? std::optional<std::int64_t>(class_id_) : std::nullopt;
+}
+
 void Session::set_attempt_id(std::int64_t id) {
     attempt_id_ = id;
 }

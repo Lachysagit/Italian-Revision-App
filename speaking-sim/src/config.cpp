@@ -87,6 +87,11 @@ std::vector<GeminiKeyOption> parse_gemini_keys(const std::string& text) {
     return options;
 }
 
+//an exam shorter than a minute is not an exam and one over an hour is a
+//typo; both bounds are clamped to rather than rejected
+constexpr int kMinExamSeconds = 60;
+constexpr int kMaxExamSeconds = 60 * 60;
+
 //Gemini 3.x takes an enum here, not the 2.5-series thinkingBudget integer, and
 //3.8 dropped the "minimal" that 3.5 and 3.6 accepted. A value outside the set
 //is a 400 on every single turn, so it is worth catching at startup rather than
@@ -200,6 +205,16 @@ Config load_config() {
     } else {
         config.port = static_cast<std::uint16_t>(port_value);
     }
+
+    const std::string exam_text = get_env("EXAM_DURATION_SECONDS", "300");
+    int exam_seconds = 300;
+    if (!parse_int_strict(exam_text, exam_seconds)) {
+        std::cerr << "EXAM_DURATION_SECONDS " << exam_text
+                  << " is not a number, using 300\n";
+        exam_seconds = 300;
+    }
+    config.exam_duration_seconds =
+        std::clamp(exam_seconds, kMinExamSeconds, kMaxExamSeconds);
 
     const std::string threads_text = get_env("WORKER_THREADS", "0");
     config.worker_threads = 0;

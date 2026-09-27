@@ -1,135 +1,235 @@
-// The class list: a grid of cards, one per class this account belongs to, each
-// a link through to the practice exam.
+// The student's side of classes on the exam page: which class an exam is sat
+// for, and the box that joins a class with the code a teacher hands out.
 //
-// Deliberately thin. The cards carry no state of their own and nothing on this
-// page is live, so a fresh /api/classes on every load is both simpler and more
-// honest than anything cached - a teacher who has just created a class arrives
-// here by a redirect and must see it.
-//
-// Loaded with a plain <script src> after account.js, which calls loadClasses()
-// from its onReady. Load order is the only dependency.
+// Loaded with a plain <script src> before client.js. It defines functions and
+// reads its own elements; everything that touches client.js's state (the
+// language picker, the turn state) runs later, from initClasses and from the
+// handlers, by which time client.js has loaded too.
 
-const SUBJECT_LABELS = {
-    beginners: "Beginners",
-    continuers: "Continuers",
-    advanced: "Advanced",
-    extension: "Extension",
-};
+const CLASS_STORAGE = "examClass";
+const PENDING_JOIN = "pendingJoinCode";
 
-function loadClasses(user) {
-    const grid = document.getElementById("classGrid");
-    if (!grid) return Promise.resolve(null);
+const classSelect = document.getElementById("classSelect");
+const joinClassButton = document.getElementById("joinClass");
+const classHint = document.getElementById("classHint");
+const joinOverlay = document.getElementById("joinOverlay");
+const joinForm = document.getElementById("joinModal");
+const joinCodeInput = document.getElementById("joinCodeInput");
+const joinError = document.getElementById("joinError");
+const joinSubmit = document.getElementById("joinSubmit");
 
-    return fetch("/api/classes", { credentials: "same-origin" })
-        .then((response) => (response.ok ? response.json() : null))
-        .then((body) => {
-            const classes = body && Array.isArray(body.classes)
-                ? body.classes
-                : null;
-            if (!classes) {
-                showClassesMessage("Your classes could not be loaded. " +
-                    "Please refresh the page.");
-                return null;
-            }
-            paintClasses(classes, user);
-            return classes;
-        })
-        .catch(() => {
-            showClassesMessage("Your classes could not be loaded. " +
-                "Please refresh the page.");
-            return null;
-        });
-}
+let studentClasses = [];
+//[{id, name, language, language_label, role}] from /api/classes, archived ones
+//already left out by the server
 
-function paintClasses(classes, user) {
-    const grid = document.getElementById("classGrid");
-    grid.textContent = "";
+// A /join/CODE link lands here as /?join=CODE. The code is lifted out of the
+// address at once and parked in sessionStorage, because a student who is not
+// signed in is about to go through Google and back, and the query string does
+// not survive that trip - the tab's sessionStorage does.
+(function capturePendingJoin() {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("join");
+    if (!code) return;
 
-    if (classes.length === 0) {
-        showClassesMessage(user && user.is_teacher
-            ? "You have not created a class yet."
-            : "You are not in a class yet. Your teacher will add you to one.");
-        return;
-        // the two audiences have different next steps, and a single "no
-        // classes" line would leave one of them waiting on the other's
+    try {
+        sessionStorage.setItem(PENDING_JOIN, code);
+    } catch (ignored) {
+        // storage refused: the code is still used below if nothing redirects
     }
+    params.delete("join");
+    const rest = params.toString();
+    window.history.replaceState(null, "",
+        window.location.pathname + (rest ? `?${rest}` : "") + window.location.hash);
+    // out of the address bar, so a refresh or a bookmark does not join again
+})();
 
-    classes.forEach((item) => {
-        grid.appendChild(buildClassCard(item));
+function initClasses() {
+    wireJoinBox();
+    return loadStudentClasses().then(() => {
+        let pending = null;
+        try {
+            pending = sessionStorage.getItem(PENDING_JOIN);
+            sessionStorage.removeItem(PENDING_JOIN);
+        } catch (ignored) {
+            pending = null;
+        }
+        if (pending) {
+            joinWithCode(pending);
+            // a join link joins straight away: following it was the request
+        }
     });
 }
 
-// One card. An <a> rather than a div with a click handler, so it opens in a new
-// tab on a middle click and reads as a link to a screen reader.
-function buildClassCard(item) {
-    const card = document.createElement("a");
-    card.className = "classCard";
-    card.href = "/";
-    // through to the practice exam, which is the only thing a class leads to
-    // for now. The id is not in the URL yet because nothing downstream reads it
-
-    const name = document.createElement("span");
-    name.className = "classCardName";
-    name.textContent = item.name;
-    card.appendChild(name);
-
-    const detail = document.createElement("span");
-    detail.className = "classCardDetail";
-    detail.textContent = classDetailLine(item);
-    card.appendChild(detail);
-
-    const foot = document.createElement("span");
-    foot.className = "classCardFoot";
-    foot.textContent = item.role === "teacher"
-        ? memberCountLabel(item.member_count)
-        : "Enrolled";
-    card.appendChild(foot);
-    // a student is told they are in it; a teacher is told how many are, which
-    // is the number they actually came to look at
-
-    const enter = document.createElement("span");
-    enter.className = "classCardEnter";
-    enter.textContent = "Enter";
-    card.appendChild(enter);
-
-    return card;
+function loadStudentClasses() {
+    return fetch("/api/classes", { credentials: "same-origin" })
+        .then((response) => (response.ok ? response.json() : { classes: [] }))
+        .then((data) => {
+            studentClasses = Array.isArray(data.classes) ? data.classes : [];
+            paintClassSelect();
+        })
+        .catch(() => {
+            studentClasses = [];
+            paintClassSelect();
+            // no class list is still a working exam page: private practice
+        });
 }
 
-function classDetailLine(item) {
-    const parts = [];
-    if (item.year_level) parts.push("Year " + item.year_level);
-    if (item.subject_level) {
-        parts.push(SUBJECT_LABELS[item.subject_level] || item.subject_level);
+function paintClassSelect(preferId) {
+    const saved = preferId || localStorage.getItem(CLASS_STORAGE) || "";
+    classSelect.textContent = "";
+
+    const practice = document.createElement("option");
+    practice.value = "";
+    practice.textContent = "Private practice";
+    classSelect.appendChild(practice);
+
+    studentClasses.forEach((klass) => {
+        const option = document.createElement("option");
+        option.value = String(klass.id);
+        option.textContent = `${klass.name} (${klass.language_label})`;
+        classSelect.appendChild(option);
+    });
+
+    if (studentClasses.some((klass) => String(klass.id) === String(saved))) {
+        classSelect.value = String(saved);
+    } else {
+        classSelect.value = "";
+        // a class the student has since left, or one that was archived, falls
+        // back to private practice rather than to whichever class is first
     }
-    if (item.language_id) parts.push(titleCase(item.language_id));
-    return parts.join(" · ");
-    // whatever is set, in a fixed order. A class row carrying a blank field is
-    // possible - the columns default to '' - and must not render a stray dot
+    applyClassChoice();
 }
 
-function memberCountLabel(count) {
-    const total = Number(count) || 0;
-    const students = Math.max(total - 1, 0);
-    // the teacher is a member of their own class, and is not one of the
-    // students they are counting
-    if (students === 0) return "No students yet";
-    return students === 1 ? "1 student" : students + " students";
+function selectedClass() {
+    const id = classSelect.value;
+    return studentClasses.find((klass) => String(klass.id) === id) || null;
 }
 
-function titleCase(text) {
-    if (!text) return "";
-    return text.charAt(0).toUpperCase() + text.slice(1);
-    // language_id is a lowercase directory name ("italian"), and the label the
-    // picker shows lives on the server. This is enough for a card
+function selectedClassId() {
+    const klass = selectedClass();
+    return klass ? klass.id : 0;
 }
 
-function showClassesMessage(message) {
-    const grid = document.getElementById("classGrid");
-    if (!grid) return;
-    grid.textContent = "";
+function classLocksLanguage() {
+    return Boolean(selectedClass());
+    // an exam for a class is in the class's language - the server enforces
+    // that anyway, so the picker shows it rather than offering a choice that
+    // would be ignored
+}
 
-    const line = document.createElement("p");
-    line.className = "classesMsg";
-    line.textContent = message;
-    grid.appendChild(line);
+function applyClassChoice() {
+    const klass = selectedClass();
+
+    classHint.hidden = !klass;
+    if (klass) {
+        classHint.textContent =
+            `Exams you sit for ${klass.name} are saved for your teacher to see. ` +
+            "Choose Private practice to keep one to yourself.";
+    }
+
+    languagesReady.then(() => {
+        if (klass && languages.some((entry) => entry.id === klass.language)) {
+            languageSelect.value = klass.language;
+        } else if (!klass) {
+            const saved = localStorage.getItem(LANGUAGE_STORAGE);
+            if (saved && languages.some((entry) => entry.id === saved)) {
+                languageSelect.value = saved;
+            }
+            // back to the student's own choice. The class's language was never
+            // written to storage, so leaving a class does not overwrite it
+        }
+        setTranslateLanguage(translateCodeFor(languageSelect.value));
+        updatePageTitle(languageSelect.value);
+        languageSelect.disabled = turnState !== "idle" || Boolean(klass);
+    });
+    // after languagesReady: on a fresh load the class list can arrive before
+    // the picker has any options to select
+}
+
+classSelect.onchange = () => {
+    localStorage.setItem(CLASS_STORAGE, classSelect.value);
+    applyClassChoice();
+};
+
+// ---------------------------------------------------------------------------
+// the join box
+// ---------------------------------------------------------------------------
+
+function wireJoinBox() {
+    joinClassButton.onclick = openJoinBox;
+
+    document.getElementById("joinCancel").onclick = closeJoinBox;
+    joinOverlay.onclick = (event) => {
+        if (event.target === joinOverlay) closeJoinBox();
+    };
+
+    joinForm.onsubmit = (event) => {
+        event.preventDefault();
+        joinWithCode(joinCodeInput.value);
+    };
+}
+
+function openJoinBox() {
+    joinCodeInput.value = "";
+    joinError.hidden = true;
+    joinSubmit.disabled = false;
+    joinOverlay.hidden = false;
+    joinCodeInput.focus();
+}
+
+function closeJoinBox() {
+    joinOverlay.hidden = true;
+}
+
+function joinWithCode(code) {
+    const trimmed = String(code || "").trim();
+    if (!trimmed) {
+        showJoinError("Type the code your teacher gave you.");
+        return;
+    }
+    joinSubmit.disabled = true;
+
+    fetch("/api/join", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: trimmed }),
+    })
+        .then((response) =>
+            response
+                .json()
+                .catch(() => ({}))
+                .then((body) => {
+                    if (!response.ok) {
+                        throw new Error(body.error || "Could not join that class.");
+                    }
+                    return body;
+                }))
+        .then((body) => {
+            closeJoinBox();
+            localStorage.setItem(CLASS_STORAGE, String(body.class.id));
+            return loadStudentClasses().then(() => {
+                paintClassSelect(body.class.id);
+                classHint.hidden = false;
+                classHint.textContent =
+                    (body.joined ? `You joined ${body.class.name}. `
+                                 : `You are already in ${body.class.name}. `) +
+                    classHint.textContent;
+            });
+        })
+        .catch((error) => {
+            if (joinOverlay.hidden) openJoinBox();
+            joinCodeInput.value = trimmed;
+            showJoinError(error.message);
+            // a join link with a stale code opens the box with the code in it,
+            // so the student can see what failed and correct it
+        })
+        .finally(() => {
+            joinSubmit.disabled = false;
+        });
+}
+
+function showJoinError(text) {
+    joinError.textContent = text;
+    joinError.hidden = false;
 }

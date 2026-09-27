@@ -48,6 +48,8 @@ h1 {
 
 #siteNav {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     gap: 0.4rem;
     padding: 1.25rem 0 0.75rem;
     border-bottom: 1px solid var(--line);
@@ -185,7 +187,8 @@ h1 {
     /* mid-session these are already spent: read once at the start message */
 }
 
-#examSetup #settings {
+#examSetup #settings,
+#examSetup #joinClass {
     margin-left: auto;
     padding: 0.4rem 0.9rem;
     border: 1px solid var(--line);
@@ -198,12 +201,19 @@ h1 {
     transition: border-color 0.15s, color 0.15s;
 }
 
-#examSetup #settings:hover:not(:disabled) {
+#examSetup #joinClass {
+    margin-left: 0;
+    /* only Advanced is pushed to the far edge */
+}
+
+#examSetup #settings:hover:not(:disabled),
+#examSetup #joinClass:hover:not(:disabled) {
     border-color: var(--muted);
     color: var(--ink);
 }
 
-#examSetup #settings:disabled {
+#examSetup #settings:disabled,
+#examSetup #joinClass:disabled {
     opacity: 0.45;
     cursor: not-allowed;
 }
@@ -211,6 +221,16 @@ h1 {
 #examSetup :focus-visible {
     outline: 2px solid var(--examiner-edge);
     outline-offset: 2px;
+}
+
+#classHint {
+    margin: 0.6rem 0 0;
+    font-size: 0.85rem;
+    color: var(--student-ink);
+}
+
+#classHint[hidden] {
+    display: none;
 }
 
 #transcript {
@@ -313,7 +333,8 @@ h1 {
 /* the #log surface was removed from the page - addLog() writes to the console
    now - so its rules are gone rather than left styling nothing. */
 
-#settingsOverlay {
+#settingsOverlay,
+#joinOverlay {
     position: fixed;
     inset: 0;
     z-index: 20;
@@ -323,11 +344,13 @@ h1 {
     background: rgba(28, 30, 33, 0.45);
 }
 
-#settingsOverlay[hidden] {
+#settingsOverlay[hidden],
+#joinOverlay[hidden] {
     display: none;
 }
 
-#settingsModal {
+#settingsModal,
+#joinModal {
     width: min(24rem, calc(100vw - 2.5rem));
     padding: 1.25rem 1.5rem 1.5rem;
     border: 1px solid var(--line);
@@ -342,10 +365,11 @@ h1 {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    #settingsModal { animation: none; }
+    #settingsModal, #joinModal { animation: none; }
 }
 
-#settingsModal h2 {
+#settingsModal h2,
+#joinModal h2 {
     margin: 0 0 1.1rem;
     padding-bottom: 0.7rem;
     border-bottom: 1px solid var(--line);
@@ -354,7 +378,8 @@ h1 {
     font-weight: 600;
 }
 
-#settingsModal label {
+#settingsModal label,
+#joinModal label {
     display: block;
     margin-bottom: 0.35rem;
     font-size: 0.85rem;
@@ -371,13 +396,39 @@ h1 {
     box-sizing: border-box;
 }
 
-#settingsActions {
+#joinCodeInput {
+    width: 100%;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--ink);
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 1.2rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+#joinError {
+    margin: 0.6rem 0 0;
+    font-size: 0.85rem;
+    color: #b0392b;
+}
+
+#joinError[hidden] {
+    display: none;
+}
+
+#settingsActions,
+#joinActions {
     display: flex;
     justify-content: flex-end;
+    gap: 0.5rem;
     margin-top: 1.25rem;
 }
 
-#settingsActions button {
+#settingsActions button,
+#joinActions button {
     padding: 0.5rem 1rem;
     border: 1px solid var(--line);
     border-radius: 6px;
@@ -388,7 +439,15 @@ h1 {
     cursor: pointer;
 }
 
-#settingsActions button:hover {
+#joinActions #joinSubmit {
+    border-color: var(--examiner-edge);
+    background: var(--examiner-edge);
+    color: #fff;
+    /* two ids, so it outranks the shared button rule above without !important */
+}
+
+#settingsActions button:hover,
+#joinActions button:hover {
     border-color: var(--muted);
 }
 
@@ -689,6 +748,21 @@ h1 {
     display: none;
 }
 
+#examNotice {
+    margin-top: 1rem;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid #c0503f;
+    border-left-width: 4px;
+    border-radius: 8px;
+    background: #fbece9;
+    color: #8a2c20;
+    font-size: 0.9rem;
+}
+
+#examNotice[hidden] {
+    display: none;
+}
+
 .dots {
     display: inline-flex;
     gap: 0.25rem;
@@ -743,7 +817,10 @@ h1 {
         border-color: var(--examiner-ink);
     }
 
-    #settingsOverlay { background: rgba(0, 0, 0, 0.6); }
+    #settingsOverlay, #joinOverlay { background: rgba(0, 0, 0, 0.6); }
+    #joinCodeInput { background: var(--page-bg); }
+    #joinError { color: #e79287; }
+    #joinActions #joinSubmit { color: #0f1216; }
 
     #settingsModal select,
     #examSetup select,
@@ -758,6 +835,12 @@ h1 {
     #examTimer.low, #examTimer.expired { border-color: #e06c5c; }
     #examTimer.low { color: #e06c5c; }
     #examTimer.expired { background: #a8342a; color: #fff; }
+
+    #examNotice {
+        border-color: #a8342a;
+        background: #2a1714;
+        color: #e79287;
+    }
 
     #translateCount.near { color: #e79287; }
     #translateResult.error {
@@ -802,6 +885,7 @@ h1 {
 }
 
 #signOutButton {
+    white-space: nowrap;
     font: inherit;
     padding: 0.2rem 0.6rem;
     cursor: pointer;
@@ -1003,9 +1087,9 @@ body.gated { overflow: hidden; }
 
 #authError[hidden] { display: none; }
 
-/* The way through to the class list, beside the same pair. A link rather than
-   a button: it goes to a page, and nothing about it is an action. */
-#classesLink {
+/* The way through to the teacher dashboard, beside the same pair. A link rather
+   than a button: it goes to a page, and nothing about it is an action. */
+#teacherLink {
     font: inherit;
     font-size: 0.85rem;
     font-weight: 600;
@@ -1016,7 +1100,7 @@ body.gated { overflow: hidden; }
     border-radius: 4px;
 }
 
-#classesLink:hover { background: rgba(26, 115, 232, 0.08); }
+#teacherLink:hover { background: rgba(26, 115, 232, 0.08); }
 
 /* Account settings, opened from the nav corner. The button is the sign-out
    button's twin so the pair reads as one control. */
