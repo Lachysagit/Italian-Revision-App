@@ -127,6 +127,16 @@ private:
     crow::response serve_attempt(const crow::request& req, std::int64_t attempt_id);
     crow::response serve_join(const crow::request& req);
 
+    // ---- exam plans: src/plan_api.cpp ------------------------------------
+
+    void register_plan_routes();
+    crow::response serve_class_plans(const crow::request& req, std::int64_t class_id);
+    crow::response serve_plan(const crow::request& req, std::int64_t plan_id);
+    crow::response serve_archive_plan(const crow::request& req, std::int64_t plan_id);
+    crow::response serve_default_plan(const crow::request& req, std::int64_t class_id);
+    crow::response serve_exam_options(const crow::request& req);
+    crow::response serve_coverage(const crow::request& req, std::int64_t class_id);
+
     auth::LoginStates login_states_;
     //the PKCE verifier and state for sign-ins in flight, in memory: they live
     //for one redirect round trip

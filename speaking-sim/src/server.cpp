@@ -344,6 +344,9 @@ void Server::run()
     //been posted once the account is not onboarded, and no exam may start
 
     register_class_routes();
+    register_plan_routes();
+    //exam plans, their options and the class coverage report, in
+    //src/plan_api.cpp
     //classes, join codes, rosters and exam history for the teacher dashboard,
     //all in src/class_api.cpp
 

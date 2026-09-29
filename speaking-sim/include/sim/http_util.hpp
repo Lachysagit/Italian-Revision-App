@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <exception>
+#include <iostream>
 #include <optional>
 #include <string>
 
@@ -19,6 +21,22 @@ crow::response json_response(const crow::json::wvalue& body, int status = 200);
 crow::response json_error(int status, const std::string& message);
 //an error is JSON too, so the client can read .error the same way on every
 //path instead of guessing whether a body is text or JSON by status code
+
+template <typename F>
+crow::response guarded(const char* what, F&& handler) {
+    try {
+        return handler();
+    } catch (const std::exception& e) {
+        std::cerr << "api: " << what << " failed: " << e.what() << '\n';
+    } catch (...) {
+        std::cerr << "api: " << what << " failed with a non-std exception\n";
+    }
+    return json_error(500, "something went wrong, please try again");
+    //the detail goes to the operator's log and a fixed string to the page, the
+    //same split the examiner and translate paths use. Every route that touches
+    //the Store runs inside one, so a database error is a 500 rather than an
+    //exception loose on a Crow socket thread
+}
 
 std::string string_field(const crow::json::rvalue& body, const char* key);
 //empty when the key is missing or not a string. rvalue::operator[] throws on a

@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "sim/http_util.hpp"
+#include "sim/topics.hpp"
 
 namespace sim {
 
@@ -25,20 +26,6 @@ constexpr std::size_t kMaxClassNameBytes = 80;
 constexpr std::size_t kMaxInvitesPerRequest = 300;
 constexpr std::size_t kMaxEmailBytes = 254;
 constexpr int kAttemptListLimit = 200;
-
-template <typename F>
-crow::response guarded(const char* what, F&& handler) {
-    try {
-        return handler();
-    } catch (const std::exception& e) {
-        std::cerr << "class api: " << what << " failed: " << e.what() << '\n';
-    } catch (...) {
-        std::cerr << "class api: " << what << " failed with a non-std exception\n";
-    }
-    return json_error(500, "something went wrong, please try again");
-    //the detail goes to the operator's log and a fixed string to the page, the
-    //same split the examiner and translate paths use
-}
 
 std::string trimmed(const std::string& text) {
     const std::size_t begin = text.find_first_not_of(" \t\r\n");
@@ -122,6 +109,7 @@ crow::json::wvalue attempt_json(const AttemptSummary& attempt) {
     json["ended_at"] = attempt.ended_at;
     json["end_reason"] = attempt.end_reason;
     json["turn_count"] = attempt.turn_count;
+    json["plan_name"] = attempt.plan_name;
     return json;
 }
 
@@ -557,7 +545,9 @@ crow::response Server::serve_attempt(const crow::request& req,
         if (!allowed) {
             return json_error(404, "no such exam");
         }
+        const bool is_owner = attempt->user_id == user.id;
 
+        const std::vector<TurnFeature> features = store_->attempt_features(attempt_id);
         std::vector<crow::json::wvalue> turns;
         for (const AttemptTurn& turn : store_->attempt_turns(attempt_id)) {
             crow::json::wvalue json;
@@ -565,13 +555,43 @@ crow::response Server::serve_attempt(const crow::request& req,
             json["role"] = turn.role;
             json["text"] = turn.text;
             json["topic"] = turn.topic;
+            json["topic_group"] = topic_group(turn.topic);
             json["created_at"] = turn.created_at;
+
+            std::vector<std::string> model;
+            std::vector<std::string> rules;
+            for (const TurnFeature& feature : features) {
+                if (feature.turn_index != turn.turn_index || feature.kind != "tense") {
+                    continue;
+                }
+                (feature.source == "rules" ? rules : model).push_back(feature.value);
+            }
+            json["tenses"]["model"] = model;
+            json["tenses"]["rules"] = rules;
+            //both sources, kept apart: the page shows where they agree and
+            //where they do not, rather than one merged guess
             turns.push_back(std::move(json));
         }
 
         crow::json::wvalue json;
         json["attempt"] = attempt_json(*attempt);
         json["turns"] = std::move(turns);
+
+        std::vector<crow::json::wvalue> required;
+        if (!is_owner || attempt->ended_at > 0) {
+            for (const RequiredQuestionStatus& row : store_->attempt_required(attempt_id)) {
+                crow::json::wvalue item;
+                item["id"] = row.question_id;
+                item["text"] = row.text;
+                item["topic_group"] = row.topic_group;
+                item["status"] = row.status;
+                item["turn_index"] = row.turn_index;
+                required.push_back(std::move(item));
+            }
+        }
+        json["required"] = std::move(required);
+        //a student reading their own exam while it is still running would see
+        //the set questions still to come, so they get the list once it is over
         return json_response(json);
     });
 }
