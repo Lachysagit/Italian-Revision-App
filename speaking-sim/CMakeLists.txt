@@ -262,6 +262,7 @@ add_executable(speaking-sim
     src/question_bank.cpp
     src/server.cpp
     src/session.cpp
+    src/tense_rules.cpp
     src/static_files.cpp
     src/store.cpp
     src/auth/google_oauth.cpp

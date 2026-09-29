@@ -57,6 +57,14 @@ struct LanguagePack {
     //and copying a sample is exactly what is wanted. Handed both at once, the
     //examiner padded the question out to satisfy the contradiction
 
+    std::vector<std::pair<std::string, std::string>> tense_labels;
+    //canonical key from tenses.hpp -> the name a teacher of this language uses
+    //for it. Shown on the dashboard and handed to the examiner in the schema,
+    //so it knows "perfect" means the passato prossimo in an Italian exam
+    std::vector<std::pair<std::string, std::string>> tense_examples;
+    //canonical key -> a question opening that invites an answer in that tense,
+    //quoted to the examiner when a plan's tense target is falling behind
+
     // Filled by load(), not by the built-in table.
     std::string first_prompt;
     std::string ongoing_prompt;

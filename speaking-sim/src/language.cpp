@@ -79,6 +79,20 @@ std::vector<LanguagePack> built_in_packs() {
         "Scegline una e falla, quasi con le stesse parole: qui va benissimo. "
         "Non elencarle e non farne piu di una. Non aggiungere dettagli per "
         "renderla piu formale: una domanda corta e gia quella giusta.";
+    italian.tense_labels = {
+        {"present", "presente"},
+        {"perfect", "passato prossimo"},
+        {"imperfect", "imperfetto"},
+        {"future", "futuro semplice"},
+        {"conditional", "condizionale presente"},
+    };
+    italian.tense_examples = {
+        {"present", "Cosa fai di solito ...?"},
+        {"perfect", "Cosa hai fatto ...?"},
+        {"imperfect", "Com'era ... quando eri piccolo?"},
+        {"future", "Cosa farai ...?"},
+        {"conditional", "Cosa faresti se ...?"},
+    };
 
     LanguagePack german;
     german.id = "german";
@@ -111,6 +125,20 @@ std::vector<LanguagePack> built_in_packs() {
         "Worten: das ist hier genau richtig. Zaehle sie nicht auf und stelle "
         "nie mehr als eine. Fuege nichts hinzu, um sie foermlicher zu machen: "
         "eine kurze Frage ist schon die richtige.";
+    german.tense_labels = {
+        {"present", "Präsens"},
+        {"perfect", "Perfekt"},
+        {"imperfect", "Präteritum"},
+        {"future", "Futur I"},
+        {"conditional", "Konjunktiv II"},
+    };
+    german.tense_examples = {
+        {"present", "Was machst du normalerweise ...?"},
+        {"perfect", "Was hast du ... gemacht?"},
+        {"imperfect", "Wie war ... als du klein warst?"},
+        {"future", "Was wirst du ... machen?"},
+        {"conditional", "Was wuerdest du machen, wenn ...?"},
+    };
 
     return {std::move(italian), std::move(german)};
     //ASCII transliterations throughout (heisst, Pruefung, fuer). These strings

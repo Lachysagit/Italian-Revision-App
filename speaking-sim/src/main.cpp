@@ -11,6 +11,7 @@
 #include "sim/config.hpp"
 #include "sim/server.hpp"
 #include "sim/store.hpp"
+#include "sim/tenses.hpp"
 
 #include "sim/examiner/gemini_examiner.hpp"
 #include "sim/examiner/hailo_examiner.hpp"
@@ -79,6 +80,12 @@ int check_audio_encode() {
 int main(int argc, char** argv) {
     if (argc > 1 && std::strcmp(argv[1], "--check-audio-encode") == 0) {
         return check_audio_encode();
+    }
+    if (argc > 1 && std::strcmp(argv[1], "--check-tenses") == 0) {
+        return sim::check_tense_rules();
+        //the tense rules feed the teacher's report, and a rule that misfires
+        //does not crash - it quietly credits a student with the wrong tense.
+        //This runs them over known sentences without a server or a student
     }
 
     try {
