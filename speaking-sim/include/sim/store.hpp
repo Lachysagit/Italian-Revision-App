@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "sim/exam_plan.hpp"
+#include "sim/safety.hpp"
 
 struct sqlite3;
 
@@ -161,6 +162,28 @@ struct AttemptSummary {
     int turn_count = 0;
     std::string plan_name;
     //empty for an exam that followed no plan
+};
+
+// One row of safety_events, read back for a teacher view or an incident
+// export. Carries no sentence, for the reason the table's own comment gives.
+struct SafetyEvent {
+    std::int64_t id = 0;
+    std::int64_t attempt_id = 0;
+    int turn_index = 0;
+    std::string stage;
+    std::string action;
+    std::string category;
+    int severity = 0;
+    std::string detector;
+    std::string matches;
+    //the normalised terms, comma separated and in the order they fired
+    std::int64_t created_at = 0;
+
+    std::string student_name;
+    std::string student_email;
+    //filled only by class_escalations, where the point of the row is which
+    //student a teacher needs to go and find. Empty on the per-attempt read,
+    //which is already scoped to one student
 };
 
 struct AttemptTurn {
@@ -373,6 +396,24 @@ public:
                             const std::string& gemini_key_name);
     //per call rather than per attempt: this is what least-used-today key
     //selection will read once pools exist
+
+    // ---- safety ----------------------------------------------------------
+
+    void record_safety_event(std::int64_t attempt_id,
+                             int turn_index,
+                             SafetyStage stage,
+                             const SafetyVerdict& verdict);
+    //an Allow verdict writes nothing: the table is a record of what the chain
+    //stopped, and a row per clean turn would bury the handful that matter
+
+    std::vector<SafetyEvent> attempt_safety_events(std::int64_t attempt_id);
+    //everything the chain caught in one exam, oldest first. The per-attempt
+    //export A7 wants is built from this beside attempt_turns
+
+    std::vector<SafetyEvent> class_escalations(std::int64_t class_id);
+    //escalations only, newest first, across every attempt sat for one class.
+    //This is the teacher's flag list - not a discipline report, which is why
+    //masks and halts are deliberately left out of it
 
     void end_attempt(std::int64_t attempt_id, const std::string& reason);
     //WHERE ended_at IS NULL, so a disconnect arriving after a timer has already

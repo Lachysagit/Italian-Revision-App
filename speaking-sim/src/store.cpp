@@ -267,6 +267,31 @@ CREATE TABLE usage_daily (
   PRIMARY KEY (user_id, day, feature)
 );
 
+-- Every non-Allow verdict the safety chain returned, and nothing else. This is
+-- the detection mechanism the incident-response plan points at, and the table
+-- a teacher's escalation view is built from.
+--
+-- There is deliberately no column for the sentence that fired. `matches` holds
+-- the normalised terms - the word, not the utterance it sat in. The utterance
+-- is already in attempt_turns under that table's access rules, and copying the
+-- most sensitive text a student produces into a second, less governed place is
+-- the opposite of what a safety log is for. Anyone tempted to add a `text`
+-- column here should read A1 and A3 first.
+CREATE TABLE safety_events (
+  id         INTEGER PRIMARY KEY,
+  attempt_id INTEGER NOT NULL REFERENCES exam_attempts(id) ON DELETE CASCADE,
+  turn_index INTEGER NOT NULL,
+  stage      TEXT NOT NULL,     -- student_speech | examiner_reply
+  action     TEXT NOT NULL,     -- mask | halt | escalate
+  category   TEXT NOT NULL,     -- profanity | jailbreak | self_harm | ... | unavailable
+  severity   INTEGER NOT NULL,
+  detector   TEXT NOT NULL,     -- wordlist | content_safety | prompt_shield | chain
+  matches    TEXT NOT NULL,     -- comma-separated normalised terms, never a sentence
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX safety_events_attempt ON safety_events(attempt_id);
+CREATE INDEX safety_events_action  ON safety_events(action, created_at DESC);
+
 CREATE INDEX class_members_user ON class_members(user_id);
 CREATE INDEX class_invites_open ON class_invites(email) WHERE claimed_at IS NULL;
 )SQL";
@@ -1350,6 +1375,103 @@ std::vector<AttemptTurn> Store::attempt_turns(std::int64_t attempt_id) {
         turns.push_back(std::move(turn));
     }
     return turns;
+}
+
+// ---- safety ----------------------------------------------------------------
+
+namespace {
+
+SafetyEvent read_safety_event(Statement& stmt) {
+    SafetyEvent event;
+    event.id = stmt.col_int64(0);
+    event.attempt_id = stmt.col_int64(1);
+    event.turn_index = static_cast<int>(stmt.col_int64(2));
+    event.stage = stmt.col_text(3);
+    event.action = stmt.col_text(4);
+    event.category = stmt.col_text(5);
+    event.severity = static_cast<int>(stmt.col_int64(6));
+    event.detector = stmt.col_text(7);
+    event.matches = stmt.col_text(8);
+    event.created_at = stmt.col_int64(9);
+    return event;
+}
+
+constexpr const char* kSafetyColumns =
+    "s.id, s.attempt_id, s.turn_index, s.stage, s.action, s.category, "
+    "s.severity, s.detector, s.matches, s.created_at";
+
+}  // namespace
+
+void Store::record_safety_event(std::int64_t attempt_id,
+                                int turn_index,
+                                SafetyStage stage,
+                                const SafetyVerdict& verdict) {
+    if (verdict.action == SafetyAction::Allow) return;
+    //nothing was stopped, so there is nothing to record. Checked here rather
+    //than at every call site so no caller can forget
+
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    std::string matches;
+    for (const std::string& match : verdict.matches) {
+        if (!matches.empty()) matches += ',';
+        matches += match;
+    }
+    //normalised terms only. If this line ever grows a fallback to the
+    //utterance, read the comment above CREATE TABLE safety_events first
+
+    Statement stmt(db_,
+        "INSERT INTO safety_events "
+        "(attempt_id, turn_index, stage, action, category, severity, "
+        " detector, matches, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, "
+        "        CAST(strftime('%s','now') AS INTEGER))");
+    stmt.int64(1, attempt_id)
+        .int64(2, turn_index)
+        .text(3, to_string(stage))
+        .text(4, to_string(verdict.action))
+        .text(5, verdict.category)
+        .int64(6, verdict.severity)
+        .text(7, verdict.detector)
+        .text(8, matches);
+    stmt.run();
+}
+
+std::vector<SafetyEvent> Store::attempt_safety_events(std::int64_t attempt_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    const std::string sql = "SELECT " + std::string(kSafetyColumns) +
+        " FROM safety_events s WHERE s.attempt_id = ? "
+        "ORDER BY s.turn_index, s.id";
+    Statement stmt(db_, sql.c_str());
+    stmt.int64(1, attempt_id);
+
+    std::vector<SafetyEvent> events;
+    while (stmt.row()) events.push_back(read_safety_event(stmt));
+    return events;
+}
+
+std::vector<SafetyEvent> Store::class_escalations(std::int64_t class_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    const std::string sql =
+        "SELECT " + std::string(kSafetyColumns) + ", u.display_name, u.email "
+        "FROM safety_events s "
+        "JOIN exam_attempts a ON a.id = s.attempt_id "
+        "JOIN users u ON u.id = a.user_id "
+        "WHERE a.class_id = ? AND s.action = 'escalate' "
+        "ORDER BY s.created_at DESC, s.id DESC";
+    Statement stmt(db_, sql.c_str());
+    stmt.int64(1, class_id);
+
+    std::vector<SafetyEvent> events;
+    while (stmt.row()) {
+        SafetyEvent event = read_safety_event(stmt);
+        event.student_name = stmt.col_text(10);
+        event.student_email = stmt.col_text(11);
+        events.push_back(std::move(event));
+    }
+    return events;
 }
 
 // ---- exam plans ------------------------------------------------------------

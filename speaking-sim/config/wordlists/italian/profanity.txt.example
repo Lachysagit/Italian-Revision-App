@@ -1,0 +1,106 @@
+# Italian + English profanity, matched per whitespace token.
+#
+# Entries are run through normalise_for_match() at load, so accents, capitals,
+# repeated letters and the usual character substitutions are handled for you:
+# write the word once, the way it is spelled.
+#
+# Two rules were applied when cutting this list down, and both matter more than
+# completeness:
+#
+#   1. Nothing that is ordinary exam vocabulary. "stupido", "idiota",
+#      "cretino", "damn" and "hell" are all things a beginner reaches for
+#      legitimately when describing a bad holiday, and masking them is a
+#      pedagogical failure the README warns about.
+#   2. Nothing that collapses onto a common word. The normaliser folds repeated
+#      letters, so "ass" becomes "as" and would mask every "as" in an English
+#      sentence. It is deliberately absent; "arse" and "asshole" cover it
+#      without the collision. Two slurs were cut for the same reason and not a
+#      softer one: "coon" collapses to "con", which is Italian for "with", and
+#      "finocchio" is also fennel.
+
+# --- Italian -----------------------------------------------------------------
+cazzo
+cazzata
+cazzate
+incazzato
+incazzata
+stronzo
+stronza
+stronzi
+stronzata
+stronzate
+merda
+merdoso
+puttana
+puttane
+troia
+troie
+coglione
+coglioni
+vaffanculo
+fanculo
+culo
+figa
+fica
+minchia
+bastardo
+bastarda
+bastardi
+sfigato
+cagare
+scoreggia
+pompino
+sborra
+zoccola
+frocio
+negro
+terrone
+
+# --- English -----------------------------------------------------------------
+fuck
+fucks
+fucking
+fucked
+fucker
+motherfucker
+shit
+shite
+shitty
+bullshit
+bitch
+bitches
+bastard
+cunt
+dick
+dickhead
+prick
+pussy
+whore
+slut
+wanker
+twat
+bollocks
+arse
+arsehole
+asshole
+piss
+bugger
+shag
+knob
+
+# --- Slurs -------------------------------------------------------------------
+# Kept in even though the lists above were cut hard. A slur in a school tool is
+# not a vocabulary question and the cost of missing one is not symmetric with
+# the cost of masking one.
+nigger
+nigga
+faggot
+fag
+retard
+retarded
+spastic
+tranny
+chink
+gook
+wog
+paki

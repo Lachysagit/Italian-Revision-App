@@ -1,0 +1,109 @@
+# Disclosure phrasing. Substring match against the normalised transcript.
+#
+# EVERY LINE IN THIS FILE ROUTES A STUDENT TO A TEACHER. A false positive costs
+# a real and awkward conversation, so the bar for adding one is high and the
+# entries are phrases, never single words that could stand alone innocently.
+# The README says to draft this with the school's wellbeing team, and that
+# still holds: this file is a starting point for that conversation, not a
+# substitute for it.
+#
+# What is deliberately NOT here, and why:
+#   "i hate my life", "odio la mia vita", "sono depresso", "kill me"
+#       - hyperbole is the register teenagers actually speak in, and a tool
+#         that stops the exam every time someone says their life is terrible
+#         will be switched off within a week, which protects nobody.
+#   "morire", "die", "sterben" on their own
+#       - a student whose grandfather died is describing their family, which is
+#         exactly what the exam asked them to do.
+#   anything built on "live" / "leben"
+#       - "I don't want to live here any more" and "ich will nicht mehr hier
+#         wohnen" are answers to "where do you live", which is a set topic.
+#         The unambiguous phrasings below cover the same disclosure.
+#
+# The asymmetry that decides the rest of the list: under-detecting a suicide
+# disclosure and over-detecting one are not comparable errors, so where a
+# phrase is unambiguous it is in even if it is rare.
+
+# --- English: suicide ---------------------------------------------------------
+kill myself
+killing myself
+i want to kill
+end my life
+ending my life
+take my own life
+taking my own life
+end it all
+suicide
+suicidal
+commit suicide
+want to die
+wanna die
+i want to die
+i wish i was dead
+i wish i were dead
+better off dead
+no reason to live
+nothing to live for
+dont want to be here anymore
+do not want to be here anymore
+want to disappear
+better off without me
+nobody would miss me
+no one would miss me
+going to end it
+
+# --- English: self-harm -------------------------------------------------------
+hurt myself
+hurting myself
+harm myself
+self harm
+cut myself
+cutting myself
+cuts on my
+burn myself
+
+# --- English: abuse disclosure ------------------------------------------------
+# Short and unambiguous only. "hurts me" is absent on purpose: a toothache
+# hurts too.
+hits me
+beats me
+hit me at home
+being abused
+touches me
+touched me inappropriately
+im scared to go home
+i am scared to go home
+scared of my dad
+scared of my mum
+
+# --- German: suicide ----------------------------------------------------------
+mich umbringen
+mich toten
+selbstmord
+suizid
+suizidal
+ich will sterben
+ich mochte sterben
+will nicht mehr da sein
+nicht mehr da sein wollen
+es beenden
+schluss machen mit allem
+kein grund mehr
+besser ohne mich
+niemand wurde mich vermissen
+
+# --- German: self-harm --------------------------------------------------------
+mich verletzen
+mich ritzen
+ich ritze mich
+mir wehtun
+mich schneiden
+
+# --- German: abuse disclosure -------------------------------------------------
+schlagt mich
+schlagen mich
+hat mich geschlagen
+angst nach hause
+angst vor meinem vater
+angst vor meiner mutter
+fasst mich an

@@ -274,6 +274,9 @@ add_executable(speaking-sim
     src/topics.cpp
     src/translate.cpp
     src/worker.cpp
+    src/safety/wordlist_safety.cpp
+    src/safety/azure_safety.cpp
+    src/safety/safety_chain.cpp
     src/examiner/gemini_examiner.cpp
     src/examiner/hailo_examiner.cpp
     src/stt/whisper_stt.cpp
@@ -317,6 +320,29 @@ if(SIM_PIPER_EXECUTABLE)
         SIM_HAVE_PIPER=1
         SIM_PIPER_EXECUTABLE="${SIM_PIPER_EXECUTABLE}")
 endif()
+
+# ---------------------------------------------------------------------------
+# Safety tests.
+# ---------------------------------------------------------------------------
+
+# The safety layer is the one part of this server that can be tested with
+# nothing installed: no Crow, no sqlite, no model weights, no network. That is
+# the same property that makes the wordlist layer worth keeping separate from
+# the Azure one, so the test target is kept equally free of dependencies and
+# links only the two offline sources.
+#
+# EXCLUDE_FROM_ALL so an ordinary build of the server does not pay for it:
+#   cmake --build <dir> --target safety-tests && ./<dir>/safety-tests
+add_executable(safety-tests EXCLUDE_FROM_ALL
+    tests/safety_tests.cpp
+    src/safety/wordlist_safety.cpp
+    src/safety/safety_chain.cpp
+)
+target_include_directories(safety-tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_link_libraries(safety-tests PRIVATE Threads::Threads)
+set_target_properties(safety-tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+)
 
 # Asio warns and guesses a Windows 7 target if this is unset. Windows 10 = 0x0A00.
 if(WIN32)

@@ -52,6 +52,12 @@ models/*
 # split_audio.py rather than tracked here. The manifests beside them stay tracked
 listening/*/clips/
 
+# Wordlists are deployment data: a school adds the terms its own students use,
+# and a repository for a language marking rubric is a poor place to keep a list
+# of slurs. The tracked *.txt.example seeds beside them are the fallback the
+# loader reads when the live file is absent, so a fresh clone is still screened.
+config/wordlists/*/*.txt
+
 # The accounts / classes / exam-history database, plus WAL sidecars.
 *.db
 *.db-wal
