@@ -14,6 +14,7 @@
 #include "sim/config.hpp"
 #include "sim/examiner.hpp"
 #include "sim/language.hpp"
+#include "sim/rate_limit.hpp"
 #include "sim/stt.hpp"
 #include "sim/tts.hpp"
 #include "sim/worker.hpp"
@@ -127,6 +128,24 @@ private:
     crow::response serve_attempt(const crow::request& req, std::int64_t attempt_id);
     crow::response serve_join(const crow::request& req);
 
+    // ---- exam plans: src/plan_api.cpp ------------------------------------
+
+    void register_plan_routes();
+    crow::response serve_class_plans(const crow::request& req, std::int64_t class_id);
+    crow::response serve_plan(const crow::request& req, std::int64_t plan_id);
+    crow::response serve_archive_plan(const crow::request& req, std::int64_t plan_id);
+    crow::response serve_default_plan(const crow::request& req, std::int64_t class_id);
+    crow::response serve_exam_options(const crow::request& req);
+    crow::response serve_coverage(const crow::request& req, std::int64_t class_id);
+
+    RateLimiter limiter_;
+    std::optional<crow::response> refuse_if_rate_limited(const std::string& key,
+                                                         int capacity,
+                                                         int window_seconds);
+    //a 429 once key has made capacity requests inside the window. Keys carry
+    //the route and the caller - "join:12", "login:203.0.113.4" - so one busy
+    //student cannot starve another
+
     auth::LoginStates login_states_;
     //the PKCE verifier and state for sign-ins in flight, in memory: they live
     //for one redirect round trip
@@ -174,13 +193,33 @@ private:
                             const std::string& reply,
                             bool speech_follows,
                             int sample_rate,
-                            int exam_seconds = 0);
+                            int exam_seconds = 0,
+                            int questions_left = -1);
     //exam_seconds rides on the opening question only, the moment the server's
     //clock starts, so the browser's countdown starts from the same instant
 
-    void start_exam_clock(Session& session);
-    //the deadline is the configured length plus a few seconds of slack for the
-    //question reaching the browser, whose countdown starts on arrival
+    struct Allowance {
+        bool paid = false;
+        std::string source;
+        //"user" or "class" for a licence, "teacher" for a teacher account
+        std::int64_t paid_until = 0;
+        int limit = 0;
+        int used = 0;
+    };
+    Allowance allowance_for(const User& user);
+    //today's speaking allowance for this account and what it has spent. Also
+    //what decides translation: that is part of paid access, not metered
+
+    int start_exam_clock(Session& session);
+    //the deadline is the plan's length, or the configured one, plus a few
+    //seconds of slack for the question reaching the browser, whose countdown
+    //starts on arrival. Returns the length in seconds, which the browser is told
+
+    int record_student_turn(Session& session, const std::string& text,
+                            long long stt_ms);
+    //writes the student's answer and the rule-based tenses in it, and returns
+    //the turn's index so the examiner's own labels can be added once its reply
+    //arrives. -1 when the attempt is not being recorded
     //sample_rate is the session's own voice rate, passed in because two
     //languages on one server produce different ones. Ignored when
     //speech_follows is false, since no frame is coming to describe

@@ -191,6 +191,10 @@ body.teacherPage {
 
 #classPanel[hidden],
 #attemptPanel[hidden],
+#planPanel[hidden],
+#attemptRequiredCard[hidden],
+.buttonLink[hidden],
+button[hidden],
 #noClassSelected[hidden],
 #archivedBanner[hidden],
 #pendingBlock[hidden],
@@ -361,9 +365,191 @@ table[hidden] {
     opacity: 0.8;
 }
 
+/* ---- exam plans ---------------------------------------------------------- */
+
+.cardHead {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+}
+
+.buttonLink {
+    padding: 0.35rem 0.8rem;
+    border: 1px solid var(--examiner-edge);
+    border-radius: 7px;
+    background: var(--examiner-edge);
+    color: #fff;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+#planList {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.planRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.planName {
+    color: var(--ink);
+    font-weight: 600;
+}
+
+.planMeta {
+    font-size: 0.82rem;
+    color: var(--muted);
+}
+
+.badge {
+    display: inline-block;
+    margin-left: 0.5rem;
+    padding: 0.05rem 0.5rem;
+    border-radius: 999px;
+    background: var(--student-bg);
+    color: var(--student-ink);
+    font-size: 0.72rem;
+    font-weight: 600;
+    vertical-align: middle;
+}
+
+.badge.quietBadge {
+    background: rgba(122, 115, 106, 0.14);
+    color: var(--muted);
+}
+
+#planForm .card { margin-bottom: 1rem; }
+
+#planForm label.field {
+    display: block;
+    margin: 0.6rem 0 0.25rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--muted);
+}
+
+#planForm label.field:first-child { margin-top: 0; }
+
+#planForm input[type="text"],
+#planForm input[type="number"],
+#planForm select {
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--ink);
+    font: inherit;
+}
+
+#planName { width: 100%; }
+
+#planForm .inlineCheck {
+    margin-top: 0.5rem;
+    color: var(--ink);
+    font-size: 0.9rem;
+}
+
+.checkGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 0.2rem 1rem;
+}
+
+.questionRow {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 12rem 12rem auto;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.questionRow select { min-width: 0; }
+
+.tenseRow {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.2rem 0;
+}
+
+#planTenses .tenseRow .inlineCheck {
+    min-width: 13rem;
+    margin-top: 0;
+    /* one class more than #planForm .inlineCheck, which it has to outrank */
+}
+
+.tenseCount { width: 4rem; }
+
+#planFit.error { color: #b0392b; font-weight: 600; }
+
+/* ---- coverage and tense tags ---------------------------------------------- */
+
+#coverageTable td.gap {
+    background: rgba(192, 80, 63, 0.08);
+}
+
+#coverageTable td strong { font-weight: 700; }
+
+.tenseTags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: 0.45rem;
+}
+
+.tenseTag {
+    padding: 0.05rem 0.5rem;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    opacity: 0.85;
+}
+
+.tenseTag.single {
+    border-style: dashed;
+    opacity: 0.7;
+}
+
+#attemptRequired {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+#attemptRequired li {
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.35rem 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 0.9rem;
+}
+
+.requiredStatus {
+    flex: 0 0 6.5rem;
+    font-weight: 600;
+    font-size: 0.8rem;
+}
+
+.required.asked .requiredStatus { color: var(--student-ink); }
+.required.missed .requiredStatus { color: #b0392b; }
+.required.pending .requiredStatus { color: var(--muted); }
+
 /* ---- narrow screens ----------------------------------------------------- */
 
 @media (max-width: 50rem) {
+    .questionRow { grid-template-columns: minmax(0, 1fr); }
+    .planRow { flex-direction: column; align-items: flex-start; }
     #dashboard { grid-template-columns: minmax(0, 1fr); }
     /* minmax rather than 1fr: a bare 1fr track grows to fit the widest table,
        and the page then scrolls sideways instead of the table inside its card */
@@ -379,7 +565,12 @@ table[hidden] {
     }
 
     .formError,
-    .status.error { color: #e79287; }
+    .status.error,
+    #planFit.error,
+    .required.missed .requiredStatus { color: #e79287; }
+
+    .buttonLink { color: #0f1216; }
+    #coverageTable td.gap { background: rgba(224, 108, 92, 0.12); }
 
     #dashboard button:not(.quiet) { color: #0f1216; }
 }

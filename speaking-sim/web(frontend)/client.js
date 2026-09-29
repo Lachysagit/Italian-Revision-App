@@ -18,6 +18,10 @@ const micDismiss = document.getElementById("micDismiss");
 const examTimer = document.getElementById("examTimer");
 const examLoading = document.getElementById("examLoading");
 const examNotice = document.getElementById("examNotice");
+const usageLine = document.getElementById("usageLine");
+let speakingUsage = null;
+//{speaking_limit, speaking_used, paid, paid_source} from /api/me, kept so a
+//question's questions_left can repaint the line without another request
 const pageTitle = document.getElementById("pageTitle");
 //get references to HTML elements by their ID's
 //the translate box's own elements are looked up inside translate.js
@@ -472,6 +476,37 @@ function addTurn(role, text) {
     }
 }
 
+function paintUsage(usage) {
+    if (usage) {
+        speakingUsage = Object.assign({}, usage);
+    }
+    if (!speakingUsage) {
+        usageLine.hidden = true;
+        return;
+        //not signed in, or the count could not be read: say nothing rather
+        //than a number that might be wrong
+    }
+    const left = Math.max(0, speakingUsage.speaking_limit - speakingUsage.speaking_used);
+    const plural = (n) => (n === 1 ? "question" : "questions");
+    const where = speakingUsage.paid_source === "class" ? "Your class licence"
+        : speakingUsage.paid_source === "teacher" ? "Teacher account"
+            : speakingUsage.paid ? "Your plan" : "Free plan";
+    usageLine.textContent = speakingUsage.paid
+        ? `${where}: ${left} speaking ${plural(left)} left today.`
+        : `${where}: ${left} of ${speakingUsage.speaking_limit} free speaking ` +
+          `${plural(speakingUsage.speaking_limit)} left today. Listening is always free.`;
+    usageLine.classList.toggle("low", left <= 1);
+    usageLine.hidden = false;
+}
+
+function noteQuestionsLeft(left) {
+    if (!speakingUsage || typeof left !== "number") return;
+    speakingUsage.speaking_used = speakingUsage.speaking_limit - left;
+    paintUsage();
+    //the server's count after this question, not a guess made here: a second
+    //tab spending questions shows up on the next reply in this one
+}
+
 function showExamNotice(text) {
     examNotice.textContent = text;
     examNotice.hidden = false;
@@ -730,6 +765,7 @@ function setTurnState(state) {
     //the key it has to disable itself: it is read once at the start message.
     //A class's exam is in the class's language, so a picked class holds it too
     classSelect.disabled = state !== "idle";
+    planSelect.disabled = state !== "idle";
     joinClassButton.disabled = state !== "idle";
     //the class rides on the start message like the language, so it is fixed
     //for the rest of the session
@@ -970,6 +1006,8 @@ startButton.onclick = async () => {
             gemini_key: geminiKeySelect.value || "",
             student_name: studentName.value.trim(),
             class_id: selectedClassId() || undefined,
+            plan_id: selectedPlanId() || undefined,
+            //a named plan the student picked; absent means the class default
             //undefined drops the key, which the server reads as private
             //practice, rather than sending a 0 it would have to interpret
             //trimmed here so the server sees a real name or nothing at all;
@@ -1179,9 +1217,18 @@ doneButton.onclick = () => { //the student has finished this answer
     addLog("thinking...");
 };
 
+function sendClockMessage(type) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type, payload: "" }));
+    }
+    //the server runs the exam clock too, and cuts off an answer given after its
+    //deadline. Without this a pause would stop only the countdown on screen
+}
+
 function enterPause() { //the clock stops and the mic goes quiet
     pausePending = false;
     pauseExamTimer();
+    sendClockMessage("pause");
 
     if (captureState === "armed" || captureState === "capturing") {
         captureState = "idle";
@@ -1197,6 +1244,7 @@ function enterPause() { //the clock stops and the mic goes quiet
 
 function leavePause() { //the clock and the turn both start again
     resumeExamTimer();
+    sendClockMessage("resume");
     setTurnState("thinking");
     armMic();
     //always the student's turn to take back: a pause is only ever entered on
@@ -1335,6 +1383,7 @@ function handleMessage(event) { //message from server
                 examDurationMs = message.exam_seconds * 1000;
                 //set before addTurn below, which is what starts the countdown
             }
+            noteQuestionsLeft(message.questions_left);
             if (message.payload) {
                 addTurn("examiner", message.payload);
             }
@@ -1365,6 +1414,19 @@ function handleMessage(event) { //message from server
         if (message.type === "status" && message.payload === "busy") {
             armMic();
     
+        }
+
+        if (message.type === "status" && message.payload === "quota") {
+            showExamNotice(lastServerError ||
+                "That was the last speaking question for today.");
+            if (speakingUsage) {
+                speakingUsage.speaking_used = speakingUsage.speaking_limit;
+                paintUsage();
+            }
+            resetExamTimer();
+            teardown();
+            //today's allowance ran out: the answer above has been transcribed
+            //and saved, and the exam ends exactly as it does when time is up
         }
 
         if (message.type === "status" && message.payload === "ended") {

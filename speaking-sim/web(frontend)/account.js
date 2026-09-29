@@ -41,6 +41,11 @@ function initAccount(options) {
         .then((user) => {
             currentUser = user;
             paintAccountBox(user);
+            if (typeof setTranslateLocked === "function") {
+                setTranslateLocked(!(user && user.usage && user.usage.translation));
+            }
+            // here rather than in each page, so every page with the translate
+            // box opens it or shuts it from the same answer
             paintTeacherLink(user);
 
             if (!user) {

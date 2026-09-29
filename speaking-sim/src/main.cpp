@@ -1,4 +1,6 @@
 #include <cmath>
+#include <cstdlib>
+#include <ctime>
 #include <cstdint>
 #include <cstring>
 #include <exception>
@@ -11,6 +13,7 @@
 #include "sim/config.hpp"
 #include "sim/server.hpp"
 #include "sim/store.hpp"
+#include "sim/tenses.hpp"
 
 #include "sim/examiner/gemini_examiner.hpp"
 #include "sim/examiner/hailo_examiner.hpp"
@@ -74,11 +77,116 @@ int check_audio_encode() {
     return ok ? 0 : 1;
 }
 
+bool is_date(const std::string& text) {
+    if (text.size() != 10 || text[4] != '-' || text[7] != '-') return false;
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        if (i == 4 || i == 7) continue;
+        if (text[i] < '0' || text[i] > '9') return false;
+    }
+    return true;
+}
+
+std::string format_day(std::int64_t seconds) {
+    const std::time_t t = static_cast<std::time_t>(seconds);
+    char buffer[16];
+    std::strftime(buffer, sizeof(buffer), "%Y-%m-%d", std::localtime(&t));
+    return buffer;
+}
+
+// Licence administration: paid access is granted from here until a payment
+// provider exists to write the same rows. Runs against DATABASE_PATH and exits
+// without starting the server, so it is safe beside a running one - SQLite's
+// WAL lets both at the file.
+int licence_command(int argc, char** argv) {
+    const std::string command = argv[1];
+    sim::Config config = sim::load_config();
+    sim::Store store(config.database_path);
+
+    if (command == "--list-licences") {
+        for (const sim::Licence& licence : store.licences()) {
+            std::cout << licence.id << "  " << licence.kind << " " << licence.target_id
+                      << " (" << licence.target_label << ")  "
+                      << format_day(licence.starts_at) << " to "
+                      << format_day(licence.ends_at)
+                      << (licence.revoked ? "  REVOKED" : "")
+                      << (licence.note.empty() ? "" : "  - " + licence.note) << "\n";
+        }
+        return 0;
+    }
+
+    if (command == "--revoke-licence") {
+        if (argc < 3) {
+            std::cerr << "usage: speaking-sim --revoke-licence <id>\n";
+            return 2;
+        }
+        const bool revoked = store.revoke_licence(std::atoll(argv[2]));
+        std::cout << (revoked ? "revoked\n" : "no such active licence\n");
+        return revoked ? 0 : 1;
+    }
+
+    // --grant-licence user <email> <YYYY-MM-DD> [note]
+    // --grant-licence class <class id> <YYYY-MM-DD> [note]
+    if (argc < 5) {
+        std::cerr << "usage: speaking-sim --grant-licence user <email> <YYYY-MM-DD> [note]\n"
+                     "       speaking-sim --grant-licence class <class id> <YYYY-MM-DD> [note]\n";
+        return 2;
+    }
+    const std::string kind = argv[2];
+    const std::string target = argv[3];
+    const std::string until = argv[4];
+    const std::string note = argc > 5 ? argv[5] : "";
+    if (!is_date(until)) {
+        std::cerr << "the end date must be YYYY-MM-DD\n";
+        return 2;
+    }
+
+    std::int64_t target_id = 0;
+    if (kind == "user") {
+        const auto user = store.user_by_email(target);
+        if (!user) {
+            std::cerr << "no account with the email " << target
+                      << " - they have to sign in once first\n";
+            return 1;
+        }
+        target_id = user->id;
+    } else if (kind == "class") {
+        target_id = std::atoll(target.c_str());
+        if (!store.class_by_id(target_id)) {
+            std::cerr << "no class with id " << target << "\n";
+            return 1;
+        }
+    } else {
+        std::cerr << "kind must be user or class\n";
+        return 2;
+    }
+
+    const std::int64_t id = store.grant_licence(kind, target_id, until, note);
+    std::cout << "licence " << id << ": " << kind << " " << target << " until "
+              << until << "\n";
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     if (argc > 1 && std::strcmp(argv[1], "--check-audio-encode") == 0) {
         return check_audio_encode();
+    }
+    if (argc > 1 && (std::strcmp(argv[1], "--grant-licence") == 0 ||
+                     std::strcmp(argv[1], "--revoke-licence") == 0 ||
+                     std::strcmp(argv[1], "--list-licences") == 0)) {
+        try {
+            return licence_command(argc, argv);
+        } catch (const std::exception& error) {
+            std::cerr << "fatal: " << error.what() << std::endl;
+            return 1;
+        }
+    }
+    if (argc > 1 && std::strcmp(argv[1], "--check-tenses") == 0) {
+        return sim::check_tense_rules();
+        //the tense rules feed the teacher's report, and a rule that misfires
+        //does not crash - it quietly credits a student with the wrong tense.
+        //This runs them over known sentences without a server or a student
     }
 
     try {

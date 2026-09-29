@@ -50,6 +50,10 @@
         <select id="classSelect">
             <option value="">Private practice</option>
         </select>
+        <label for="planSelect" id="planLabel" hidden>Exam</label>
+        <select id="planSelect" hidden></select>
+        <!-- the class's exam plans, when it has any: its default, or another
+             one the teacher offers by name. Filled by classes.js -->
         <a id="myClasses" href="/classes">My classes</a>
         <button id="joinClass" type="button">Join a class</button>
         <!-- the class decides which teacher sees the exam, and its language.
@@ -59,6 +63,10 @@
     </div>
 
     <p id="classHint" role="status" hidden></p>
+
+    <p id="usageLine" role="status" hidden></p>
+    <!-- today's speaking allowance, from /api/me and then from each examiner
+         question. The server holds the real count; this is its reading -->
     <!-- says out loud that a class exam is visible to the teacher, so nobody
          sits one thinking it is private -->
 
@@ -165,6 +173,7 @@
                 // override: a student who goes by something other than their
                 // Google name types it once and keeps it
                 initClasses();
+                paintUsage(user.usage);
             },
         });
     </script>

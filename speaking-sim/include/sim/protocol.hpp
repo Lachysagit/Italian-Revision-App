@@ -11,6 +11,8 @@ enum class MessageType {
     Start, //from browser
     Stop, //from browser
     End, //from browser: the student pressed end rather than running out of time
+    Pause, //from browser: the student paused, so the exam clock stops
+    Resume, //from browser: the student carried on, so the clock runs again
     Status, //from server
     Transcript, //from server
     ExaminerText, //from server
@@ -36,10 +38,16 @@ struct Message {
     //again: absent rather than empty when the settings field was left blank,
     //which is how the session tells "no name given" from "named nothing"
     int exam_seconds = 0;
+    int questions_left = -1;
+    //from the server, on each examiner question: how many more today's
+    //allowance has room for. -1 is "not metered", and is left out of the JSON
     //from the server, on the opening question only: how long the exam runs.
     //The server's clock is the one that counts; the browser's countdown is a
     //display of it, so a page left on an old default still shows the truth
     std::int64_t class_id = 0;
+    std::int64_t plan_id = 0;
+    //sent with Start only: a named exam plan of that class, picked by the
+    //student. Absent means the class's default plan, if it has one
     //sent with Start only: the class this exam is being sat for, or absent for
     //private practice. A claim the server checks against class_members before
     //it believes it, since it decides which teacher can read the transcript

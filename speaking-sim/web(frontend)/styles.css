@@ -242,6 +242,18 @@ h1 {
     display: none;
 }
 
+#usageLine {
+    margin: 0.4rem 0 0;
+    font-size: 0.82rem;
+    color: var(--muted);
+}
+
+#usageLine.low { color: #b0392b; font-weight: 600; }
+
+#usageLine[hidden] {
+    display: none;
+}
+
 #transcript {
     display: flex;
     flex-direction: column;
@@ -1233,3 +1245,11 @@ body.gated { overflow: hidden; }
 }
 
 #acctError[hidden] { display: none; }
+
+/* the translate box for an account without paid access: shut, with the reason
+   in the result slot underneath rather than an error on every lookup */
+#translateBox.locked #translateInput,
+#translateBox.locked #translateGo {
+    opacity: 0.55;
+    cursor: not-allowed;
+}

@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <random>
 #include <cstddef>
@@ -10,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "sim/exam_plan.hpp"
 #include "sim/examiner.hpp"
 #include "sim/language.hpp"
 #include "sim/question_bank.hpp"
@@ -48,6 +50,11 @@ public:
     //who is sitting the exam, read from the session cookie when the websocket
     //was accepted. nullopt for a browser that never signed in, which only a
     //server with AUTH_REQUIRED off lets through
+    void set_question_limit(int limit);
+    int question_limit() const;
+    //today's allowance of examiner questions for the account sitting this
+    //exam, fixed at Start. -1 means unmetered: a browser that never signed in,
+    //which only a server with AUTH_REQUIRED off lets through
     void set_class_id(std::int64_t id);
     std::optional<std::int64_t> class_id() const;
     //the class the Start message named, once Server has checked the user is in
@@ -62,11 +69,47 @@ public:
     using Clock = std::chrono::steady_clock;
 
     bool clock_started() const;
-    void start_clock(Clock::time_point deadline);
+    void start_clock(Clock::time_point now, Clock::duration length);
     bool time_up(Clock::time_point now) const;
     //the exam's own deadline. Started once, when the opening question has gone
     //out, and read when each answer arrives: an answer submitted after it is
     //transcribed but never earns another question, whatever the browser says
+    void pause_clock(Clock::time_point now);
+    void resume_clock(Clock::time_point now);
+    //the exam page's Pause button. The time left is banked on pause and a new
+    //deadline is bought from it on resume, the same arithmetic the browser's
+    //countdown does, so the two clocks stay in step across a pause. A paused
+    //clock never runs out
+
+    // ---- the exam plan ---------------------------------------------------
+
+    void set_plan(ExamPlan plan);
+    //the teacher's plan for this exam, set from Start before the first job.
+    //Narrows the topics, queues the set questions and the tense targets, and
+    //can switch the opinion question off. Without one the exam runs as it
+    //always has
+    const std::optional<ExamPlan>& plan() const;
+    int plan_duration_seconds() const;
+    //0 when there is no plan or it keeps the server's default length
+
+    ReplySchema reply_schema() const;
+    //what this turn's reply must carry: the plan's topic tags, this language's
+    //tense names, and the set questions still to ask. Read right after
+    //build_examiner_input, which may have just ordered one of them
+
+    struct ReplyOutcome {
+        std::vector<std::int64_t> asked;
+        std::vector<std::int64_t> missed;
+        //set questions this reply asked, and ones given up on after the
+        //examiner ignored the order too many times
+        std::vector<std::string> question_tenses;
+        //model and rules together, as counted towards the plan's targets
+    };
+    ReplyOutcome note_examiner_reply(const std::string& question,
+                                     const ExaminerReply& reply);
+    //after record_question: checks the reply against the set questions, counts
+    //its tenses and takes the examiner's own word on whether it asked an
+    //opinion. Returns what Server has to write down
 
     int next_turn_index();
     //monotonic per session, handed to each stored turn. Not atomic on purpose -
@@ -77,7 +120,9 @@ public:
     //per topic, then build_examiner_input tells the examiner it is finished.
     //An empty topic counts against the topic already running
 
-    std::vector<Turn> build_examiner_input() const;
+    std::vector<Turn> build_examiner_input();
+    //not const: choosing this turn's one instruction is a decision the reply
+    //is then checked against, so the choice is remembered
 
 
     bool try_begin_job();
@@ -99,6 +144,29 @@ public:
 private:
     std::string change_topic_directive() const;
     std::string opinion_directive() const;
+    std::string required_directive(const PlanQuestion& question, bool opening) const;
+    std::string tense_directive(const std::string& tense) const;
+    void rebuild_prompts();
+    //fills both prompt files from the language pack and the plan together, so
+    //set_language and set_plan can be called in either order
+
+    struct RequiredState {
+        PlanQuestion question;
+        std::string key;
+        //"q<id>", the value the reply names it by
+        bool done = false;
+        int orders = 0;
+        //how many turns it has been ordered on. Given up at kMaxOrders, so an
+        //examiner that will not ask it cannot hold the whole exam hostage
+    };
+    static constexpr int kMaxOrders = 3;
+
+    bool pending(const RequiredState& state) const;
+    std::optional<std::size_t> pick_required(bool changing_topic, bool urgent) const;
+    std::optional<std::string> tense_due(int remaining) const;
+    int remaining_turns(Clock::time_point now) const;
+    //an estimate from the time left and the pace so far; -1 before the clock
+    //has started
 
     std::atomic<bool> job_in_flight_{false};
 
@@ -149,9 +217,29 @@ private:
     std::string partial_byte_;
 
 
+    mutable std::mutex clock_mutex_;
     std::optional<Clock::time_point> deadline_;
+    std::optional<Clock::duration> paused_left_;
+    Clock::time_point clock_started_at_;
+    std::optional<Clock::time_point> paused_at_;
+    Clock::duration paused_total_{};
+    //with clock_started_at_, what remaining_turns() measures the pace from:
+    //time spent paused is not time spent answering
+
+    std::optional<ExamPlan> plan_;
+    std::vector<RequiredState> required_;
+    std::optional<std::size_t> ordered_required_;
+    //the set question this turn's input ordered, checked against the reply
+    std::vector<std::pair<std::string, int>> tenses_asked_;
+    int last_tense_order_ = -10;
+    //the question count at which a tense was last ordered, so the orders are
+    //spread across the exam rather than stacked on consecutive turns
+    //set while paused. Guarded by its own mutex rather than the job latch:
+    //Pause and Resume, like End, are handled without taking the latch, so they
+    //can land while the opening job is starting the clock on a worker
     std::int64_t user_id_ = 0;
     std::int64_t class_id_ = 0;
+    int question_limit_ = -1;
     //zero for "none": row ids start at 1, so zero is never a real one
     std::int64_t attempt_id_ = 0;
     int turn_index_ = 0;

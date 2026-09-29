@@ -129,38 +129,104 @@ httplib::Client& client() {
 }
 
 // The tag is an enum the API enforces, so the model cannot invent one of its
-// own and no amount of prompt drift can widen the set.
+// own and no amount of prompt drift can widen the set. The same goes for every
+// field below that carries an enum: the plan decides the allowed values, and
+// the API holds the model to them.
 //
 // with_transcript adds a field for the student's own words, used when the
 // answer arrived as audio. It is ordered FIRST, ahead of the reply: the model
 // writes down what it heard before it composes an answer to it, which is both
 // the order the student wants to see and the order that makes the reply a
-// response to a settled transcript rather than to an impression of one.
-void apply_response_schema(crow::json::wvalue& body, bool with_transcript) {
+// response to a settled transcript rather than to an impression of one. The
+// labelling fields come after the reply, so the Italian is written before the
+// model starts describing it.
+void apply_response_schema(crow::json::wvalue& body, bool with_transcript,
+                           const ReplySchema& spec) {
     crow::json::wvalue& schema = body["generationConfig"]["responseSchema"];
     schema["type"] = "OBJECT";
-    schema["properties"]["reply"]["type"] = "STRING";
-    schema["properties"]["topic"]["type"] = "STRING";
-    for (unsigned i = 0; i < kTopicTags.size(); ++i) {
-        schema["properties"]["topic"]["enum"][i] =
-            std::string(kTopicTags[i]);
-    }
-
     unsigned field = 0;
+    const auto require = [&schema, &field](const char* name) {
+        schema["required"][field] = name;
+        schema["propertyOrdering"][field] = name;
+        ++field;
+    };
+
     if (with_transcript) {
         schema["properties"]["transcript"]["type"] = "STRING";
-        schema["required"][field] = "transcript";
-        schema["propertyOrdering"][field] = "transcript";
-        ++field;
+        require("transcript");
     }
-    schema["required"][field] = "reply";
-    schema["propertyOrdering"][field] = "reply";
-    ++field;
-    schema["required"][field] = "topic";
-    schema["propertyOrdering"][field] = "topic";
-    //the tag last either way, so the Italian is generated before it
+
+    schema["properties"]["reply"]["type"] = "STRING";
+    require("reply");
+
+    schema["properties"]["topic"]["type"] = "STRING";
+    const std::vector<std::string> tags =
+        spec.topic_tags.empty() ? tags_for_groups({}) : spec.topic_tags;
+    for (unsigned i = 0; i < tags.size(); ++i) {
+        schema["properties"]["topic"]["enum"][i] = tags[i];
+    }
+    require("topic");
+
+    if (!spec.tenses.empty()) {
+        std::string legend;
+        for (const auto& [key, label] : spec.tenses) {
+            if (!legend.empty()) legend += ", ";
+            legend += key + " = " + label;
+        }
+        const auto tense_list = [&](const char* name, const std::string& what) {
+            crow::json::wvalue& list = schema["properties"][name];
+            list["type"] = "ARRAY";
+            list["items"]["type"] = "STRING";
+            for (unsigned i = 0; i < spec.tenses.size(); ++i) {
+                list["items"]["enum"][i] = spec.tenses[i].first;
+            }
+            list["description"] = what + " Keys: " + legend + ".";
+            require(name);
+        };
+        tense_list("question_tenses",
+                   "The tenses your reply's question is phrased in.");
+        tense_list("answer_tenses",
+                   "The tenses the student actually used in the answer you are "
+                   "replying to, mistakes included. Empty when there is no answer "
+                   "yet or it used none of these.");
+        //required rather than optional: an empty list is a real answer, and an
+        //optional field is one the model is free to leave out on a whim
+    }
+
+    if (!spec.required_ids.empty()) {
+        crow::json::wvalue& set = schema["properties"]["required_question"];
+        set["type"] = "STRING";
+        set["enum"][0] = "none";
+        for (unsigned i = 0; i < spec.required_ids.size(); ++i) {
+            set["enum"][i + 1] = spec.required_ids[i];
+        }
+        set["description"] =
+            "The id of the teacher's set question your reply asks, or none.";
+        require("required_question");
+    }
+
+    schema["properties"]["asks_opinion"]["type"] = "BOOLEAN";
+    schema["properties"]["asks_opinion"]["description"] =
+        "true when your question asks the student what they think or prefer.";
+    require("asks_opinion");
+    //asked of the model rather than guessed from phrases: the phrase match
+    //cannot see a German opener spelled with an umlaut
 
     body["generationConfig"]["responseMimeType"] = "application/json";
+}
+
+std::vector<std::string> string_list(const crow::json::rvalue& parsed,
+                                     const char* key) {
+    std::vector<std::string> out;
+    if (!parsed.has(key) || parsed[key].t() != crow::json::type::List) {
+        return out;
+    }
+    for (const auto& item : parsed[key]) {
+        if (item.t() == crow::json::type::String) {
+            out.emplace_back(item.s());
+        }
+    }
+    return out;
 }
 
 // Back into the text-plus-tag shape the rest of the program reads, so
@@ -173,20 +239,68 @@ ExaminerReply parse_structured_reply(const std::string& text) {
     if (!parsed || !parsed.has("reply") || !parsed.has("topic") ||
         parsed["reply"].t() != crow::json::type::String ||
         parsed["topic"].t() != crow::json::type::String) {
-        return {"", text};
+        ExaminerReply fallback;
+        fallback.text = text;
+        return fallback;
         //a schema hiccup degrades to the free-text path rather than throwing
     }
 
-    std::string transcript;
+    ExaminerReply reply;
     if (parsed.has("transcript") &&
         parsed["transcript"].t() == crow::json::type::String) {
-        transcript = std::string(parsed["transcript"].s());
+        reply.transcript = std::string(parsed["transcript"].s());
     }
     //absent on a text turn, where the schema never asked for one
 
-    return {std::move(transcript),
-            std::string(parsed["reply"].s()) + "\n[topic: " +
-                std::string(parsed["topic"].s()) + "]"};
+    reply.text = std::string(parsed["reply"].s()) + "\n[topic: " +
+                 std::string(parsed["topic"].s()) + "]";
+    reply.question_tenses = string_list(parsed, "question_tenses");
+    reply.answer_tenses = string_list(parsed, "answer_tenses");
+
+    if (parsed.has("required_question") &&
+        parsed["required_question"].t() == crow::json::type::String) {
+        const std::string id(parsed["required_question"].s());
+        if (id != "none") reply.required_question = id;
+    }
+    if (parsed.has("asks_opinion")) {
+        const auto type = parsed["asks_opinion"].t();
+        if (type == crow::json::type::True) reply.asks_opinion = true;
+        if (type == crow::json::type::False) reply.asks_opinion = false;
+    }
+    return reply;
+}
+
+// GEMINI_DRY_RUN's answer. It obeys the request the way a model would, so a
+// plan's scheduling can be exercised end to end with no key: it keeps to the
+// allowed topics, and when the request orders a set question it asks exactly
+// that question and names its id.
+ExaminerReply dry_run_reply(const std::vector<Turn>& history, bool with_audio,
+                            const ReplySchema& spec) {
+    ExaminerReply reply;
+    if (with_audio) reply.transcript = "[dry run transcript]";
+
+    std::string question = "[dry run reply]";
+    for (const Turn& turn : history) {
+        if (turn.role != Role::System) continue;
+        const std::size_t open = turn.text.find("\xc2\xab");
+        const std::size_t close = turn.text.find("\xc2\xbb");
+        const std::size_t id_at = turn.text.find("required_question to \"");
+        if (open != std::string::npos && close != std::string::npos &&
+            close > open && id_at != std::string::npos) {
+            question = turn.text.substr(open + 2, close - open - 2);
+            const std::size_t id_start = id_at + 22;
+            reply.required_question = turn.text.substr(
+                id_start, turn.text.find('"', id_start) - id_start);
+        }
+    }
+    //the set-question directive quotes the question between « and » and names
+    //its id; lifting both out is all "obeying" takes
+
+    const std::string tag = spec.topic_tags.empty() ? "family" : spec.topic_tags.front();
+    reply.text = question + "\n[topic: " + tag + "]";
+    if (!spec.tenses.empty()) reply.question_tenses = {"present"};
+    reply.asks_opinion = false;
+    return reply;
 }
 
 const char* gemini_role(Role role) {
@@ -245,20 +359,21 @@ void GeminiExaminer::prewarm() {
 
 std::string GeminiExaminer::respond(const std::vector<Turn>& history,
                                      const std::string& gemini_key_name) {
-    return call(history, SpokenAnswer{}, gemini_key_name).text;
+    return call(history, SpokenAnswer{}, gemini_key_name, ReplySchema{}).text;
     //no audio, so the schema asks for no transcript and the reply is the whole
     //of what comes back
 }
 
 ExaminerReply GeminiExaminer::respond_to_audio(
     const std::vector<Turn>& history, const SpokenAnswer& answer,
-    const std::string& gemini_key_name) {
-    return call(history, answer, gemini_key_name);
+    const std::string& gemini_key_name, const ReplySchema& schema) {
+    return call(history, answer, gemini_key_name, schema);
 }
 
 ExaminerReply GeminiExaminer::call(const std::vector<Turn>& history,
                                    const SpokenAnswer& answer,
-                                   const std::string& gemini_key_name) {
+                                   const std::string& gemini_key_name,
+                                   const ReplySchema& schema) {
     const std::string& api_key = key_for(gemini_key_name);
     const bool with_audio = !answer.bytes.empty();
     crow::json::wvalue body;
@@ -319,7 +434,7 @@ ExaminerReply GeminiExaminer::call(const std::vector<Turn>& history,
     body["generationConfig"]["thinkingConfig"]["thinkingLevel"] =
         opening_turn ? settings_.opening_thinking_level
                      : settings_.thinking_level;
-    apply_response_schema(body, with_audio);
+    apply_response_schema(body, with_audio, schema);
 
     if (std::getenv("GEMINI_DRY_RUN") != nullptr) {
         std::string dump = body.dump();
@@ -348,8 +463,7 @@ ExaminerReply GeminiExaminer::call(const std::vector<Turn>& history,
                   << ":generateContent (" << body.dump().size()
                   << " bytes on the wire)\n"
                   << dump << '\n';
-        return {with_audio ? "[dry run transcript]" : "",
-                "[dry run reply]\n[topic: family]"};
+        return dry_run_reply(history, with_audio, schema);
         //no request is sent and no key is spent. The point is to see the shape
         //of the body - a malformed inlineData part is a 400 that says very
         //little, and this shows the whole thing before it costs anything

@@ -11,6 +11,8 @@ std::string type_to_string(MessageType type) {
         case MessageType::Start:        return "start";
         case MessageType::Stop:         return "stop";
         case MessageType::End:          return "end";
+        case MessageType::Pause:        return "pause";
+        case MessageType::Resume:       return "resume";
         case MessageType::Status:       return "status";
         case MessageType::Transcript:   return "transcript";
         case MessageType::ExaminerText: return "examiner_text";
@@ -23,6 +25,8 @@ MessageType type_from_string(const std::string& text) {
     if (text == "start")         return MessageType::Start;
     if (text == "stop")          return MessageType::Stop;
     if (text == "end")           return MessageType::End;
+    if (text == "pause")         return MessageType::Pause;
+    if (text == "resume")        return MessageType::Resume;
     if (text == "status")        return MessageType::Status;
     if (text == "transcript")    return MessageType::Transcript;
     if (text == "examiner_text") return MessageType::ExaminerText;
@@ -58,6 +62,12 @@ crow::json::wvalue to_json(const Message& message) {
     }
     if (message.exam_seconds > 0) {
         json["exam_seconds"] = message.exam_seconds;
+    }
+    if (message.questions_left >= 0) {
+        json["questions_left"] = message.questions_left;
+    }
+    if (message.plan_id > 0) {
+        json["plan_id"] = message.plan_id;
     }
     if (message.class_id > 0) {
         json["class_id"] = message.class_id;
@@ -109,6 +119,10 @@ Message from_json(const crow::json::rvalue& json) {
         message.class_id = json["class_id"].i();
         //a string or a fraction leaves 0, which is private practice: a client
         //that sends the wrong shape loses the class, not the exam
+    }
+
+    if (json.has("plan_id") && json["plan_id"].t() == crow::json::type::Number) {
+        message.plan_id = json["plan_id"].i();
     }
 
     if (json.has("final") && json["final"].t() == crow::json::type::True) {

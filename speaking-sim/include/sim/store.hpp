@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "sim/exam_plan.hpp"
+
 struct sqlite3;
 
 namespace sim {
@@ -98,6 +100,53 @@ struct InviteResult {
     int existing = 0;  //already a member or already invited, nothing to do
 };
 
+struct TurnFeature {
+    int turn_index = 0;
+    std::string kind;
+    std::string value;
+    std::string source;
+};
+
+struct RequiredQuestionStatus {
+    std::int64_t question_id = 0;
+    std::string text;
+    std::string topic_group;
+    std::string status;
+    //pending while the exam runs, then asked or missed
+    int turn_index = -1;
+};
+
+struct CoverageRow {
+    std::int64_t user_id = 0;
+    std::string role;
+    //whose turn it was: "student" counts tenses produced, "examiner" asked
+    std::string kind;
+    std::string value;
+    int count = 0;
+};
+
+// ---- paid access and usage ------------------------------------------------
+
+struct Licence {
+    std::int64_t id = 0;
+    std::string kind;
+    //"user" or "class"
+    std::int64_t target_id = 0;
+    std::string target_label;
+    //the account's email or the class's name, for the admin listing
+    std::int64_t starts_at = 0;
+    std::int64_t ends_at = 0;
+    std::string note;
+    bool revoked = false;
+};
+
+struct PaidAccess {
+    bool active = false;
+    std::string source;
+    //"user" or "class": which kind of licence it came from
+    std::int64_t until = 0;
+};
+
 struct AttemptSummary {
     std::int64_t id = 0;
     std::int64_t user_id = 0;
@@ -110,6 +159,8 @@ struct AttemptSummary {
     //zero while the exam is still running
     std::string end_reason;
     int turn_count = 0;
+    std::string plan_name;
+    //empty for an exam that followed no plan
 };
 
 struct AttemptTurn {
@@ -211,6 +262,71 @@ public:
     //class list this needs no membership check: they sat every one of them
     std::optional<AttemptSummary> attempt_by_id(std::int64_t attempt_id);
     std::vector<AttemptTurn> attempt_turns(std::int64_t attempt_id);
+
+    // ---- exam plans ------------------------------------------------------
+
+    std::vector<ExamPlan> class_plans(std::int64_t class_id, bool include_archived);
+    std::optional<ExamPlan> plan_by_id(std::int64_t plan_id);
+
+    ExamPlan save_plan(const ExamPlan& plan, std::int64_t user_id);
+    //inserts when plan.id is 0, otherwise updates. Topics, questions and tense
+    //targets are replaced wholesale in the same transaction: a plan is edited
+    //as one form, so it is saved as one
+
+    void set_default_plan(std::int64_t class_id, std::optional<std::int64_t> plan_id);
+    void archive_plan(std::int64_t plan_id);
+    //also stops it being the class default, so no exam starts on a plan the
+    //teacher has put away
+
+    void attach_plan(std::int64_t attempt_id, const ExamPlan& plan,
+                     const std::string& plan_json);
+    //the frozen copy, and one pending row per required question
+
+    void record_turn_features(std::int64_t attempt_id, int turn_index,
+                              const std::string& kind,
+                              const std::vector<std::string>& values,
+                              const std::string& source);
+
+    void mark_required_question(std::int64_t attempt_id,
+                                std::int64_t question_id,
+                                const std::string& status,
+                                int turn_index);
+
+    void close_required_questions(std::int64_t attempt_id);
+    //every question still pending when the exam ends becomes missed
+
+    std::vector<TurnFeature> attempt_features(std::int64_t attempt_id);
+    std::vector<RequiredQuestionStatus> attempt_required(std::int64_t attempt_id);
+
+    std::vector<CoverageRow> class_coverage(std::int64_t class_id);
+    //per current member, how many turns of their class exams carried each
+    //tense (student and examiner turns counted apart) and each topic tag
+
+    // ---- paid access and usage ------------------------------------------
+
+    PaidAccess paid_access(std::int64_t user_id);
+    //an unrevoked licence running now, on the account itself or on any
+    //unarchived class the user is in. The latest end date wins
+
+    std::int64_t grant_licence(const std::string& kind, std::int64_t target_id,
+                               const std::string& until_date,
+                               const std::string& note);
+    //until_date is YYYY-MM-DD in the server's local time; the licence runs to
+    //the end of that day. Starts now
+    bool revoke_licence(std::int64_t licence_id);
+    std::vector<Licence> licences();
+
+    std::optional<User> user_by_email(const std::string& email);
+
+    int usage_today(std::int64_t user_id, const std::string& feature);
+
+    std::optional<int> reserve_usage(std::int64_t user_id,
+                                     const std::string& feature, int limit);
+    //spends one unit if the day's count is under limit, in one statement, so
+    //two tabs racing for the last question cannot both get it. The new count,
+    //or nullopt when the limit was already reached
+    void release_usage(std::int64_t user_id, const std::string& feature);
+    //gives one back: the turn it paid for failed on our side
 
     bool has_created_class(std::int64_t user_id);
     //whether this teacher owns a class already. What decides if the create-a-

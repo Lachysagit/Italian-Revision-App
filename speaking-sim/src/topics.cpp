@@ -53,18 +53,64 @@ std::string topic_group(const std::string& tag) {
     //eighteen entries, once per turn: a linear scan is the honest shape here
 }
 
-TopicMenu topic_menu(std::mt19937& rng) {
-    std::vector<std::string_view> groups;
+std::vector<std::string> all_topic_groups() {
+    std::vector<std::string> groups;
     for (const TagGroup& entry : kTagGroups) {
-        if (std::find(groups.begin(), groups.end(), entry.group) ==
-            groups.end()) {
-            groups.push_back(entry.group);
+        const std::string group(entry.group);
+        if (std::find(groups.begin(), groups.end(), group) == groups.end()) {
+            groups.push_back(group);
         }
     }
+    return groups;
     //read off kTagGroups rather than listed again here, so the menu and the
     //groups the exam actually counts on cannot drift apart
+}
+
+bool is_topic_group(const std::string& group) {
+    const std::vector<std::string> groups = all_topic_groups();
+    return std::find(groups.begin(), groups.end(), group) != groups.end();
+}
+
+std::vector<std::string> tags_for_groups(const std::vector<std::string>& groups) {
+    std::vector<std::string> tags;
+    for (const TagGroup& entry : kTagGroups) {
+        if (groups.empty() ||
+            std::find(groups.begin(), groups.end(), entry.group) != groups.end()) {
+            tags.emplace_back(entry.tag);
+        }
+    }
+    return tags;
+}
+
+TopicMenu topic_menu(std::mt19937& rng, const std::vector<std::string>& allowed,
+                     const std::string& first) {
+    std::vector<std::string_view> groups;
+    for (const TagGroup& entry : kTagGroups) {
+        if (std::find(groups.begin(), groups.end(), entry.group) !=
+            groups.end()) {
+            continue;
+        }
+        if (!allowed.empty() &&
+            std::find(allowed.begin(), allowed.end(), entry.group) == allowed.end()) {
+            continue;
+            //a plan that names its topics gets only those in the menu, so the
+            //examiner is never offered a topic the teacher left out
+        }
+        groups.push_back(entry.group);
+    }
+    if (groups.empty()) {
+        return topic_menu(rng, {}, first);
+        //a plan naming only unknown groups falls back to the whole syllabus
+        //rather than an exam with nothing to talk about
+    }
 
     std::shuffle(groups.begin(), groups.end(), rng);
+    const auto pinned = std::find(groups.begin(), groups.end(), first);
+    if (!first.empty() && pinned != groups.end()) {
+        std::rotate(groups.begin(), pinned, pinned + 1);
+        //a plan's set opening question belongs to one topic, so that topic
+        //opens the exam and the rest keep their shuffled order behind it
+    }
 
     TopicMenu menu;
     if (!groups.empty()) {

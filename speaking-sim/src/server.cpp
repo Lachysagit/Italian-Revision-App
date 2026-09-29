@@ -20,6 +20,8 @@
 
 #include "sim/audio_encode.hpp"
 #include "sim/http_util.hpp"
+#include "sim/plan_json.hpp"
+#include "sim/tenses.hpp"
 #include "sim/protocol.hpp"
 #include "sim/question_bank.hpp"
 #include "sim/static_files.hpp"
@@ -58,6 +60,15 @@ constexpr const char* kSessionCookie = "sid";
 // after the server sent it. Without this slack an answer finished just inside
 // the student's five minutes could land just outside the server's.
 constexpr int kClockSlackSeconds = 10;
+
+// The usage_daily feature an examiner question is counted under.
+constexpr const char* kSpeakingFeature = "speaking_question";
+
+std::string quota_message(int limit) {
+    return "You have used all " + std::to_string(limit) +
+           " of today's speaking questions, so the exam ends here. Your answer "
+           "has been saved, and more questions are available from midnight.";
+}
 
 // Who the websocket handshake found behind the session cookie. Allocated in
 // onaccept, which runs before the connection object exists, and handed across
@@ -309,9 +320,15 @@ void Server::run()
     //block itself. Old links and bookmarks still land somewhere sensible
 
     CROW_ROUTE(app_, "/auth/login") //HTTP ROUTE -----------------------------------
-    ([this] {
+    ([this](const crow::request& req) {
+        if (auto refusal = refuse_if_rate_limited(
+                "login:" + req.remote_ip_address, 20, 60)) {
+            return std::move(*refusal);
+        }
         return serve_auth_login();
     });
+    //by address, since nobody is signed in yet: each call creates a pending
+    //login state, and a loop hitting this would fill that table
     //the sign-in button points straight here rather than at Google, so the
     //client id and the PKCE challenge never have to exist in the page
 
@@ -342,6 +359,9 @@ void Server::run()
     //been posted once the account is not onboarded, and no exam may start
 
     register_class_routes();
+    register_plan_routes();
+    //exam plans, their options and the class coverage report, in
+    //src/plan_api.cpp
     //classes, join codes, rosters and exam history for the teacher dashboard,
     //all in src/class_api.cpp
 
@@ -387,6 +407,15 @@ void Server::run()
             if (user_id == 0 && config_.auth_required) {
                 refusal = crow::response(401, "sign in to start an exam");
                 return;
+            }
+
+            if (!limiter_.allow(user_id != 0 ? "ws:" + std::to_string(user_id)
+                                             : "ws:" + req.remote_ip_address,
+                                30, std::chrono::seconds(60))) {
+                refusal = crow::response(429, "too many exams started, wait a minute");
+                return;
+                //each exam is a new socket, and a page stuck reconnecting in a
+                //loop would otherwise open sessions faster than anyone sits them
             }
 
             *userdata = new SocketIdentity{user_id};
@@ -691,6 +720,35 @@ crow::response Server::serve_languages()
 
 crow::response Server::serve_translate(const crow::request& req)
     {
+    User user;
+    if (auto refusal = refuse_unless_signed_in(req, user)) {
+        return std::move(*refusal);
+    }
+    try {
+        if (!allowance_for(user).paid) {
+            crow::json::wvalue json;
+            json["error"] =
+                "Translation is part of paid access - a class licence from your "
+                "school, or your own. Speaking practice and every listening paper "
+                "stay free.";
+            json["reason"] = "paid_only";
+            return json_response(json, 403);
+            //403 with a reason rather than 402 Payment Required: Crow has no
+            //402 in its status table and sends an unknown code as a 500, which
+            //would read as a broken server. The reason is how a page tells
+            //"not included" apart from "not allowed"
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "translate: could not check access: " << e.what() << '\n';
+        return json_error(500, "something went wrong, please try again");
+    }
+    if (auto refusal = refuse_if_rate_limited(
+            "translate:" + std::to_string(user.id), 30, 60)) {
+        return std::move(*refusal);
+    }
+    //after the paid check: a free account should hear why it cannot translate,
+    //not that it is translating too fast
+
     if (config_.translate_api_key.empty()) {
         return json_error(503, "Translation is not configured on this server.");
         //said out loud rather than attempted with an empty key, which would come
@@ -740,6 +798,16 @@ crow::response Server::serve_translate(const crow::request& req)
         //the detail goes to the operator's log and a fixed string to the page,
         //the same split the examiner path uses for its failures
     }
+}
+
+std::optional<crow::response> Server::refuse_if_rate_limited(
+    const std::string& key, int capacity, int window_seconds) {
+    if (limiter_.allow(key, capacity, std::chrono::seconds(window_seconds))) {
+        return std::nullopt;
+    }
+    crow::response response = json_error(429, "too many requests - wait a moment and try again");
+    response.set_header("Retry-After", std::to_string(window_seconds));
+    return response;
 }
 
 std::optional<User> Server::user_for_request(const crow::request& req) {
@@ -903,6 +971,23 @@ crow::response Server::serve_me(const crow::request& req) {
         //nicety and showing it wrongly is worse than not showing it
     }
     json["has_created_class"] = has_class;
+
+    try {
+        const Allowance allowance = allowance_for(*user);
+        json["usage"]["speaking_limit"] = allowance.limit;
+        json["usage"]["speaking_used"] = allowance.used;
+        json["usage"]["paid"] = allowance.paid;
+        json["usage"]["paid_source"] = allowance.source;
+        json["usage"]["paid_until"] = allowance.paid_until;
+        json["usage"]["translation"] = allowance.paid;
+        //one place a page learns what this account may do today: how much
+        //speaking is left, and whether the translate box is open to it
+    } catch (const std::exception& e) {
+        std::cerr << "usage: could not read the allowance for user " << user->id
+                  << ": " << e.what() << '\n';
+        //left out rather than guessed: the page shows no count, and the
+        //server still enforces the real one at Start
+    }
     //the gate shows its create-a-class offer only to a teacher with no class,
     //which is what makes the offer first-time-only without a flag column
 
@@ -1081,6 +1166,7 @@ void Server::handle_control(crow::websocket::connection& conn,
 
         std::optional<User> user;
         std::optional<ClassInfo> klass;
+        std::optional<ExamPlan> plan;
         std::string refusal;
         try {
             if (const auto user_id = session->user_id()) {
@@ -1091,6 +1177,21 @@ void Server::handle_control(crow::websocket::connection& conn,
                 if (klass && (klass->archived ||
                               !store_->class_role(klass->id, user->id))) {
                     klass.reset();
+                }
+            }
+            if (klass && message.plan_id > 0) {
+                plan = store_->plan_by_id(message.plan_id);
+                if (!plan || plan->class_id != klass->id || plan->archived ||
+                    !(plan->visible || plan->is_default)) {
+                    plan.reset();
+                    refusal = "that exam is not available in this class any more";
+                }
+                //a plan from another class, or one the teacher has put away,
+                //is refused rather than quietly swapped for the default: the
+                //student chose it by name
+            } else if (klass) {
+                for (ExamPlan& candidate : store_->class_plans(klass->id, false)) {
+                    if (candidate.is_default) plan = std::move(candidate);
                 }
             }
         } catch (const std::exception& e) {
@@ -1113,6 +1214,30 @@ void Server::handle_control(crow::websocket::connection& conn,
             //thinks their teacher will see this exam must be told otherwise
         }
 
+        int question_limit = -1;
+        if (refusal.empty() && user) {
+            try {
+                const Allowance allowance = allowance_for(*user);
+                question_limit = allowance.limit;
+                if (allowance.used >= allowance.limit) {
+                    refusal = allowance.paid
+                        ? "You have used all " + std::to_string(allowance.limit) +
+                              " of today's speaking questions. More are available "
+                              "from midnight."
+                        : "You have used your " + std::to_string(allowance.limit) +
+                              " free speaking questions for today. More are "
+                              "available from midnight, or ask your teacher about "
+                              "a class licence for unlimited practice.";
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "start: allowance lookup failed: " << e.what() << '\n';
+                refusal = "could not check your account, please try again";
+            }
+        }
+        //checked at Start so a student with nothing left is told before the
+        //opening question rather than after it. The real guard is the
+        //reservation in the pipeline job, which two tabs cannot both win
+
         if (!refusal.empty()) {
             send_error(handle, refusal);
             send_status(handle, "refused");
@@ -1126,6 +1251,7 @@ void Server::handle_control(crow::websocket::connection& conn,
         } //a job is already in flight on this session, so refuse this message
 
         const LanguagePack* pack = nullptr;
+        session->set_question_limit(question_limit);
         if (klass) {
             pack = languages_.find(klass->language_id);
             session->set_class_id(klass->id);
@@ -1137,6 +1263,11 @@ void Server::handle_control(crow::websocket::connection& conn,
         }
         if (pack != nullptr) {
             session->set_language(pack);
+        }
+        if (plan) {
+            session->set_plan(*plan);
+            //after the language, though either order works: both rebuild the
+            //prompts from the pack and the plan together
         }
         //an unknown or absent language leaves the default set on open, rather
         //than failing the Start: a stale client or a typo must still get an
@@ -1163,6 +1294,10 @@ void Server::handle_control(crow::websocket::connection& conn,
             session->set_attempt_id(store_->begin_attempt(
                 session->user_id(), session->class_id(), session->language().id,
                 session->gemini_key_name()));
+            if (plan && session->attempt_id() != 0) {
+                store_->attach_plan(session->attempt_id(), *plan,
+                                    plan_to_json(*plan, true).dump());
+            }
         });
         //opened here rather than on connect: the language and the class are not
         //known until Start names them, and an attempt row that cannot say which
@@ -1175,6 +1310,18 @@ void Server::handle_control(crow::websocket::connection& conn,
         enqueue_pipeline_job(std::move(handle), session, {}, false, std::move(claim));
         return;
     }
+
+    if (message.type == MessageType::Pause) {
+        session->pause_clock(Session::Clock::now());
+        return;
+    }
+    if (message.type == MessageType::Resume) {
+        session->resume_clock(Session::Clock::now());
+        return;
+    }
+    //neither takes the job latch, for the reason End does not: the browser
+    //pauses on its own schedule and a "busy" refusal would leave the two clocks
+    //disagreeing about how much of the exam is left
 
     if (message.type == MessageType::End) {
         if (session->attempt_id() != 0) {
@@ -1215,6 +1362,11 @@ void Server::handle_control(crow::websocket::connection& conn,
         //first answer starts it instead, or an exam whose first call errored
         //would never end at all
     }
+    session->resume_clock(Session::Clock::now());
+    //an answer is never given while paused - the page drops the mic on pause -
+    //so a Stop means the exam is running again. Resuming here also stops a
+    //modified page from pausing once and then answering on a clock that can
+    //no longer run out
     const bool final = message.final || session->time_up(Session::Clock::now());
     //either clock running out ends the exam. The browser's is the one the
     //student watches; the server's is the one a modified page cannot stop
@@ -1236,6 +1388,9 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                                   {
     std::vector<Turn> examiner_input = session->build_examiner_input();
     //still on Crow's socket thread, which the claim has already made exclusive
+    ReplySchema reply_schema = session->reply_schema();
+    //read straight after the input, which may have just ordered a set question
+    //the schema has to offer as an answer
 
     const LanguagePack* language = &session->language();
     //snapshotted here alongside the input, for the same reason: the socket
@@ -1252,6 +1407,7 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
         handle = std::move(handle),
         job_audio = std::move(utterance_audio),
         job_input = std::move(examiner_input),
+        reply_schema = std::move(reply_schema),
         claim = std::move(claim)]() mutable
 
     //handle is captured by value
@@ -1273,6 +1429,9 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
         long long encode_ms = 0;
         long long examiner_ms = 0;
         long long tts_ms = 0;
+        int student_turn = -1;
+        //the index the student's answer was stored under, so the examiner's
+        //reading of its tenses can be attached once the reply arrives
         //stage timings on stderr, so a slow turn names one backend. Declared
         //out here so the send below still runs after a failure
 
@@ -1282,10 +1441,68 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
         // of a local model plus a call, and a transcription made with the
         // question it just asked for context - something whisper never sees.
         //
+        // One question of today's allowance is reserved before anything else,
+        // because the answer decides how this job hears the student: with none
+        // left the examiner is never called, so the recording goes to whisper
+        // instead. A turn the examiner then fails to answer is refunded below.
+        bool charged = false;
+        bool quota_hit = false;
+        bool examiner_answered = false;
+        int questions_left = -1;
+        const auto user_id = session->user_id();
+        if (!answer_only && user_id && session->question_limit() >= 0) {
+            try {
+                const auto used = store_->reserve_usage(
+                    *user_id, kSpeakingFeature, session->question_limit());
+                if (used) {
+                    charged = true;
+                    questions_left = std::max(0, session->question_limit() - *used);
+                } else {
+                    quota_hit = true;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "usage: reservation failed, turn continues "
+                             "uncharged: " << e.what() << '\n';
+                //open rather than closed, the same rule every other write in
+                //this job follows: a database that cannot count must not cost
+                //a student the turn they are in the middle of
+            }
+        }
+        const auto refund = [&] {
+            if (!charged) return;
+            charged = false;
+            persist_quietly("usage refund", [&] {
+                store_->release_usage(*user_id, kSpeakingFeature);
+            });
+        };
+
+        if (quota_hit && !transcribe_first) {
+            if (session->attempt_id() != 0) {
+                persist_quietly("attempt end (quota)", [&] {
+                    store_->end_attempt(session->attempt_id(), "quota");
+                });
+            }
+            send_error(handle, quota_message(session->question_limit()));
+            send_status(handle, "quota");
+            return;
+            //the opening question itself found nothing left: Start checked, but
+            //a second tab can spend the last question in between
+        }
+
+        const bool stop_after_answer = answer_only || quota_hit;
+        const char* end_reason = quota_hit ? "quota" : "timer";
+        const char* end_status = quota_hit ? "quota" : "ended";
+        if (quota_hit) {
+            send_error(handle, quota_message(session->question_limit()));
+        }
+        //sent ahead of the transcript, so the notice is on screen by the time
+        //the page reads the status that ends the exam
+
         // answer_only turns are deliberately excluded: the exam clock has run
         // out and no question will be asked, so there is nothing for the
         // examiner to reply to and whisper is the cheaper way to get the words.
-        const bool examiner_listens = transcribe_first && !answer_only &&
+        // A turn with no allowance left is the same case.
+        const bool examiner_listens = transcribe_first && !stop_after_answer &&
                                       examiner_->accepts_audio() &&
                                       config_.audio_input == AudioInput::Gemini &&
                                       !job_audio.empty();
@@ -1305,14 +1522,7 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                     job_input.push_back(Turn{Role::Student, transcript});
                     //onto the owned snapshot, STT had not run when it was built
 
-                    if (session->attempt_id() != 0) {
-                        persist_quietly("student turn", [&] {
-                            store_->record_turn(session->attempt_id(),
-                                                session->next_turn_index(),
-                                                "student", transcript, "",
-                                                stt_ms, 0, 0);
-                        });
-                    }
+                    student_turn = record_student_turn(*session, transcript, stt_ms);
                     //before the move below, not after: record_answer takes the
                     //string by value and leaves the local empty
 
@@ -1324,20 +1534,23 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                               << (job_audio.size() / 16000.0) << "s, stt "
                               << stt_ms << "ms)\n";
 
+                    refund();
+                    //no examiner call is made for an empty transcript, so the
+                    //question reserved for it goes back
                     send_error(handle, "didn't catch that, please try again");
-                    if (answer_only) {
+                    if (stop_after_answer) {
                         if (session->attempt_id() != 0) {
-                            persist_quietly("attempt end (timer)", [&] {
+                            persist_quietly("attempt end", [&] {
                                 store_->end_attempt(session->attempt_id(),
-                                                    "timer");
+                                                    end_reason);
                             });
                         }
                         //closed here as well as on the heard path below: an
                         //unheard last answer still ended on the clock, and
                         //without this the socket closing relabels it
-                        send_status(handle, "ended");
-                        //nothing to re-arm for: the clock has run out and this
-                        //job was the last one, heard or not
+                        send_status(handle, end_status);
+                        //nothing to re-arm for: the clock or the allowance has
+                        //run out and this job was the last one, heard or not
                     } else {
                         send_examiner_text(handle, reply, false, 0);
                     }
@@ -1347,13 +1560,13 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                 }
             }
 
-            if (answer_only) {
+            if (stop_after_answer) {
                 if (session->attempt_id() != 0) {
-                    persist_quietly("attempt end (timer)", [&] {
-                        store_->end_attempt(session->attempt_id(), "timer");
+                    persist_quietly("attempt end", [&] {
+                        store_->end_attempt(session->attempt_id(), end_reason);
                     });
                 }
-                send_status(handle, "ended");
+                send_status(handle, end_status);
                 return;
                 //the exam clock ran out before this answer was submitted. It
                 //has been transcribed, painted and recorded above, and the job
@@ -1377,7 +1590,8 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
             ExaminerReply answer;
             try {
                 answer = examiner_->respond_to_audio(
-                    job_input, spoken, session->gemini_key_name());
+                    job_input, spoken, session->gemini_key_name(), reply_schema);
+                examiner_answered = true;
             } catch (const std::exception& e) {
                 if (!examiner_listens) throw;
                 //a text turn has no second path to fall back to
@@ -1417,14 +1631,8 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                     //misheard answer should be visible as itself rather than
                     //only as a reply that makes no sense
 
-                    if (session->attempt_id() != 0) {
-                        persist_quietly("student turn", [&] {
-                            store_->record_turn(session->attempt_id(),
-                                                session->next_turn_index(),
-                                                "student", answer.transcript,
-                                                "", stt_ms, 0, 0);
-                        });
-                    }
+                    student_turn =
+                        record_student_turn(*session, answer.transcript, stt_ms);
                     //stt_ms is 0 unless whisper was the one that produced this,
                     //which is the honest figure: the examiner's own listening
                     //is not separable from examiner_ms
@@ -1446,18 +1654,21 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
 
             session->record_question(reply);
             session->note_question_topic(topic);
+            const Session::ReplyOutcome outcome =
+                session->note_examiner_reply(reply, answer);
+            //the set questions and tense targets are judged on the cleaned
+            //reply, the same words the student sees and hears
 
             int exam_seconds = 0;
             if (!session->clock_started()) {
-                start_exam_clock(*session);
-                exam_seconds = config_.exam_duration_seconds;
+                exam_seconds = start_exam_clock(*session);
             }
             //the opening question: the exam starts now, so the wait for the
             //first examiner call is not taken off the student's time
 
             send_examiner_text(handle, reply, true,
                                tts_->sample_rate(language->piper_voice_path),
-                               exam_seconds);
+                               exam_seconds, questions_left);
             text_sent = true;
             //ahead of synthesis, not after it. The question is on screen while
             //piper is still working, so the wait the student actually sees is
@@ -1469,12 +1680,42 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
 
             if (session->attempt_id() != 0) {
                 persist_quietly("examiner turn", [&] {
-                    store_->record_turn(session->attempt_id(),
-                                        session->next_turn_index(),
+                    const std::int64_t attempt = session->attempt_id();
+                    const int examiner_turn = session->next_turn_index();
+                    store_->record_turn(attempt, examiner_turn,
                                         "examiner", reply, topic,
                                         0, examiner_ms, tts_ms);
-                    store_->note_examiner_call(session->attempt_id(),
-                                               session->gemini_key_name());
+                    store_->note_examiner_call(attempt, session->gemini_key_name());
+
+                    std::vector<std::string> model_tenses;
+                    for (const std::string& key : answer.question_tenses) {
+                        if (is_tense_key(key)) model_tenses.push_back(key);
+                    }
+                    store_->record_turn_features(attempt, examiner_turn, "tense",
+                                                 model_tenses, "model");
+                    store_->record_turn_features(attempt, examiner_turn, "tense",
+                                                 detect_tenses(language->id, reply),
+                                                 "rules");
+
+                    if (student_turn >= 0) {
+                        std::vector<std::string> answer_tenses;
+                        for (const std::string& key : answer.answer_tenses) {
+                            if (is_tense_key(key)) answer_tenses.push_back(key);
+                        }
+                        store_->record_turn_features(attempt, student_turn, "tense",
+                                                     answer_tenses, "model");
+                        //the examiner's reading of the answer it just replied
+                        //to, attached to that answer rather than to the reply
+                    }
+
+                    for (const std::int64_t id : outcome.asked) {
+                        store_->mark_required_question(attempt, id, "asked",
+                                                       examiner_turn);
+                    }
+                    for (const std::int64_t id : outcome.missed) {
+                        store_->mark_required_question(attempt, id, "missed",
+                                                       examiner_turn);
+                    }
                 });
             }
             //written here rather than beside record_question, so the row carries
@@ -1498,11 +1739,16 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
             //whisper requires it
         } catch (const std::exception& e) {
             std::cerr << "turn failed, sending what we have: " << e.what() << '\n';
+            if (!examiner_answered) refund();
+            //the examiner never produced a question, so none was spent. A
+            //failure after it did - piper, say - keeps the charge: the question
+            //reached the student as text
             speech.clear();
             send_error(handle, "something went wrong on that turn");
             //a fixed student-facing string, 
         } catch (...) {
             std::cerr << "turn failed with non-std exception, sending what we have\n";
+            if (!examiner_answered) refund();
             speech.clear();
             send_error(handle, "something went wrong on that turn");
             //same recovery, and reply is preserved for the same reason as above
@@ -1571,21 +1817,63 @@ void Server::send_transcript(const std::shared_ptr<ConnHandle>& handle,
     //MessageType::Transcript was never constructed, so the client branch was
 }
 
-void Server::start_exam_clock(Session& session) {
-    session.start_clock(
-        Session::Clock::now() +
-        std::chrono::seconds(config_.exam_duration_seconds + kClockSlackSeconds));
+Server::Allowance Server::allowance_for(const User& user) {
+    Allowance allowance;
+    if (user.is_teacher) {
+        allowance.paid = true;
+        allowance.source = "teacher";
+        //a teacher trying out their own plans should never meet the free
+        //limit halfway through checking one
+    } else {
+        const PaidAccess access = store_->paid_access(user.id);
+        allowance.paid = access.active;
+        allowance.source = access.source;
+        allowance.paid_until = access.until;
+    }
+    allowance.limit = allowance.paid ? config_.paid_daily_questions
+                                     : config_.free_daily_questions;
+    allowance.used = store_->usage_today(user.id, kSpeakingFeature);
+    return allowance;
+}
+
+int Server::start_exam_clock(Session& session) {
+    const int seconds = session.plan_duration_seconds() > 0
+                            ? session.plan_duration_seconds()
+                            : config_.exam_duration_seconds;
+    session.start_clock(Session::Clock::now(),
+                        std::chrono::seconds(seconds + kClockSlackSeconds));
+    return seconds;
+}
+
+int Server::record_student_turn(Session& session, const std::string& text,
+                                long long stt_ms) {
+    if (session.attempt_id() == 0) {
+        return -1;
+    }
+    int index = -1;
+    persist_quietly("student turn", [&] {
+        const int turn = session.next_turn_index();
+        store_->record_turn(session.attempt_id(), turn, "student", text, "",
+                            stt_ms, 0, 0);
+        store_->record_turn_features(session.attempt_id(), turn, "tense",
+                                     detect_tenses(session.language().id, text),
+                                     "rules");
+        index = turn;
+    });
+    return index;
 }
 
 void Server::send_examiner_text(const std::shared_ptr<ConnHandle>& handle,
                                 const std::string& reply,
                                 bool speech_follows,
                                 int sample_rate,
-                                int exam_seconds) {
+                                int exam_seconds,
+                                int questions_left) {
     Message message; //create Message Object
     message.type = MessageType::ExaminerText; //Set Message.type to Examiner Text
     message.payload = reply; //set payload to examiners reply
     message.exam_seconds = exam_seconds;
+    message.questions_left = questions_left;
     if (speech_follows) {
         message.sample_rate = sample_rate;
         //tell the browser what rate the PCM frame that follows was produced at.

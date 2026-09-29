@@ -25,7 +25,8 @@ public:
 
     ExaminerReply respond_to_audio(const std::vector<Turn>& history,
                                    const SpokenAnswer& answer,
-                                   const std::string& gemini_key_name) override;
+                                   const std::string& gemini_key_name,
+                                   const ReplySchema& schema) override;
 
     bool accepts_audio() const override { return true; }
 
@@ -38,7 +39,8 @@ private:
     //here, so the two cannot drift apart in what they ask for
     ExaminerReply call(const std::vector<Turn>& history,
                        const SpokenAnswer& answer,
-                       const std::string& gemini_key_name);
+                       const std::string& gemini_key_name,
+                       const ReplySchema& schema);
 
     const std::string& key_for(const std::string& gemini_key_name) const;
 

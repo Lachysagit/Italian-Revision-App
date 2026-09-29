@@ -13,6 +13,8 @@ const PENDING_CLASS = "pendingExamClass";
 const classSelect = document.getElementById("classSelect");
 const joinClassButton = document.getElementById("joinClass");
 const classHint = document.getElementById("classHint");
+const planSelect = document.getElementById("planSelect");
+const planLabel = document.getElementById("planLabel");
 const joinOverlay = document.getElementById("joinOverlay");
 const joinForm = document.getElementById("joinModal");
 const joinCodeInput = document.getElementById("joinCodeInput");
@@ -20,6 +22,12 @@ const joinError = document.getElementById("joinError");
 const joinSubmit = document.getElementById("joinSubmit");
 
 let studentClasses = [];
+let classPlans = [];
+//the chosen class's exam plans, names and lengths only: the server never
+//sends a student the set questions of an exam they have not sat yet
+let plansRequest = 0;
+//which class's plans the picker is waiting on. A student flicking between
+//classes can have two requests in flight, and only the newest may paint
 //[{id, name, language, language_label, role}] from /api/classes, archived ones
 //already left out by the server
 
@@ -165,6 +173,8 @@ function applyClassChoice() {
             "Choose Private practice to keep one to yourself.";
     }
 
+    loadClassPlans(klass);
+
     languagesReady.then(() => {
         if (klass && languages.some((entry) => entry.id === klass.language)) {
             languageSelect.value = klass.language;
@@ -187,6 +197,73 @@ function applyClassChoice() {
 classSelect.onchange = () => {
     localStorage.setItem(CLASS_STORAGE, classSelect.value);
     applyClassChoice();
+};
+
+// ---------------------------------------------------------------------------
+// the exam plan picker
+// ---------------------------------------------------------------------------
+
+function planStorageKey(klass) {
+    return `examPlan:${klass.id}`;
+    //per class: the plan picked for one class means nothing in another
+}
+
+function loadClassPlans(klass) {
+    const request = ++plansRequest;
+    if (!klass) {
+        classPlans = [];
+        paintPlanSelect(null);
+        return;
+    }
+    fetch(`/api/classes/${klass.id}/plans`, { credentials: "same-origin" })
+        .then((response) => (response.ok ? response.json() : { plans: [] }))
+        .catch(() => ({ plans: [] }))
+        .then((data) => {
+            if (request !== plansRequest) return;
+            classPlans = Array.isArray(data.plans) ? data.plans : [];
+            paintPlanSelect(klass);
+        });
+}
+
+function paintPlanSelect(klass) {
+    planSelect.textContent = "";
+    const hasPlans = Boolean(klass) && classPlans.length > 0;
+    planSelect.hidden = !hasPlans;
+    planLabel.hidden = !hasPlans;
+    if (!hasPlans) return;
+
+    const standard = classPlans.find((plan) => plan.is_default);
+    const first = document.createElement("option");
+    first.value = "";
+    first.textContent = standard ? `${standard.name} (class default)` : "Standard exam";
+    planSelect.appendChild(first);
+    //the first option is whatever an exam for this class runs when nothing
+    //else is picked, which is also what the server does with no plan_id
+
+    classPlans
+        .filter((plan) => !plan.is_default)
+        .forEach((plan) => {
+            const option = document.createElement("option");
+            option.value = String(plan.id);
+            const minutes = plan.duration_seconds
+                ? ` - ${Math.round(plan.duration_seconds / 60)} min` : "";
+            option.textContent = `${plan.name}${minutes}`;
+            planSelect.appendChild(option);
+        });
+
+    const saved = localStorage.getItem(planStorageKey(klass)) || "";
+    planSelect.value = Array.from(planSelect.options).some((o) => o.value === saved)
+        ? saved : "";
+    planSelect.disabled = turnState !== "idle";
+}
+
+function selectedPlanId() {
+    return Number(planSelect.value) || 0;
+}
+
+planSelect.onchange = () => {
+    const klass = selectedClass();
+    if (klass) localStorage.setItem(planStorageKey(klass), planSelect.value);
 };
 
 // ---------------------------------------------------------------------------
