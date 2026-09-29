@@ -50,6 +50,11 @@ public:
     //who is sitting the exam, read from the session cookie when the websocket
     //was accepted. nullopt for a browser that never signed in, which only a
     //server with AUTH_REQUIRED off lets through
+    void set_question_limit(int limit);
+    int question_limit() const;
+    //today's allowance of examiner questions for the account sitting this
+    //exam, fixed at Start. -1 means unmetered: a browser that never signed in,
+    //which only a server with AUTH_REQUIRED off lets through
     void set_class_id(std::int64_t id);
     std::optional<std::int64_t> class_id() const;
     //the class the Start message named, once Server has checked the user is in
@@ -234,6 +239,7 @@ private:
     //can land while the opening job is starting the clock on a worker
     std::int64_t user_id_ = 0;
     std::int64_t class_id_ = 0;
+    int question_limit_ = -1;
     //zero for "none": row ids start at 1, so zero is never a real one
     std::int64_t attempt_id_ = 0;
     int turn_index_ = 0;

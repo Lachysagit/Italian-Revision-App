@@ -321,6 +321,14 @@ std::optional<std::int64_t> Session::user_id() const {
     return user_id_ > 0 ? std::optional<std::int64_t>(user_id_) : std::nullopt;
 }
 
+void Session::set_question_limit(int limit) {
+    question_limit_ = limit;
+}
+
+int Session::question_limit() const {
+    return question_limit_;
+}
+
 void Session::set_class_id(std::int64_t id) {
     class_id_ = id;
 }

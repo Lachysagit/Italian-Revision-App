@@ -184,9 +184,22 @@ private:
                             const std::string& reply,
                             bool speech_follows,
                             int sample_rate,
-                            int exam_seconds = 0);
+                            int exam_seconds = 0,
+                            int questions_left = -1);
     //exam_seconds rides on the opening question only, the moment the server's
     //clock starts, so the browser's countdown starts from the same instant
+
+    struct Allowance {
+        bool paid = false;
+        std::string source;
+        //"user" or "class" for a licence, "teacher" for a teacher account
+        std::int64_t paid_until = 0;
+        int limit = 0;
+        int used = 0;
+    };
+    Allowance allowance_for(const User& user);
+    //today's speaking allowance for this account and what it has spent. Also
+    //what decides translation: that is part of paid access, not metered
 
     int start_exam_clock(Session& session);
     //the deadline is the plan's length, or the configured one, plus a few

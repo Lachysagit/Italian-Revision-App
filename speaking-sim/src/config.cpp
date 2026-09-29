@@ -206,6 +206,20 @@ Config load_config() {
         config.port = static_cast<std::uint16_t>(port_value);
     }
 
+    const auto daily = [](const char* name, int fallback) {
+        const std::string text = get_env(name, std::to_string(fallback));
+        int value = fallback;
+        if (!parse_int_strict(text, value) || value < 0) {
+            std::cerr << name << " " << text << " is not a whole number, using "
+                      << fallback << "\n";
+            return fallback;
+        }
+        return value;
+        //0 is allowed and means none: a server can switch free speaking off
+    };
+    config.free_daily_questions = daily("FREE_DAILY_QUESTIONS", 5);
+    config.paid_daily_questions = daily("PAID_DAILY_QUESTIONS", 60);
+
     const std::string exam_text = get_env("EXAM_DURATION_SECONDS", "300");
     int exam_seconds = 300;
     if (!parse_int_strict(exam_text, exam_seconds)) {

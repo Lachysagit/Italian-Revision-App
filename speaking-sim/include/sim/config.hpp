@@ -78,6 +78,11 @@ struct Config {
     //accounts, classes and exam history. A relative path resolves against the
     //working directory, which is speaking-sim/ like every other asset path here
 
+    int free_daily_questions = 5;
+    int paid_daily_questions = 60;
+    //FREE_DAILY_QUESTIONS and PAID_DAILY_QUESTIONS: examiner questions per
+    //account per local day. Paid means a licence on the account or on one of
+    //its classes, or a teacher account. Listening is never metered
     int exam_duration_seconds = 300;
     //EXAM_DURATION_SECONDS. The server's own clock, started when the opening
     //question goes out; the browser is told the figure and counts down to it

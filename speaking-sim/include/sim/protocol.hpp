@@ -38,6 +38,9 @@ struct Message {
     //again: absent rather than empty when the settings field was left blank,
     //which is how the session tells "no name given" from "named nothing"
     int exam_seconds = 0;
+    int questions_left = -1;
+    //from the server, on each examiner question: how many more today's
+    //allowance has room for. -1 is "not metered", and is left out of the JSON
     //from the server, on the opening question only: how long the exam runs.
     //The server's clock is the one that counts; the browser's countdown is a
     //display of it, so a page left on an old default still shows the truth

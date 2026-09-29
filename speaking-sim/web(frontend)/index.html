@@ -63,6 +63,10 @@
     </div>
 
     <p id="classHint" role="status" hidden></p>
+
+    <p id="usageLine" role="status" hidden></p>
+    <!-- today's speaking allowance, from /api/me and then from each examiner
+         question. The server holds the real count; this is its reading -->
     <!-- says out loud that a class exam is visible to the teacher, so nobody
          sits one thinking it is private -->
 
@@ -169,6 +173,7 @@
                 // override: a student who goes by something other than their
                 // Google name types it once and keeps it
                 initClasses();
+                paintUsage(user.usage);
             },
         });
     </script>
