@@ -24,6 +24,48 @@ let preferredLanguage = "italian";
 //what the new-class picker starts on: the teacher's own sign-up choice when
 //there is one. The list arrives in the registry's alphabetical order, so the
 //browser's default would otherwise be German for everyone
+let currentPlans = [];
+//the open class's exam plans, in full: the editor opens one from here
+let currentOptions = null;
+//topics and tense names for the open class's language, from /api/exam-options
+const optionsByLanguage = {};
+
+const PLACEMENTS = [
+    ["any", "Whenever it fits"],
+    ["with_topic", "While its topic is running"],
+    ["opening", "As the opening question"],
+];
+const LENGTHS = [0, 180, 240, 300, 360, 480, 600];
+//0 keeps the server's own exam length
+
+function examOptions(language) {
+    if (optionsByLanguage[language]) {
+        return Promise.resolve(optionsByLanguage[language]);
+    }
+    return api("GET", `/api/exam-options?language=${encodeURIComponent(language)}`)
+        .then((options) => {
+            optionsByLanguage[language] = options;
+            return options;
+        });
+}
+
+function tenseLabel(key) {
+    const match = currentOptions &&
+        currentOptions.tenses.find((tense) => tense.key === key);
+    return match ? match.label : key;
+}
+
+function capitaliseTopic(group) {
+    return group ? group.charAt(0).toUpperCase() + group.slice(1) : "";
+}
+
+function formatLength(seconds) {
+    if (!seconds) {
+        const standard = currentOptions ? currentOptions.default_duration_seconds : 300;
+        return `Standard (${Math.round(standard / 60)} min)`;
+    }
+    return `${Math.round(seconds / 60)} min`;
+}
 
 function initTeacher(user) {
     if (!user.is_teacher) {
@@ -177,20 +219,25 @@ function paintClassList() {
 // ---------------------------------------------------------------------------
 
 function openFromHash() {
-    const match = /^#class-(\d+)(?:\/attempt-(\d+))?$/.exec(window.location.hash);
+    const match = /^#class-(\d+)(?:\/(attempt|plan)-(\d+|new))?$/
+        .exec(window.location.hash);
     if (!match) {
         showPanel(null);
         return;
     }
     const classId = Number(match[1]);
-    const attemptId = match[2] ? Number(match[2]) : null;
+    const kind = match[2];
+    const target = match[3];
 
     const ready = currentClass && currentClass.id === classId
         ? Promise.resolve()
         : openClass(classId);
     ready.then(() => {
-        if (attemptId) {
-            openAttempt(attemptId);
+        if (!currentClass) return;
+        if (kind === "attempt") {
+            openAttempt(Number(target));
+        } else if (kind === "plan") {
+            openPlanEditor(target === "new" ? null : Number(target));
         } else {
             showPanel("class");
         }
@@ -202,6 +249,7 @@ function openFromHash() {
 function showPanel(which) {
     document.getElementById("classPanel").hidden = which !== "class";
     document.getElementById("attemptPanel").hidden = which !== "attempt";
+    document.getElementById("planPanel").hidden = which !== "plan";
     document.getElementById("noClassSelected").hidden = which !== null;
 }
 
@@ -213,12 +261,21 @@ function openClass(classId) {
     return Promise.all([
         api("GET", `/api/classes/${classId}`),
         api("GET", `/api/classes/${classId}/attempts`),
+        api("GET", `/api/classes/${classId}/plans`),
+        api("GET", `/api/classes/${classId}/coverage`),
     ])
-        .then(([detail, history]) => {
-            currentClass = detail.class;
-            paintClass(detail, history.attempts);
-            paintClassList();
-        })
+        .then(([detail, history, plans, coverage]) =>
+            examOptions(detail.class.language).then((options) => {
+                currentClass = detail.class;
+                currentPlans = plans.plans;
+                currentOptions = options;
+                paintClass(detail, history.attempts);
+                paintPlans(currentPlans);
+                paintCoverage(coverage.students, options);
+                paintClassList();
+            }))
+        // the options come after the class, because which tense names to
+        // show depends on the class's language
         .catch((error) => {
             currentClass = null;
             showPanel(null);
@@ -363,6 +420,333 @@ function endLabel(attempt) {
 }
 
 // ---------------------------------------------------------------------------
+// exam plans and coverage
+// ---------------------------------------------------------------------------
+
+function paintPlans(plans) {
+    const list = document.getElementById("planList");
+    list.textContent = "";
+    document.getElementById("newPlanLink").href = `#class-${currentClass.id}/plan-new`;
+    document.getElementById("newPlanLink").hidden = currentClass.archived;
+
+    const live = plans.filter((plan) => !plan.archived);
+    live.forEach((plan) => {
+        const item = element("li", "planRow");
+        const text = element("div");
+        const name = element("a", "planName", plan.name);
+        name.href = `#class-${currentClass.id}/plan-${plan.id}`;
+        text.appendChild(name);
+        if (plan.is_default) text.appendChild(element("span", "badge", "Default"));
+        if (!plan.visible) text.appendChild(element("span", "badge quietBadge", "Hidden"));
+
+        const parts = [formatLength(plan.duration_seconds)];
+        parts.push(plan.topics.length
+            ? `${plan.topics.length} ${plan.topics.length === 1 ? "topic" : "topics"}`
+            : "all topics");
+        if (plan.questions.length) {
+            parts.push(`${plan.questions.length} set ` +
+                (plan.questions.length === 1 ? "question" : "questions"));
+        }
+        if (plan.tenses.length) {
+            parts.push(plan.tenses.map((t) => tenseLabel(t.tense)).join(", "));
+        }
+        text.appendChild(element("div", "planMeta", parts.join(" · ")));
+        item.appendChild(text);
+
+        const toggle = element("button", "quiet small",
+            plan.is_default ? "Stop using as default" : "Make default");
+        toggle.type = "button";
+        toggle.disabled = currentClass.archived;
+        toggle.onclick = () => {
+            api("POST", `/api/classes/${currentClass.id}/default-plan`,
+                { plan_id: plan.is_default ? 0 : plan.id })
+                .then(refreshClass)
+                .catch((error) => showTeacherNotice(error.message));
+        };
+        item.appendChild(toggle);
+        list.appendChild(item);
+    });
+    document.getElementById("plansEmpty").hidden = live.length > 0;
+}
+
+function paintCoverage(students, options) {
+    const head = document.querySelector("#coverageTable thead tr");
+    const body = document.querySelector("#coverageTable tbody");
+    head.textContent = "";
+    body.textContent = "";
+
+    head.appendChild(element("th", null, "Student"));
+    head.appendChild(element("th", null, "Exams"));
+    options.tenses.forEach((tense) => head.appendChild(element("th", null, tense.label)));
+    head.appendChild(element("th", null, "Topics covered"));
+
+    const withExams = students.filter((student) => student.attempt_count > 0);
+    withExams.forEach((student) => {
+        const row = element("tr");
+        row.appendChild(element("td", null, student.name || student.email));
+        row.appendChild(element("td", "number", String(student.attempt_count)));
+        options.tenses.forEach((tense) => {
+            const produced = student.tenses_produced[tense.key] || 0;
+            const asked = student.tenses_asked[tense.key] || 0;
+            const cell = element("td", produced === 0 ? "number gap" : "number");
+            cell.appendChild(element("strong", null, String(produced)));
+            cell.appendChild(element("span", "muted", ` · ${asked}`));
+            cell.title = `${student.name || "This student"} used the ${tense.label} ` +
+                `in ${produced} answers; the examiner asked in it ${asked} times`;
+            row.appendChild(cell);
+            // a zero is shaded, because the gap is what a teacher reads this
+            // table for: a tense the student has never produced
+        });
+        const topics = Object.keys(student.topics);
+        const cell = element("td", "muted", topics.length
+            ? topics.map(capitaliseTopic).join("; ")
+            : "-");
+        row.appendChild(cell);
+        body.appendChild(row);
+    });
+
+    document.getElementById("coverageEmpty").hidden = withExams.length > 0;
+    document.getElementById("coverageTable").hidden = withExams.length === 0;
+}
+
+// ---------------------------------------------------------------------------
+// the plan editor
+// ---------------------------------------------------------------------------
+
+let editingPlan = null;
+//the plan open in the editor, or null for a new one
+
+function openPlanEditor(planId) {
+    editingPlan = planId ? currentPlans.find((plan) => plan.id === planId) : null;
+    if (planId && !editingPlan) {
+        showTeacherNotice("That exam plan no longer exists.");
+        window.location.hash = `#class-${currentClass.id}`;
+        return;
+    }
+    const plan = editingPlan || {
+        name: "", duration_seconds: 0, is_default: currentPlans.every((p) => p.archived),
+        visible: true, require_opinion: true, paraphrase_ok: false,
+        topics: [], questions: [], tenses: [],
+    };
+    //a class's first plan is ticked as its default, since a plan nobody sits
+    //by default is rarely what a first plan is for
+
+    document.getElementById("planTitle").textContent =
+        editingPlan ? `Edit: ${plan.name}` : `New exam plan for ${currentClass.name}`;
+    document.getElementById("planName").value = plan.name;
+    document.getElementById("planDefault").checked = plan.is_default;
+    document.getElementById("planVisible").checked = plan.visible;
+    document.getElementById("planOpinion").checked = plan.require_opinion;
+    document.getElementById("planParaphrase").checked = plan.paraphrase_ok;
+    document.getElementById("planArchive").hidden = !editingPlan;
+
+    const duration = document.getElementById("planDuration");
+    duration.textContent = "";
+    LENGTHS.forEach((seconds) => {
+        const option = element("option", null, formatLength(seconds));
+        option.value = String(seconds);
+        duration.appendChild(option);
+    });
+    duration.value = String(LENGTHS.includes(plan.duration_seconds)
+        ? plan.duration_seconds : 0);
+
+    const topics = document.getElementById("planTopics");
+    topics.textContent = "";
+    currentOptions.topics.forEach((group) => {
+        const label = element("label", "inlineCheck");
+        const box = element("input");
+        box.type = "checkbox";
+        box.value = group;
+        box.checked = plan.topics.includes(group);
+        box.onchange = refreshQuestionTopics;
+        label.appendChild(box);
+        label.appendChild(document.createTextNode(` ${capitaliseTopic(group)}`));
+        topics.appendChild(label);
+    });
+
+    const questions = document.getElementById("planQuestions");
+    questions.textContent = "";
+    plan.questions.forEach((question) => addQuestionRow(question));
+
+    const tenses = document.getElementById("planTenses");
+    tenses.textContent = "";
+    currentOptions.tenses.forEach((tense) => {
+        const target = plan.tenses.find((t) => t.tense === tense.key);
+        const row = element("div", "tenseRow");
+        const label = element("label", "inlineCheck");
+        const box = element("input");
+        box.type = "checkbox";
+        box.value = tense.key;
+        box.checked = Boolean(target);
+        label.appendChild(box);
+        label.appendChild(document.createTextNode(` ${tense.label}`));
+        row.appendChild(label);
+
+        const count = element("input", "tenseCount");
+        count.type = "number";
+        count.min = "1";
+        count.max = "5";
+        count.value = String(target ? target.min_count : 1);
+        count.setAttribute("aria-label", `How many questions in the ${tense.label}`);
+        count.disabled = !box.checked;
+        box.onchange = () => {
+            count.disabled = !box.checked;
+        };
+        //a count for a tense that is not being practised means nothing, so it
+        //only takes input once its box is ticked
+        row.appendChild(count);
+        row.appendChild(element("span", "muted", "times at least"));
+        tenses.appendChild(row);
+    });
+
+    setStatus("planStatus", "");
+    refreshQuestionTopics();
+    showPanel("plan");
+    window.scrollTo(0, 0);
+}
+
+function tickedTopics() {
+    return Array.from(document.querySelectorAll("#planTopics input:checked"))
+        .map((box) => box.value);
+}
+
+function addQuestionRow(question) {
+    const row = element("div", "questionRow");
+
+    const text = element("input", "questionText");
+    text.type = "text";
+    text.maxLength = 300;
+    text.placeholder = "e.g. Dove sei andato in vacanza l'anno scorso?";
+    text.value = question ? question.text : "";
+    text.setAttribute("aria-label", "Question");
+    row.appendChild(text);
+
+    const topic = element("select", "questionTopic");
+    topic.setAttribute("aria-label", "Topic");
+    topic.dataset.wanted = question ? question.topic_group : "";
+    row.appendChild(topic);
+
+    const placement = element("select", "questionPlacement");
+    placement.setAttribute("aria-label", "When to ask it");
+    PLACEMENTS.forEach(([value, label]) => {
+        const option = element("option", null, label);
+        option.value = value;
+        placement.appendChild(option);
+    });
+    placement.value = question ? question.placement : "any";
+    row.appendChild(placement);
+
+    const remove = element("button", "quiet small", "Remove");
+    remove.type = "button";
+    remove.onclick = () => {
+        row.remove();
+        paintFit();
+    };
+    row.appendChild(remove);
+
+    document.getElementById("planQuestions").appendChild(row);
+    refreshQuestionTopics();
+}
+
+// The topic menus on the question rows offer only the ticked topics, since the
+// server refuses a set question about a topic the exam does not cover.
+function refreshQuestionTopics() {
+    const ticked = tickedTopics();
+    const offered = ticked.length ? ticked : currentOptions.topics;
+    document.querySelectorAll("#planQuestions .questionTopic").forEach((select) => {
+        const wanted = select.value || select.dataset.wanted || "";
+        select.textContent = "";
+        const any = element("option", null, "Any topic");
+        any.value = "";
+        select.appendChild(any);
+        offered.forEach((group) => {
+            const option = element("option", null, capitaliseTopic(group));
+            option.value = group;
+            select.appendChild(option);
+        });
+        select.value = offered.includes(wanted) ? wanted : "";
+        select.dataset.wanted = "";
+    });
+    paintFit();
+}
+
+function paintFit() {
+    const chosen = Number(document.getElementById("planDuration").value) ||
+        currentOptions.default_duration_seconds;
+    const room = Math.max(0, Math.floor(chosen / currentOptions.seconds_per_question) - 1);
+    const count = document.querySelectorAll("#planQuestions .questionRow").length;
+    const fit = document.getElementById("planFit");
+    fit.textContent = `A ${Math.round(chosen / 60)}-minute exam has room for ` +
+        `${room} set questions` + (count > room ? ` - you have ${count}.` : ".");
+    fit.classList.toggle("error", count > room);
+    // the same sum the server checks on save, shown while typing so the
+    // refusal is never a surprise
+}
+
+function readPlanForm() {
+    const questions = Array.from(document.querySelectorAll("#planQuestions .questionRow"))
+        .map((row) => ({
+            text: row.querySelector(".questionText").value.trim(),
+            topic_group: row.querySelector(".questionTopic").value,
+            placement: row.querySelector(".questionPlacement").value,
+        }))
+        .filter((question) => question.text);
+
+    const tenses = Array.from(document.querySelectorAll("#planTenses .tenseRow"))
+        .filter((row) => row.querySelector("input[type=checkbox]").checked)
+        .map((row) => ({
+            tense: row.querySelector("input[type=checkbox]").value,
+            min_count: Number(row.querySelector(".tenseCount").value) || 1,
+        }));
+
+    return {
+        name: document.getElementById("planName").value.trim(),
+        duration_seconds: Number(document.getElementById("planDuration").value),
+        is_default: document.getElementById("planDefault").checked,
+        visible: document.getElementById("planVisible").checked,
+        require_opinion: document.getElementById("planOpinion").checked,
+        paraphrase_ok: document.getElementById("planParaphrase").checked,
+        topics: tickedTopics(),
+        questions,
+        tenses,
+    };
+}
+
+function savePlan(event) {
+    event.preventDefault();
+    const button = document.getElementById("planSave");
+    button.disabled = true;
+    const body = readPlanForm();
+    const request = editingPlan
+        ? api("PUT", `/api/plans/${editingPlan.id}`, body)
+        : api("POST", `/api/classes/${currentClass.id}/plans`, body);
+
+    request
+        .then(() => refreshClass())
+        .then(() => {
+            window.location.hash = `#class-${currentClass.id}`;
+        })
+        .catch((error) => setStatus("planStatus", error.message, true))
+        .finally(() => {
+            button.disabled = false;
+        });
+}
+
+function archivePlan() {
+    if (!editingPlan || !window.confirm(
+        `Archive ${editingPlan.name}? Students will stop seeing it, and if it ` +
+        "is the class default, exams go back to covering the whole syllabus.")) {
+        return;
+    }
+    api("POST", `/api/plans/${editingPlan.id}/archive`)
+        .then(() => refreshClass())
+        .then(() => {
+            window.location.hash = `#class-${currentClass.id}`;
+        })
+        .catch((error) => setStatus("planStatus", error.message, true));
+}
+
+// ---------------------------------------------------------------------------
 // one exam
 // ---------------------------------------------------------------------------
 
@@ -374,7 +758,10 @@ function openAttempt(attemptId) {
                 attempt.student_name || attempt.student_email;
             document.getElementById("attemptMeta").textContent =
                 `${formatTime(attempt.started_at)} · ${attempt.turn_count} turns · ` +
-                endLabel(attempt);
+                endLabel(attempt) +
+                (attempt.plan_name ? ` · plan: ${attempt.plan_name}` : "");
+
+            paintRequired(data.required);
 
             const container = document.getElementById("attemptTurns");
             container.textContent = "";
@@ -402,7 +789,40 @@ function turnCard(turn) {
     }
     card.appendChild(heading);
     card.appendChild(element("div", "turn-text", turn.text));
+
+    const tenses = turn.tenses || { model: [], rules: [] };
+    const keys = Array.from(new Set([...tenses.model, ...tenses.rules]));
+    if (keys.length) {
+        const row = element("div", "tenseTags");
+        keys.forEach((key) => {
+            const both = tenses.model.includes(key) && tenses.rules.includes(key);
+            const tag = element("span", both ? "tenseTag" : "tenseTag single",
+                tenseLabel(key));
+            tag.title = both ? "found by the examiner and the grammar check"
+                : tenses.model.includes(key) ? "found by the examiner only"
+                    : "found by the grammar check only";
+            row.appendChild(tag);
+        });
+        card.appendChild(row);
+        // one tag per tense, marked by how sure it is: agreement is solid,
+        // one source alone is dashed, so a disputed tense is visible as one
+    }
     return card;
+}
+
+function paintRequired(required) {
+    const card = document.getElementById("attemptRequiredCard");
+    const list = document.getElementById("attemptRequired");
+    list.textContent = "";
+    card.hidden = !required || required.length === 0;
+    (required || []).forEach((question) => {
+        const item = element("li", `required ${question.status}`);
+        const mark = question.status === "asked" ? "Asked"
+            : question.status === "missed" ? "Not asked" : "Still to ask";
+        item.appendChild(element("span", "requiredStatus", mark));
+        item.appendChild(element("span", null, question.text));
+        list.appendChild(item);
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -411,6 +831,14 @@ function turnCard(turn) {
 
 function wireDashboard() {
     document.getElementById("showArchived").onchange = paintClassList;
+
+    document.getElementById("planForm").onsubmit = savePlan;
+    document.getElementById("planArchive").onclick = archivePlan;
+    document.getElementById("addQuestion").onclick = () => addQuestionRow(null);
+    document.getElementById("planDuration").onchange = paintFit;
+    document.getElementById("planBack").onclick = () => {
+        window.location.hash = `#class-${currentClass.id}`;
+    };
 
     document.getElementById("newClassForm").onsubmit = (event) => {
         event.preventDefault();

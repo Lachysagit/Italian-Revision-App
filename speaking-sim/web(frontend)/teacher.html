@@ -96,6 +96,22 @@
                 </div>
             </div>
 
+            <div class="card" id="plansCard">
+                <div class="cardHead">
+                    <h3>Exam plans</h3>
+                    <a class="buttonLink" id="newPlanLink" href="#">New exam plan</a>
+                </div>
+                <p class="help">
+                    A plan decides what the examiner covers: which topics, the
+                    questions you want asked, and the tenses to practise. The
+                    default plan runs whenever a student sits an exam for this
+                    class; students can also pick any plan shown to them by name.
+                    Without a plan, exams cover the whole syllabus.
+                </p>
+                <ul id="planList"></ul>
+                <p class="empty" id="plansEmpty" hidden>No plans yet.</p>
+            </div>
+
             <div class="card">
                 <h3>Students</h3>
                 <div class="tableWrap">
@@ -115,6 +131,22 @@
                     </table>
                 </div>
                 <p class="empty" id="membersEmpty" hidden>No students yet.</p>
+            </div>
+
+            <div class="card" id="coverageCard">
+                <h3>What students have practised</h3>
+                <p class="help">
+                    From every exam sat for this class. Each tense cell is the
+                    number of answers in which the student used it, with the
+                    number of questions the examiner asked in it after the dot.
+                </p>
+                <div class="tableWrap">
+                    <table id="coverageTable">
+                        <thead><tr></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <p class="empty" id="coverageEmpty" hidden>No exams yet.</p>
             </div>
 
             <div class="card">
@@ -145,8 +177,77 @@
             <button type="button" id="attemptBack" class="quiet">&larr; Back to class</button>
             <h2 id="attemptTitle"></h2>
             <p id="attemptMeta"></p>
+
+            <div class="card" id="attemptRequiredCard" hidden>
+                <h3>Set questions</h3>
+                <ul id="attemptRequired"></ul>
+            </div>
+
+            <p class="help" id="tenseLegend">
+                Tense tags on each turn: a solid tag was found by both the
+                examiner and the grammar check, a dashed one by only one of them.
+            </p>
             <div id="attemptTurns"></div>
             <p class="empty" id="attemptEmpty" hidden>Nothing was said in this exam.</p>
+        </section>
+
+        <section id="planPanel" hidden>
+            <button type="button" id="planBack" class="quiet">&larr; Back to class</button>
+            <h2 id="planTitle">New exam plan</h2>
+
+            <form id="planForm">
+                <div class="card">
+                    <label class="field" for="planName">Name</label>
+                    <input id="planName" type="text" maxlength="80" required
+                           placeholder="e.g. Term 3 mock oral">
+
+                    <label class="field" for="planDuration">Length</label>
+                    <select id="planDuration"></select>
+
+                    <label class="inlineCheck"><input type="checkbox" id="planDefault">
+                        Default for this class</label>
+                    <label class="inlineCheck"><input type="checkbox" id="planVisible" checked>
+                        Show to students by name</label>
+                    <label class="inlineCheck"><input type="checkbox" id="planOpinion" checked>
+                        Include a question asking for the student's opinion</label>
+                </div>
+
+                <div class="card">
+                    <h3>Topics</h3>
+                    <p class="help">Tick the topics this exam covers. None ticked means the whole syllabus.</p>
+                    <div id="planTopics" class="checkGrid"></div>
+                </div>
+
+                <div class="card">
+                    <h3>Set questions</h3>
+                    <p class="help">
+                        Questions the examiner must ask, in the class's language.
+                        <span id="planFit"></span>
+                    </p>
+                    <div id="planQuestions"></div>
+                    <div class="buttonRow">
+                        <button type="button" id="addQuestion" class="quiet">Add a question</button>
+                    </div>
+                    <label class="inlineCheck"><input type="checkbox" id="planParaphrase">
+                        Let the examiner put set questions in its own words</label>
+                </div>
+
+                <div class="card">
+                    <h3>Tenses to practise</h3>
+                    <p class="help">
+                        The examiner phrases questions so that answers call for
+                        these tenses, at least as many times as you set. The
+                        opening question is always in the present.
+                    </p>
+                    <div id="planTenses"></div>
+                </div>
+
+                <div class="buttonRow">
+                    <button type="submit" id="planSave">Save plan</button>
+                    <button type="button" id="planArchive" class="quiet" hidden>Archive plan</button>
+                </div>
+                <p class="status" id="planStatus" role="status"></p>
+            </form>
         </section>
 
         <p id="noClassSelected">Choose a class, or create one.</p>
