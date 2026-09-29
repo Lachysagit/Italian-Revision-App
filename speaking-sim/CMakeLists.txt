@@ -262,6 +262,7 @@ add_executable(speaking-sim
     src/language.cpp
     src/protocol.cpp
     src/question_bank.cpp
+    src/rate_limit.cpp
     src/server.cpp
     src/session.cpp
     src/tense_rules.cpp

@@ -14,6 +14,7 @@
 #include "sim/config.hpp"
 #include "sim/examiner.hpp"
 #include "sim/language.hpp"
+#include "sim/rate_limit.hpp"
 #include "sim/stt.hpp"
 #include "sim/tts.hpp"
 #include "sim/worker.hpp"
@@ -136,6 +137,14 @@ private:
     crow::response serve_default_plan(const crow::request& req, std::int64_t class_id);
     crow::response serve_exam_options(const crow::request& req);
     crow::response serve_coverage(const crow::request& req, std::int64_t class_id);
+
+    RateLimiter limiter_;
+    std::optional<crow::response> refuse_if_rate_limited(const std::string& key,
+                                                         int capacity,
+                                                         int window_seconds);
+    //a 429 once key has made capacity requests inside the window. Keys carry
+    //the route and the caller - "join:12", "login:203.0.113.4" - so one busy
+    //student cannot starve another
 
     auth::LoginStates login_states_;
     //the PKCE verifier and state for sign-ins in flight, in memory: they live

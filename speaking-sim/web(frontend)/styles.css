@@ -1245,3 +1245,11 @@ body.gated { overflow: hidden; }
 }
 
 #acctError[hidden] { display: none; }
+
+/* the translate box for an account without paid access: shut, with the reason
+   in the result slot underneath rather than an error on every lookup */
+#translateBox.locked #translateInput,
+#translateBox.locked #translateGo {
+    opacity: 0.55;
+    cursor: not-allowed;
+}

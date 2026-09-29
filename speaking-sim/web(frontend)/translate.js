@@ -21,6 +21,15 @@ let setTranslateLanguage = () => {};
 //replaced by initTranslate on a page that has the box; the listening page calls it
 //when its language picker moves
 
+let setTranslateLocked = () => {};
+//replaced the same way. account.js calls it once /api/me says whether this
+//account has paid access: translation is part of it, and a free account sees
+//the box shut rather than a failure on every lookup
+
+const TRANSLATE_LOCKED_TEXT =
+    "Translation is part of paid access - a class licence from your school, or " +
+    "your own. Speaking practice and every listening paper stay free.";
+
 function initTranslate(options) {
     const translateInput = document.getElementById("translateInput");
     const translateDirection = document.getElementById("translateDirection");
@@ -42,6 +51,7 @@ function initTranslate(options) {
     let language = TRANSLATE_LANGUAGES[settings.language] ? settings.language : "it";
 
     let translateBusy = false;
+    let translateLocked = false;
     //one lookup at a time. A second Enter while the first is in flight would race
     //two responses into the same box, and the later one need not be the newer
 
@@ -72,7 +82,7 @@ function initTranslate(options) {
 
     async function runTranslate() {
         const text = translateInput.value.trim();
-        if (!text || translateBusy) return;
+        if (!text || translateBusy || translateLocked) return;
 
         const toEnglish = translateDirection.dataset.direction !== "en-foreign";
         const source = toEnglish ? language : "en";
@@ -134,6 +144,20 @@ function initTranslate(options) {
         translateResult.hidden = true;
         //the old result was in the other direction, so leaving it up would label
         //itself with a heading it no longer matches
+    };
+
+    setTranslateLocked = (locked) => {
+        translateLocked = Boolean(locked);
+        translateInput.disabled = translateLocked;
+        translateGo.disabled = translateLocked;
+        document.getElementById("translateBox").classList.toggle("locked", translateLocked);
+        if (translateLocked) {
+            showTranslateResult(TRANSLATE_LOCKED_TEXT, false);
+        } else {
+            translateResult.hidden = true;
+        }
+        //the server refuses a free account's lookups either way; this is only so
+        //the page says so up front instead of on the first try
     };
 
     translateGo.onclick = runTranslate;

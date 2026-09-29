@@ -401,3 +401,10 @@
     #acctSave,#acctConfirmSave{color:#16171a}
     #acctError{color:#e79287}
   }
+
+/* the same locked state as the exam page's translate box */
+#translateBox.locked #translateInput,
+#translateBox.locked #translateGo {
+    opacity: 0.55;
+    cursor: not-allowed;
+}

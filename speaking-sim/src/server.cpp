@@ -320,9 +320,15 @@ void Server::run()
     //block itself. Old links and bookmarks still land somewhere sensible
 
     CROW_ROUTE(app_, "/auth/login") //HTTP ROUTE -----------------------------------
-    ([this] {
+    ([this](const crow::request& req) {
+        if (auto refusal = refuse_if_rate_limited(
+                "login:" + req.remote_ip_address, 20, 60)) {
+            return std::move(*refusal);
+        }
         return serve_auth_login();
     });
+    //by address, since nobody is signed in yet: each call creates a pending
+    //login state, and a loop hitting this would fill that table
     //the sign-in button points straight here rather than at Google, so the
     //client id and the PKCE challenge never have to exist in the page
 
@@ -401,6 +407,15 @@ void Server::run()
             if (user_id == 0 && config_.auth_required) {
                 refusal = crow::response(401, "sign in to start an exam");
                 return;
+            }
+
+            if (!limiter_.allow(user_id != 0 ? "ws:" + std::to_string(user_id)
+                                             : "ws:" + req.remote_ip_address,
+                                30, std::chrono::seconds(60))) {
+                refusal = crow::response(429, "too many exams started, wait a minute");
+                return;
+                //each exam is a new socket, and a page stuck reconnecting in a
+                //loop would otherwise open sessions faster than anyone sits them
             }
 
             *userdata = new SocketIdentity{user_id};
@@ -705,6 +720,35 @@ crow::response Server::serve_languages()
 
 crow::response Server::serve_translate(const crow::request& req)
     {
+    User user;
+    if (auto refusal = refuse_unless_signed_in(req, user)) {
+        return std::move(*refusal);
+    }
+    try {
+        if (!allowance_for(user).paid) {
+            crow::json::wvalue json;
+            json["error"] =
+                "Translation is part of paid access - a class licence from your "
+                "school, or your own. Speaking practice and every listening paper "
+                "stay free.";
+            json["reason"] = "paid_only";
+            return json_response(json, 403);
+            //403 with a reason rather than 402 Payment Required: Crow has no
+            //402 in its status table and sends an unknown code as a 500, which
+            //would read as a broken server. The reason is how a page tells
+            //"not included" apart from "not allowed"
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "translate: could not check access: " << e.what() << '\n';
+        return json_error(500, "something went wrong, please try again");
+    }
+    if (auto refusal = refuse_if_rate_limited(
+            "translate:" + std::to_string(user.id), 30, 60)) {
+        return std::move(*refusal);
+    }
+    //after the paid check: a free account should hear why it cannot translate,
+    //not that it is translating too fast
+
     if (config_.translate_api_key.empty()) {
         return json_error(503, "Translation is not configured on this server.");
         //said out loud rather than attempted with an empty key, which would come
@@ -754,6 +798,16 @@ crow::response Server::serve_translate(const crow::request& req)
         //the detail goes to the operator's log and a fixed string to the page,
         //the same split the examiner path uses for its failures
     }
+}
+
+std::optional<crow::response> Server::refuse_if_rate_limited(
+    const std::string& key, int capacity, int window_seconds) {
+    if (limiter_.allow(key, capacity, std::chrono::seconds(window_seconds))) {
+        return std::nullopt;
+    }
+    crow::response response = json_error(429, "too many requests - wait a moment and try again");
+    response.set_header("Retry-After", std::to_string(window_seconds));
+    return response;
 }
 
 std::optional<User> Server::user_for_request(const crow::request& req) {

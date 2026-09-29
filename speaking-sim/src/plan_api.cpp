@@ -88,6 +88,10 @@ crow::response Server::serve_class_plans(const crow::request& req,
     if (klass.archived) {
         return json_error(409, "restore the class before adding exams to it");
     }
+    if (auto refusal = refuse_if_rate_limited(
+            "plan:" + std::to_string(user.id), 60, 60)) {
+        return std::move(*refusal);
+    }
 
     std::string error;
     auto plan = plan_from_json(crow::json::load(req.body),
@@ -134,6 +138,10 @@ crow::response Server::serve_plan(const crow::request& req, std::int64_t plan_id
             crow::json::wvalue json;
             json["plan"] = plan_to_json(*existing, true);
             return json_response(json);
+        }
+        if (auto refusal = refuse_if_rate_limited(
+                "plan:" + std::to_string(user.id), 60, 60)) {
+            return std::move(*refusal);
         }
 
         std::string error;

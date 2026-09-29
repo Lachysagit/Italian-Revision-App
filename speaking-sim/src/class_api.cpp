@@ -369,6 +369,10 @@ crow::response Server::serve_invites(const crow::request& req,
     if (klass.archived) {
         return json_error(409, "restore the class before adding students");
     }
+    if (auto refusal = refuse_if_rate_limited(
+            "invite:" + std::to_string(user.id), 20, 60)) {
+        return std::move(*refusal);
+    }
 
     const crow::json::rvalue body = crow::json::load(req.body);
     std::string raw = string_field(body, "emails");
@@ -600,6 +604,13 @@ crow::response Server::serve_join(const crow::request& req) {
     User user;
     if (auto refusal = refuse_unless_signed_in(req, user)) {
         return std::move(*refusal);
+    }
+
+    if (auto refusal = refuse_if_rate_limited(
+            "join:" + std::to_string(user.id), 10, 60)) {
+        return std::move(*refusal);
+        //a code is 8 characters from 31, so guessing is hopeless anyway; this
+        //makes it hopeless and slow, and keeps the log free of the attempt
     }
 
     const std::string code = string_field(crow::json::load(req.body), "code");
