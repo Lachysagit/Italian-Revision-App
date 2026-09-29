@@ -98,6 +98,70 @@ struct InviteResult {
     int existing = 0;  //already a member or already invited, nothing to do
 };
 
+// ---- exam plans ------------------------------------------------------------
+
+struct PlanQuestion {
+    std::int64_t id = 0;
+    std::string text;
+    //in the exam's language, asked as written unless the plan allows paraphrase
+    std::string topic_group;
+    //one of the syllabus groups in topics.cpp, or empty for "whenever it fits"
+    std::string placement = "any";
+    //opening: the first question of the exam. with_topic: asked while its
+    //topic is running. any: wherever the exam has room for it
+};
+
+struct TenseTarget {
+    std::string tense;
+    //a canonical key from tenses.hpp - present, perfect, imperfect, future,
+    //conditional - the same in every language, so reports compare across them
+    int min_count = 1;
+};
+
+struct ExamPlan {
+    std::int64_t id = 0;
+    std::int64_t class_id = 0;
+    std::string name;
+    int duration_seconds = 0;
+    //0 keeps the server's EXAM_DURATION_SECONDS
+    bool require_opinion = true;
+    bool paraphrase_ok = false;
+    bool visible = true;
+    //offered to students by name. A hidden plan can still be the class default
+    bool archived = false;
+    bool is_default = false;
+    std::vector<std::string> topics;
+    //syllabus groups this exam may cover, in the teacher's order. Empty is all
+    std::vector<PlanQuestion> questions;
+    std::vector<TenseTarget> tenses;
+    std::int64_t updated_at = 0;
+};
+
+struct TurnFeature {
+    int turn_index = 0;
+    std::string kind;
+    std::string value;
+    std::string source;
+};
+
+struct RequiredQuestionStatus {
+    std::int64_t question_id = 0;
+    std::string text;
+    std::string topic_group;
+    std::string status;
+    //pending while the exam runs, then asked or missed
+    int turn_index = -1;
+};
+
+struct CoverageRow {
+    std::int64_t user_id = 0;
+    std::string role;
+    //whose turn it was: "student" counts tenses produced, "examiner" asked
+    std::string kind;
+    std::string value;
+    int count = 0;
+};
+
 struct AttemptSummary {
     std::int64_t id = 0;
     std::int64_t user_id = 0;
@@ -110,6 +174,8 @@ struct AttemptSummary {
     //zero while the exam is still running
     std::string end_reason;
     int turn_count = 0;
+    std::string plan_name;
+    //empty for an exam that followed no plan
 };
 
 struct AttemptTurn {
@@ -211,6 +277,45 @@ public:
     //class list this needs no membership check: they sat every one of them
     std::optional<AttemptSummary> attempt_by_id(std::int64_t attempt_id);
     std::vector<AttemptTurn> attempt_turns(std::int64_t attempt_id);
+
+    // ---- exam plans ------------------------------------------------------
+
+    std::vector<ExamPlan> class_plans(std::int64_t class_id, bool include_archived);
+    std::optional<ExamPlan> plan_by_id(std::int64_t plan_id);
+
+    ExamPlan save_plan(const ExamPlan& plan, std::int64_t user_id);
+    //inserts when plan.id is 0, otherwise updates. Topics, questions and tense
+    //targets are replaced wholesale in the same transaction: a plan is edited
+    //as one form, so it is saved as one
+
+    void set_default_plan(std::int64_t class_id, std::optional<std::int64_t> plan_id);
+    void archive_plan(std::int64_t plan_id);
+    //also stops it being the class default, so no exam starts on a plan the
+    //teacher has put away
+
+    void attach_plan(std::int64_t attempt_id, const ExamPlan& plan,
+                     const std::string& plan_json);
+    //the frozen copy, and one pending row per required question
+
+    void record_turn_features(std::int64_t attempt_id, int turn_index,
+                              const std::string& kind,
+                              const std::vector<std::string>& values,
+                              const std::string& source);
+
+    void mark_required_question(std::int64_t attempt_id,
+                                std::int64_t question_id,
+                                const std::string& status,
+                                int turn_index);
+
+    void close_required_questions(std::int64_t attempt_id);
+    //every question still pending when the exam ends becomes missed
+
+    std::vector<TurnFeature> attempt_features(std::int64_t attempt_id);
+    std::vector<RequiredQuestionStatus> attempt_required(std::int64_t attempt_id);
+
+    std::vector<CoverageRow> class_coverage(std::int64_t class_id);
+    //per current member, how many turns of their class exams carried each
+    //tense (student and examiner turns counted apart) and each topic tag
 
     bool has_created_class(std::int64_t user_id);
     //whether this teacher owns a class already. What decides if the create-a-

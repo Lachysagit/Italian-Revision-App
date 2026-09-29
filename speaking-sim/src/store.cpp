@@ -74,6 +74,7 @@ CREATE TABLE classes (
   daily_attempt_cap INTEGER,
   join_code TEXT UNIQUE,
   owner_id INTEGER NOT NULL REFERENCES users(id),
+  default_plan_id INTEGER REFERENCES exam_plans(id) ON DELETE SET NULL,
   created_at INTEGER NOT NULL,
   archived_at INTEGER
 );
@@ -142,6 +143,9 @@ CREATE TABLE exam_attempts (
   end_reason TEXT,
   turn_count INTEGER NOT NULL DEFAULT 0,
   examiner_calls INTEGER NOT NULL DEFAULT 0,
+  plan_id   INTEGER REFERENCES exam_plans(id) ON DELETE SET NULL,
+  plan_name TEXT NOT NULL DEFAULT '',
+  plan_json TEXT,
   score_overall REAL, score_json TEXT, scored_at INTEGER
 );
 CREATE INDEX attempts_user_time  ON exam_attempts(user_id, started_at DESC);
@@ -165,6 +169,75 @@ CREATE TABLE key_usage_daily (
   gemini_key_name TEXT NOT NULL,
   call_count INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (day, gemini_key_name)
+);
+
+-- Exam plans: what a teacher asks the examiner to cover. A plan belongs to one
+-- class; the class may name one as the default every exam for it follows, and
+-- students may pick any visible plan by name. The rows are the editable plan;
+-- an attempt keeps its own frozen copy in exam_attempts.plan_json, so editing a
+-- plan never rewrites what an earlier exam was asked to do.
+CREATE TABLE exam_plans (
+  id INTEGER PRIMARY KEY,
+  class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  duration_seconds INTEGER,
+  require_opinion INTEGER NOT NULL DEFAULT 1,
+  paraphrase_ok   INTEGER NOT NULL DEFAULT 0,
+  visible INTEGER NOT NULL DEFAULT 1,
+  created_by INTEGER NOT NULL REFERENCES users(id),
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  archived_at INTEGER
+);
+CREATE INDEX exam_plans_class ON exam_plans(class_id);
+
+CREATE TABLE exam_plan_topics (
+  plan_id INTEGER NOT NULL REFERENCES exam_plans(id) ON DELETE CASCADE,
+  topic_group TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  PRIMARY KEY (plan_id, topic_group)
+);
+
+CREATE TABLE exam_plan_questions (
+  id INTEGER PRIMARY KEY,
+  plan_id INTEGER NOT NULL REFERENCES exam_plans(id) ON DELETE CASCADE,
+  text TEXT NOT NULL,
+  topic_group TEXT NOT NULL DEFAULT '',
+  placement TEXT NOT NULL DEFAULT 'any',
+  position INTEGER NOT NULL
+);
+CREATE INDEX exam_plan_questions_plan ON exam_plan_questions(plan_id, position);
+
+CREATE TABLE exam_plan_tenses (
+  plan_id INTEGER NOT NULL REFERENCES exam_plans(id) ON DELETE CASCADE,
+  tense TEXT NOT NULL,
+  min_count INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (plan_id, tense)
+);
+
+-- What each turn of an exam did. kind is 'tense' for now; source says who
+-- decided it - 'model' is the examiner's own label from its structured reply,
+-- 'rules' the deterministic check in tense_rules.cpp - so a report can show
+-- both and a disagreement stays visible rather than being averaged away.
+CREATE TABLE turn_features (
+  attempt_id INTEGER NOT NULL REFERENCES exam_attempts(id) ON DELETE CASCADE,
+  turn_index INTEGER NOT NULL,
+  kind  TEXT NOT NULL,
+  value TEXT NOT NULL,
+  source TEXT NOT NULL,
+  PRIMARY KEY (attempt_id, turn_index, kind, value, source)
+);
+
+-- The plan's must-ask questions, per attempt, with whether each was asked. The
+-- text is copied in so the record survives the plan being edited or deleted.
+CREATE TABLE attempt_required_questions (
+  attempt_id  INTEGER NOT NULL REFERENCES exam_attempts(id) ON DELETE CASCADE,
+  question_id INTEGER NOT NULL,
+  text TEXT NOT NULL,
+  topic_group TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending',
+  turn_index INTEGER,
+  PRIMARY KEY (attempt_id, question_id)
 );
 
 CREATE INDEX class_members_user ON class_members(user_id);
@@ -815,7 +888,7 @@ constexpr const char* kAttemptColumns =
     "a.id, COALESCE(a.user_id, 0), COALESCE(a.class_id, 0), "
     "COALESCE(u.display_name, ''), COALESCE(u.email, ''), a.language_id, "
     "a.started_at, COALESCE(a.ended_at, 0), COALESCE(a.end_reason, ''), "
-    "a.turn_count";
+    "a.turn_count, a.plan_name";
 
 AttemptSummary read_attempt(Statement& stmt) {
     AttemptSummary attempt;
@@ -829,6 +902,7 @@ AttemptSummary read_attempt(Statement& stmt) {
     attempt.ended_at = stmt.col_int64(7);
     attempt.end_reason = stmt.col_text(8);
     attempt.turn_count = static_cast<int>(stmt.col_int64(9));
+    attempt.plan_name = stmt.col_text(10);
     return attempt;
 }
 
@@ -1238,6 +1312,363 @@ std::vector<AttemptTurn> Store::attempt_turns(std::int64_t attempt_id) {
         turns.push_back(std::move(turn));
     }
     return turns;
+}
+
+// ---- exam plans ------------------------------------------------------------
+
+namespace {
+
+constexpr const char* kPlanColumns =
+    "p.id, p.class_id, p.name, COALESCE(p.duration_seconds, 0), "
+    "p.require_opinion, p.paraphrase_ok, p.visible, p.archived_at IS NOT NULL, "
+    "COALESCE(c.default_plan_id = p.id, 0), p.updated_at";
+
+ExamPlan read_plan(Statement& stmt) {
+    ExamPlan plan;
+    plan.id = stmt.col_int64(0);
+    plan.class_id = stmt.col_int64(1);
+    plan.name = stmt.col_text(2);
+    plan.duration_seconds = static_cast<int>(stmt.col_int64(3));
+    plan.require_opinion = stmt.col_int64(4) != 0;
+    plan.paraphrase_ok = stmt.col_int64(5) != 0;
+    plan.visible = stmt.col_int64(6) != 0;
+    plan.archived = stmt.col_int64(7) != 0;
+    plan.is_default = stmt.col_int64(8) != 0;
+    plan.updated_at = stmt.col_int64(9);
+    return plan;
+}
+
+// The three child lists, read after the plan row itself. Three small queries
+// rather than one join, because a join of three one-to-many lists multiplies
+// the rows out and has to be folded back together anyway.
+void load_plan_children(sqlite3* db, ExamPlan& plan) {
+    Statement topics(db,
+        "SELECT topic_group FROM exam_plan_topics "
+        "WHERE plan_id = ? ORDER BY position");
+    topics.int64(1, plan.id);
+    while (topics.row()) {
+        plan.topics.push_back(topics.col_text(0));
+    }
+
+    Statement questions(db,
+        "SELECT id, text, topic_group, placement FROM exam_plan_questions "
+        "WHERE plan_id = ? ORDER BY position");
+    questions.int64(1, plan.id);
+    while (questions.row()) {
+        plan.questions.push_back(PlanQuestion{questions.col_int64(0),
+                                              questions.col_text(1),
+                                              questions.col_text(2),
+                                              questions.col_text(3)});
+    }
+
+    Statement tenses(db,
+        "SELECT tense, min_count FROM exam_plan_tenses "
+        "WHERE plan_id = ? ORDER BY tense");
+    tenses.int64(1, plan.id);
+    while (tenses.row()) {
+        plan.tenses.push_back(TenseTarget{
+            tenses.col_text(0), static_cast<int>(tenses.col_int64(1))});
+    }
+}
+
+}  // namespace
+
+std::vector<ExamPlan> Store::class_plans(std::int64_t class_id,
+                                         bool include_archived) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    const std::string sql =
+        std::string("SELECT ") + kPlanColumns +
+        " FROM exam_plans p JOIN classes c ON c.id = p.class_id "
+        "WHERE p.class_id = ?" +
+        (include_archived ? "" : " AND p.archived_at IS NULL") +
+        " ORDER BY p.archived_at IS NOT NULL, p.name COLLATE NOCASE";
+    Statement stmt(db_, sql.c_str());
+    stmt.int64(1, class_id);
+
+    std::vector<ExamPlan> plans;
+    while (stmt.row()) {
+        plans.push_back(read_plan(stmt));
+    }
+    for (ExamPlan& plan : plans) {
+        load_plan_children(db_, plan);
+    }
+    return plans;
+}
+
+std::optional<ExamPlan> Store::plan_by_id(std::int64_t plan_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    const std::string sql =
+        std::string("SELECT ") + kPlanColumns +
+        " FROM exam_plans p JOIN classes c ON c.id = p.class_id WHERE p.id = ?";
+    Statement stmt(db_, sql.c_str());
+    stmt.int64(1, plan_id);
+    if (!stmt.row()) return std::nullopt;
+
+    ExamPlan plan = read_plan(stmt);
+    load_plan_children(db_, plan);
+    return plan;
+}
+
+ExamPlan Store::save_plan(const ExamPlan& plan, std::int64_t user_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    std::int64_t plan_id = plan.id;
+    exec("BEGIN IMMEDIATE");
+    try {
+        if (plan_id == 0) {
+            Statement insert(db_,
+                "INSERT INTO exam_plans (class_id, name, duration_seconds, "
+                " require_opinion, paraphrase_ok, visible, created_by, "
+                " created_at, updated_at) "
+                "VALUES (?, ?, NULLIF(?, 0), ?, ?, ?, ?, "
+                "        CAST(strftime('%s','now') AS INTEGER), "
+                "        CAST(strftime('%s','now') AS INTEGER))");
+            insert.int64(1, plan.class_id).text(2, plan.name)
+                  .int64(3, plan.duration_seconds)
+                  .int64(4, plan.require_opinion ? 1 : 0)
+                  .int64(5, plan.paraphrase_ok ? 1 : 0)
+                  .int64(6, plan.visible ? 1 : 0)
+                  .int64(7, user_id).run();
+            plan_id = sqlite3_last_insert_rowid(db_);
+        } else {
+            Statement update(db_,
+                "UPDATE exam_plans SET name = ?, "
+                " duration_seconds = NULLIF(?, 0), require_opinion = ?, "
+                " paraphrase_ok = ?, visible = ?, "
+                " updated_at = CAST(strftime('%s','now') AS INTEGER) "
+                "WHERE id = ? AND class_id = ?");
+            update.text(1, plan.name).int64(2, plan.duration_seconds)
+                  .int64(3, plan.require_opinion ? 1 : 0)
+                  .int64(4, plan.paraphrase_ok ? 1 : 0)
+                  .int64(5, plan.visible ? 1 : 0)
+                  .int64(6, plan_id).int64(7, plan.class_id).run();
+            if (sqlite3_changes(db_) == 0) {
+                throw std::runtime_error("save_plan: no such plan in that class");
+            }
+            //class_id in the WHERE: the caller checked the teacher owns the
+            //class, and this makes sure the plan is that class's too
+
+            for (const char* table : {"exam_plan_topics", "exam_plan_questions",
+                                      "exam_plan_tenses"}) {
+                const std::string sql =
+                    std::string("DELETE FROM ") + table + " WHERE plan_id = ?";
+                Statement clear(db_, sql.c_str());
+                clear.int64(1, plan_id).run();
+            }
+        }
+
+        int position = 0;
+        for (const std::string& topic : plan.topics) {
+            Statement row(db_,
+                "INSERT OR IGNORE INTO exam_plan_topics "
+                "(plan_id, topic_group, position) VALUES (?, ?, ?)");
+            row.int64(1, plan_id).text(2, topic).int64(3, position++).run();
+        }
+
+        position = 0;
+        for (const PlanQuestion& question : plan.questions) {
+            Statement row(db_,
+                "INSERT INTO exam_plan_questions "
+                "(plan_id, text, topic_group, placement, position) "
+                "VALUES (?, ?, ?, ?, ?)");
+            row.int64(1, plan_id).text(2, question.text)
+               .text(3, question.topic_group).text(4, question.placement)
+               .int64(5, position++).run();
+        }
+
+        for (const TenseTarget& target : plan.tenses) {
+            Statement row(db_,
+                "INSERT OR REPLACE INTO exam_plan_tenses (plan_id, tense, min_count) "
+                "VALUES (?, ?, ?)");
+            row.int64(1, plan_id).text(2, target.tense)
+               .int64(3, target.min_count).run();
+        }
+
+        exec("COMMIT");
+    } catch (...) {
+        exec("ROLLBACK");
+        throw;
+    }
+
+    auto saved = plan_by_id(plan_id);
+    if (!saved) {
+        throw std::runtime_error("plan vanished immediately after save");
+    }
+    return *saved;
+}
+
+void Store::set_default_plan(std::int64_t class_id,
+                             std::optional<std::int64_t> plan_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    if (!plan_id) {
+        Statement clear(db_,
+            "UPDATE classes SET default_plan_id = NULL WHERE id = ?");
+        clear.int64(1, class_id).run();
+        return;
+    }
+    Statement set(db_,
+        "UPDATE classes SET default_plan_id = ? WHERE id = ? AND EXISTS "
+        "(SELECT 1 FROM exam_plans WHERE id = ? AND class_id = ? "
+        "   AND archived_at IS NULL)");
+    set.int64(1, *plan_id).int64(2, class_id).int64(3, *plan_id)
+       .int64(4, class_id).run();
+    if (sqlite3_changes(db_) == 0) {
+        throw std::runtime_error("set_default_plan: plan is not a live plan of that class");
+    }
+}
+
+void Store::archive_plan(std::int64_t plan_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    exec("BEGIN IMMEDIATE");
+    try {
+        Statement archive(db_,
+            "UPDATE exam_plans SET archived_at = COALESCE(archived_at, "
+            "  CAST(strftime('%s','now') AS INTEGER)) WHERE id = ?");
+        archive.int64(1, plan_id).run();
+
+        Statement unset(db_,
+            "UPDATE classes SET default_plan_id = NULL WHERE default_plan_id = ?");
+        unset.int64(1, plan_id).run();
+        exec("COMMIT");
+    } catch (...) {
+        exec("ROLLBACK");
+        throw;
+    }
+}
+
+void Store::attach_plan(std::int64_t attempt_id, const ExamPlan& plan,
+                        const std::string& plan_json) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    exec("BEGIN IMMEDIATE");
+    try {
+        Statement attempt(db_,
+            "UPDATE exam_attempts SET plan_id = ?, plan_name = ?, plan_json = ? "
+            "WHERE id = ?");
+        attempt.int64(1, plan.id).text(2, plan.name).text(3, plan_json)
+               .int64(4, attempt_id).run();
+
+        for (const PlanQuestion& question : plan.questions) {
+            Statement row(db_,
+                "INSERT OR IGNORE INTO attempt_required_questions "
+                "(attempt_id, question_id, text, topic_group) VALUES (?, ?, ?, ?)");
+            row.int64(1, attempt_id).int64(2, question.id).text(3, question.text)
+               .text(4, question.topic_group).run();
+        }
+        exec("COMMIT");
+    } catch (...) {
+        exec("ROLLBACK");
+        throw;
+    }
+}
+
+void Store::record_turn_features(std::int64_t attempt_id, int turn_index,
+                                 const std::string& kind,
+                                 const std::vector<std::string>& values,
+                                 const std::string& source) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    for (const std::string& value : values) {
+        Statement row(db_,
+            "INSERT OR IGNORE INTO turn_features "
+            "(attempt_id, turn_index, kind, value, source) VALUES (?, ?, ?, ?, ?)");
+        row.int64(1, attempt_id).int64(2, turn_index).text(3, kind)
+           .text(4, value).text(5, source).run();
+    }
+}
+
+void Store::mark_required_question(std::int64_t attempt_id,
+                                   std::int64_t question_id,
+                                   const std::string& status,
+                                   int turn_index) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement row(db_,
+        "UPDATE attempt_required_questions SET status = ?, turn_index = ? "
+        "WHERE attempt_id = ? AND question_id = ?");
+    row.text(1, status).int64(2, turn_index).int64(3, attempt_id)
+       .int64(4, question_id).run();
+}
+
+void Store::close_required_questions(std::int64_t attempt_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement row(db_,
+        "UPDATE attempt_required_questions SET status = 'missed' "
+        "WHERE attempt_id = ? AND status = 'pending'");
+    row.int64(1, attempt_id).run();
+}
+
+std::vector<TurnFeature> Store::attempt_features(std::int64_t attempt_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement stmt(db_,
+        "SELECT turn_index, kind, value, source FROM turn_features "
+        "WHERE attempt_id = ? ORDER BY turn_index, kind, value, source");
+    stmt.int64(1, attempt_id);
+
+    std::vector<TurnFeature> features;
+    while (stmt.row()) {
+        features.push_back(TurnFeature{static_cast<int>(stmt.col_int64(0)),
+                                       stmt.col_text(1), stmt.col_text(2),
+                                       stmt.col_text(3)});
+    }
+    return features;
+}
+
+std::vector<RequiredQuestionStatus> Store::attempt_required(std::int64_t attempt_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement stmt(db_,
+        "SELECT question_id, text, topic_group, status, COALESCE(turn_index, -1) "
+        "FROM attempt_required_questions WHERE attempt_id = ? "
+        "ORDER BY question_id");
+    stmt.int64(1, attempt_id);
+
+    std::vector<RequiredQuestionStatus> rows;
+    while (stmt.row()) {
+        rows.push_back(RequiredQuestionStatus{
+            stmt.col_int64(0), stmt.col_text(1), stmt.col_text(2),
+            stmt.col_text(3), static_cast<int>(stmt.col_int64(4))});
+    }
+    return rows;
+}
+
+std::vector<CoverageRow> Store::class_coverage(std::int64_t class_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement stmt(db_,
+        "SELECT a.user_id, t.role, f.kind, f.value, "
+        "       COUNT(DISTINCT f.attempt_id || ':' || f.turn_index) "
+        "FROM turn_features f "
+        "JOIN exam_attempts a ON a.id = f.attempt_id "
+        "JOIN attempt_turns t ON t.attempt_id = f.attempt_id "
+        "                    AND t.turn_index = f.turn_index "
+        "WHERE a.class_id = ?1 "
+        "  AND a.user_id IN (SELECT user_id FROM class_members WHERE class_id = ?1) "
+        "GROUP BY a.user_id, t.role, f.kind, f.value "
+        "UNION ALL "
+        "SELECT a.user_id, 'examiner', 'topic', t.topic, COUNT(*) "
+        "FROM attempt_turns t JOIN exam_attempts a ON a.id = t.attempt_id "
+        "WHERE a.class_id = ?1 AND t.role = 'examiner' AND t.topic != '' "
+        "  AND a.user_id IN (SELECT user_id FROM class_members WHERE class_id = ?1) "
+        "GROUP BY a.user_id, t.topic");
+    //a turn counts once per tense however many sources agreed on it: the
+    //report asks "was it used", and the two sources are shown apart elsewhere.
+    //Current members only, the same rule class_attempts lists by
+    stmt.int64(1, class_id);
+
+    std::vector<CoverageRow> rows;
+    while (stmt.row()) {
+        rows.push_back(CoverageRow{stmt.col_int64(0), stmt.col_text(1),
+                                   stmt.col_text(2), stmt.col_text(3),
+                                   static_cast<int>(stmt.col_int64(4))});
+    }
+    return rows;
 }
 
 }  // namespace sim
