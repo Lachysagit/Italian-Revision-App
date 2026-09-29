@@ -240,6 +240,33 @@ CREATE TABLE attempt_required_questions (
   PRIMARY KEY (attempt_id, question_id)
 );
 
+-- Paid access. A licence covers one account ('user') or every student in one
+-- class ('class'), which is how a school licence is sold: per class, invoiced,
+-- with no card details held anywhere. Granted from the command line for now
+-- (--grant-licence); a payment provider would write the same rows.
+CREATE TABLE licences (
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL,
+  target_id INTEGER NOT NULL,
+  starts_at INTEGER NOT NULL,
+  ends_at INTEGER NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  revoked_at INTEGER
+);
+CREATE INDEX licences_target ON licences(kind, target_id);
+
+-- What each account has spent today, per metered feature. day is the server's
+-- local date, so the allowance resets at local midnight - run the server with
+-- TZ=Australia/Sydney and that is a student's midnight too.
+CREATE TABLE usage_daily (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  day TEXT NOT NULL,
+  feature TEXT NOT NULL,
+  used INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, day, feature)
+);
+
 CREATE INDEX class_members_user ON class_members(user_id);
 CREATE INDEX class_invites_open ON class_invites(email) WHERE claimed_at IS NULL;
 )SQL";
@@ -1680,6 +1707,137 @@ std::vector<CoverageRow> Store::class_coverage(std::int64_t class_id) {
                                    static_cast<int>(stmt.col_int64(4))});
     }
     return rows;
+}
+
+// ---- paid access and usage -------------------------------------------------
+
+PaidAccess Store::paid_access(std::int64_t user_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement stmt(db_,
+        "SELECT l.kind, l.ends_at FROM licences l "
+        "WHERE l.revoked_at IS NULL "
+        "  AND l.starts_at <= CAST(strftime('%s','now') AS INTEGER) "
+        "  AND l.ends_at   >  CAST(strftime('%s','now') AS INTEGER) "
+        "  AND ((l.kind = 'user' AND l.target_id = ?1) "
+        "    OR (l.kind = 'class' AND l.target_id IN "
+        "        (SELECT m.class_id FROM class_members m "
+        "         JOIN classes c ON c.id = m.class_id "
+        "         WHERE m.user_id = ?1 AND c.archived_at IS NULL))) "
+        "ORDER BY l.ends_at DESC LIMIT 1");
+    //a class licence covers whoever is in the class today: joining gives it,
+    //leaving or the class being archived takes it away, with nothing to sync
+    stmt.int64(1, user_id);
+
+    PaidAccess access;
+    if (stmt.row()) {
+        access.active = true;
+        access.source = stmt.col_text(0);
+        access.until = stmt.col_int64(1);
+    }
+    return access;
+}
+
+std::int64_t Store::grant_licence(const std::string& kind, std::int64_t target_id,
+                                  const std::string& until_date,
+                                  const std::string& note) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement stmt(db_,
+        "INSERT INTO licences (kind, target_id, starts_at, ends_at, note, created_at) "
+        "VALUES (?, ?, CAST(strftime('%s','now') AS INTEGER), "
+        "        CAST(strftime('%s', ? || ' 23:59:59', 'utc') AS INTEGER), ?, "
+        "        CAST(strftime('%s','now') AS INTEGER))");
+    //'utc' reads the date as local time and converts it, so the licence ends
+    //at the end of that day where the server is, not in Greenwich
+    stmt.text(1, kind).int64(2, target_id).text(3, until_date).text(4, note).run();
+    return sqlite3_last_insert_rowid(db_);
+}
+
+bool Store::revoke_licence(std::int64_t licence_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement stmt(db_,
+        "UPDATE licences SET revoked_at = CAST(strftime('%s','now') AS INTEGER) "
+        "WHERE id = ? AND revoked_at IS NULL");
+    stmt.int64(1, licence_id).run();
+    return sqlite3_changes(db_) > 0;
+}
+
+std::vector<Licence> Store::licences() {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement stmt(db_,
+        "SELECT l.id, l.kind, l.target_id, "
+        "       COALESCE(CASE l.kind WHEN 'user' THEN u.email ELSE c.name END, '?'), "
+        "       l.starts_at, l.ends_at, l.note, l.revoked_at IS NOT NULL "
+        "FROM licences l "
+        "LEFT JOIN users u ON l.kind = 'user' AND u.id = l.target_id "
+        "LEFT JOIN classes c ON l.kind = 'class' AND c.id = l.target_id "
+        "ORDER BY l.ends_at DESC");
+
+    std::vector<Licence> rows;
+    while (stmt.row()) {
+        Licence licence;
+        licence.id = stmt.col_int64(0);
+        licence.kind = stmt.col_text(1);
+        licence.target_id = stmt.col_int64(2);
+        licence.target_label = stmt.col_text(3);
+        licence.starts_at = stmt.col_int64(4);
+        licence.ends_at = stmt.col_int64(5);
+        licence.note = stmt.col_text(6);
+        licence.revoked = stmt.col_int64(7) != 0;
+        rows.push_back(std::move(licence));
+    }
+    return rows;
+}
+
+std::optional<User> Store::user_by_email(const std::string& email) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement stmt(db_, "SELECT id FROM users WHERE email = ?");
+    stmt.text(1, email);
+    if (!stmt.row()) return std::nullopt;
+    return user_by_id(stmt.col_int64(0));
+}
+
+int Store::usage_today(std::int64_t user_id, const std::string& feature) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement stmt(db_,
+        "SELECT used FROM usage_daily "
+        "WHERE user_id = ? AND day = date('now','localtime') AND feature = ?");
+    stmt.int64(1, user_id).text(2, feature);
+    return stmt.row() ? static_cast<int>(stmt.col_int64(0)) : 0;
+}
+
+std::optional<int> Store::reserve_usage(std::int64_t user_id,
+                                        const std::string& feature, int limit) {
+    if (limit <= 0) return std::nullopt;
+
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement stmt(db_,
+        "INSERT INTO usage_daily (user_id, day, feature, used) "
+        "VALUES (?1, date('now','localtime'), ?2, 1) "
+        "ON CONFLICT (user_id, day, feature) DO UPDATE SET used = used + 1 "
+        "WHERE used < ?3");
+    //the WHERE on the upsert is the whole check: at the limit the update does
+    //nothing, sqlite3_changes reports 0, and no unit was spent
+    stmt.int64(1, user_id).text(2, feature).int64(3, limit).run();
+    if (sqlite3_changes(db_) == 0) {
+        return std::nullopt;
+    }
+    return usage_today(user_id, feature);
+}
+
+void Store::release_usage(std::int64_t user_id, const std::string& feature) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement stmt(db_,
+        "UPDATE usage_daily SET used = MAX(used - 1, 0) "
+        "WHERE user_id = ? AND day = date('now','localtime') AND feature = ?");
+    stmt.int64(1, user_id).text(2, feature).run();
 }
 
 }  // namespace sim

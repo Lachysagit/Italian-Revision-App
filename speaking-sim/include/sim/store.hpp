@@ -125,6 +125,28 @@ struct CoverageRow {
     int count = 0;
 };
 
+// ---- paid access and usage ------------------------------------------------
+
+struct Licence {
+    std::int64_t id = 0;
+    std::string kind;
+    //"user" or "class"
+    std::int64_t target_id = 0;
+    std::string target_label;
+    //the account's email or the class's name, for the admin listing
+    std::int64_t starts_at = 0;
+    std::int64_t ends_at = 0;
+    std::string note;
+    bool revoked = false;
+};
+
+struct PaidAccess {
+    bool active = false;
+    std::string source;
+    //"user" or "class": which kind of licence it came from
+    std::int64_t until = 0;
+};
+
 struct AttemptSummary {
     std::int64_t id = 0;
     std::int64_t user_id = 0;
@@ -279,6 +301,32 @@ public:
     std::vector<CoverageRow> class_coverage(std::int64_t class_id);
     //per current member, how many turns of their class exams carried each
     //tense (student and examiner turns counted apart) and each topic tag
+
+    // ---- paid access and usage ------------------------------------------
+
+    PaidAccess paid_access(std::int64_t user_id);
+    //an unrevoked licence running now, on the account itself or on any
+    //unarchived class the user is in. The latest end date wins
+
+    std::int64_t grant_licence(const std::string& kind, std::int64_t target_id,
+                               const std::string& until_date,
+                               const std::string& note);
+    //until_date is YYYY-MM-DD in the server's local time; the licence runs to
+    //the end of that day. Starts now
+    bool revoke_licence(std::int64_t licence_id);
+    std::vector<Licence> licences();
+
+    std::optional<User> user_by_email(const std::string& email);
+
+    int usage_today(std::int64_t user_id, const std::string& feature);
+
+    std::optional<int> reserve_usage(std::int64_t user_id,
+                                     const std::string& feature, int limit);
+    //spends one unit if the day's count is under limit, in one statement, so
+    //two tabs racing for the last question cannot both get it. The new count,
+    //or nullopt when the limit was already reached
+    void release_usage(std::int64_t user_id, const std::string& feature);
+    //gives one back: the turn it paid for failed on our side
 
     bool has_created_class(std::int64_t user_id);
     //whether this teacher owns a class already. What decides if the create-a-
