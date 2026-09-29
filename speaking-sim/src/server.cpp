@@ -1176,6 +1176,18 @@ void Server::handle_control(crow::websocket::connection& conn,
         return;
     }
 
+    if (message.type == MessageType::Pause) {
+        session->pause_clock(Session::Clock::now());
+        return;
+    }
+    if (message.type == MessageType::Resume) {
+        session->resume_clock(Session::Clock::now());
+        return;
+    }
+    //neither takes the job latch, for the reason End does not: the browser
+    //pauses on its own schedule and a "busy" refusal would leave the two clocks
+    //disagreeing about how much of the exam is left
+
     if (message.type == MessageType::End) {
         if (session->attempt_id() != 0) {
             persist_quietly("attempt end (student)", [&] {
@@ -1215,6 +1227,11 @@ void Server::handle_control(crow::websocket::connection& conn,
         //first answer starts it instead, or an exam whose first call errored
         //would never end at all
     }
+    session->resume_clock(Session::Clock::now());
+    //an answer is never given while paused - the page drops the mic on pause -
+    //so a Stop means the exam is running again. Resuming here also stops a
+    //modified page from pausing once and then answering on a clock that can
+    //no longer run out
     const bool final = message.final || session->time_up(Session::Clock::now());
     //either clock running out ends the exam. The browser's is the one the
     //student watches; the server's is the one a modified page cannot stop

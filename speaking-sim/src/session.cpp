@@ -142,10 +142,12 @@ const std::string& Session::gemini_key_name() const {
 }
 
 bool Session::clock_started() const {
+    std::lock_guard<std::mutex> lock(clock_mutex_);
     return deadline_.has_value();
 }
 
 void Session::start_clock(Clock::time_point deadline) {
+    std::lock_guard<std::mutex> lock(clock_mutex_);
     if (!deadline_) {
         deadline_ = deadline;
     }
@@ -153,7 +155,27 @@ void Session::start_clock(Clock::time_point deadline) {
 }
 
 bool Session::time_up(Clock::time_point now) const {
-    return deadline_.has_value() && now >= *deadline_;
+    std::lock_guard<std::mutex> lock(clock_mutex_);
+    return deadline_.has_value() && !paused_left_ && now >= *deadline_;
+}
+
+void Session::pause_clock(Clock::time_point now) {
+    std::lock_guard<std::mutex> lock(clock_mutex_);
+    if (!deadline_ || paused_left_) {
+        return;
+        //no clock yet, or already paused: pausing twice must not bank the
+        //remainder a second time from a deadline that is no longer running
+    }
+    paused_left_ = *deadline_ > now ? *deadline_ - now : Clock::duration::zero();
+}
+
+void Session::resume_clock(Clock::time_point now) {
+    std::lock_guard<std::mutex> lock(clock_mutex_);
+    if (!paused_left_) {
+        return;
+    }
+    deadline_ = now + *paused_left_;
+    paused_left_.reset();
 }
 
 void Session::set_user_id(std::int64_t id) {

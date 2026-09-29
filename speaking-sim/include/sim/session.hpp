@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <random>
 #include <cstddef>
@@ -64,6 +65,12 @@ public:
     bool clock_started() const;
     void start_clock(Clock::time_point deadline);
     bool time_up(Clock::time_point now) const;
+    void pause_clock(Clock::time_point now);
+    void resume_clock(Clock::time_point now);
+    //the exam page's Pause button. The time left is banked on pause and a new
+    //deadline is bought from it on resume, the same arithmetic the browser's
+    //countdown does, so the two clocks stay in step across a pause. A paused
+    //clock never runs out
     //the exam's own deadline. Started once, when the opening question has gone
     //out, and read when each answer arrives: an answer submitted after it is
     //transcribed but never earns another question, whatever the browser says
@@ -149,7 +156,12 @@ private:
     std::string partial_byte_;
 
 
+    mutable std::mutex clock_mutex_;
     std::optional<Clock::time_point> deadline_;
+    std::optional<Clock::duration> paused_left_;
+    //set while paused. Guarded by its own mutex rather than the job latch:
+    //Pause and Resume, like End, are handled without taking the latch, so they
+    //can land while the opening job is starting the clock on a worker
     std::int64_t user_id_ = 0;
     std::int64_t class_id_ = 0;
     //zero for "none": row ids start at 1, so zero is never a real one

@@ -1179,9 +1179,18 @@ doneButton.onclick = () => { //the student has finished this answer
     addLog("thinking...");
 };
 
+function sendClockMessage(type) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type, payload: "" }));
+    }
+    //the server runs the exam clock too, and cuts off an answer given after its
+    //deadline. Without this a pause would stop only the countdown on screen
+}
+
 function enterPause() { //the clock stops and the mic goes quiet
     pausePending = false;
     pauseExamTimer();
+    sendClockMessage("pause");
 
     if (captureState === "armed" || captureState === "capturing") {
         captureState = "idle";
@@ -1197,6 +1206,7 @@ function enterPause() { //the clock stops and the mic goes quiet
 
 function leavePause() { //the clock and the turn both start again
     resumeExamTimer();
+    sendClockMessage("resume");
     setTurnState("thinking");
     armMic();
     //always the student's turn to take back: a pause is only ever entered on

@@ -11,6 +11,8 @@ enum class MessageType {
     Start, //from browser
     Stop, //from browser
     End, //from browser: the student pressed end rather than running out of time
+    Pause, //from browser: the student paused, so the exam clock stops
+    Resume, //from browser: the student carried on, so the clock runs again
     Status, //from server
     Transcript, //from server
     ExaminerText, //from server
