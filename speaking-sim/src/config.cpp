@@ -218,7 +218,7 @@ Config load_config() {
         //0 is allowed and means none: a server can switch free speaking off
     };
     config.free_daily_questions = daily("FREE_DAILY_QUESTIONS", 5);
-    config.paid_daily_questions = daily("PAID_DAILY_QUESTIONS", 60);
+    config.paid_daily_questions = daily("PAID_DAILY_QUESTIONS", 200);
 
     const std::string exam_text = get_env("EXAM_DURATION_SECONDS", "300");
     int exam_seconds = 300;

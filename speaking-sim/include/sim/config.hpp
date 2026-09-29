@@ -79,7 +79,7 @@ struct Config {
     //working directory, which is speaking-sim/ like every other asset path here
 
     int free_daily_questions = 5;
-    int paid_daily_questions = 60;
+    int paid_daily_questions = 200;
     //FREE_DAILY_QUESTIONS and PAID_DAILY_QUESTIONS: examiner questions per
     //account per local day. Paid means a licence on the account or on one of
     //its classes, or a teacher account. Listening is never metered
