@@ -50,6 +50,10 @@
         <select id="classSelect">
             <option value="">Private practice</option>
         </select>
+        <label for="planSelect" id="planLabel" hidden>Exam</label>
+        <select id="planSelect" hidden></select>
+        <!-- the class's exam plans, when it has any: its default, or another
+             one the teacher offers by name. Filled by classes.js -->
         <a id="myClasses" href="/classes">My classes</a>
         <button id="joinClass" type="button">Join a class</button>
         <!-- the class decides which teacher sees the exam, and its language.

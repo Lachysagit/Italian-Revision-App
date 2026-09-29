@@ -730,6 +730,7 @@ function setTurnState(state) {
     //the key it has to disable itself: it is read once at the start message.
     //A class's exam is in the class's language, so a picked class holds it too
     classSelect.disabled = state !== "idle";
+    planSelect.disabled = state !== "idle";
     joinClassButton.disabled = state !== "idle";
     //the class rides on the start message like the language, so it is fixed
     //for the rest of the session
@@ -970,6 +971,8 @@ startButton.onclick = async () => {
             gemini_key: geminiKeySelect.value || "",
             student_name: studentName.value.trim(),
             class_id: selectedClassId() || undefined,
+            plan_id: selectedPlanId() || undefined,
+            //a named plan the student picked; absent means the class default
             //undefined drops the key, which the server reads as private
             //practice, rather than sending a 0 it would have to interpret
             //trimmed here so the server sees a real name or nothing at all;
