@@ -222,3 +222,102 @@ A class that is not the caller's answers 404 rather than 403, so ids cannot be
 probed. Anything that changes state is refused from another origin. The route
 handlers live in `src/class_api.cpp`, apart from the rest of `Server`, so the
 group can move into a separate API service later without untangling it.
+
+## Exam plans, tenses and topics
+
+A teacher controls what an exam for their class covers with **exam plans**,
+made on the dashboard (`/teacher`, a class, *New exam plan*). A plan has:
+
+| Part | What it does |
+| --- | --- |
+| Topics | The syllabus groups the exam may cover. The examiner's topic tags are narrowed to them (the response schema only accepts their tags), and `{{TOPIC_TAGS}}` in the prompt files is filled to match. None ticked is the whole syllabus. |
+| Set questions | Questions the examiner must ask, in the class language, each placed *as the opening question*, *while its topic is running* or *whenever it fits*. They are quoted to the examiner word for word, unless the plan allows paraphrase. |
+| Tense targets | Tenses the examiner should phrase questions in, and how many times at least. |
+| Length, opinion | The exam's length (or the server default), and whether an opinion question is owed. |
+
+A class may name one plan its **default**, which every exam for the class
+follows; students can also pick any plan the teacher shows by name from the
+**Exam** picker on the speaking page. A student never receives a plan's set
+questions before sitting it. Each attempt stores a frozen copy of its plan
+(`exam_attempts.plan_json`), so editing a plan changes the next exam and none
+of the last.
+
+**How a plan runs.** `Session` gives the examiner at most one order per turn,
+in this priority: a set question when the pending ones would otherwise not fit
+the time left (estimated from the student's own pace so far), a topic change
+(which uses a pending set question on another topic as the way to change), a
+set question for the topic running, a tense order when a target is behind, then
+the opinion question. A set question counts as asked when the examiner names
+its id in the reply *and* the reply shares at least half its words, or on word
+overlap alone at 80%. One the examiner ignores three times is given up, and any
+still pending when the exam ends are recorded as missed.
+
+**How tenses are measured.** Tenses have language-neutral keys — `present`,
+`perfect`, `imperfect`, `future`, `conditional` — and each language pack names
+them (passato prossimo, Perfekt). Every turn is labelled twice:
+
+- **model** — the examiner's own reading, from `question_tenses` and
+  `answer_tenses` in its structured reply, enum-constrained to the keys and
+  described in the language's own terms;
+- **rules** — a deterministic check in `src/tense_rules.cpp`: word lists and
+  endings for Italian and German, good at the forms a beginner produces and
+  never calling the present, which is too ambiguous from endings alone.
+  `./build/speaking-sim --check-tenses` runs it over known sentences.
+
+Both are stored in `turn_features` with their source, and the dashboard shows
+them side by side: solid where the two agree, dashed where only one found the
+tense. The class's **What students have practised** table counts, per student,
+the answers in which they used each tense and the questions asked in it.
+
+| Method and path | Who | Does |
+| --- | --- | --- |
+| `GET /api/classes/<id>/plans` | its teacher / its students | every plan in full / visible plans by name only |
+| `POST /api/classes/<id>/plans` | its teacher | create a plan |
+| `GET`, `PUT /api/plans/<id>` | its class's teacher | read or replace a plan |
+| `POST /api/plans/<id>/archive` | its class's teacher | archive, and stop it being the default |
+| `POST /api/classes/<id>/default-plan` | its teacher | `{plan_id}`, or 0 for none |
+| `GET /api/exam-options?language=` | anyone signed in | syllabus topics and tense names for the editor |
+| `GET /api/classes/<id>/coverage` | its teacher | tenses and topics per student |
+
+A plan is checked when it is saved: known topics and tenses, set questions only
+on ticked topics, one opening question at most, and no more set questions than
+the exam has room for at about 30 seconds a question.
+
+## Usage limits and paid access
+
+Speaking is metered in **examiner questions**, the thing that costs money: each
+one, the opening question included, is reserved in `usage_daily` before the
+call in a single statement (so two tabs cannot both take the last one) and
+refunded if the examiner fails. A free account gets `FREE_DAILY_QUESTIONS` a
+day, a paid one `PAID_DAILY_QUESTIONS`. With none left an exam is refused at
+Start, or — if it runs out mid-exam — the last answer is still transcribed and
+saved and the exam ends with reason `quota`. The day is the server's local
+date: run it with `TZ=Australia/Sydney` so the allowance resets at a student's
+midnight.
+
+**Listening is always free and unmetered. Translation is paid** — the translate
+box is locked for a free account on both pages, and `/api/translate` answers
+403 with `reason: "paid_only"`.
+
+Paid access comes from a **licence** on the account, or on any unarchived class
+the student is in (which is how a school licence works: per class, invoiced,
+with no card details held anywhere), or from being a teacher. There is no
+payment provider yet; licences are granted from the command line against the
+same database, safely beside a running server:
+
+```sh
+./build/speaking-sim --grant-licence class 12 2027-12-31 "Invoice 1042"
+./build/speaking-sim --grant-licence user mia@school.nsw.edu.au 2027-06-30
+./build/speaking-sim --list-licences
+./build/speaking-sim --revoke-licence 3
+```
+
+The routes a script could hammer are rate limited per caller in memory (sign-in
+starts, exam sockets, join codes, invites, translation, plan saves), answering
+429. That is separate from the daily allowance, which lives in the database.
+
+Anonymous exams, possible only while `AUTH_REQUIRED` is off, are not metered:
+there is no account to count against. Production should run with it on.
+
+The schema is still created in one step, so **delete `speaking-sim.db` after
+pulling these changes**; the new tables are created on the next start.
