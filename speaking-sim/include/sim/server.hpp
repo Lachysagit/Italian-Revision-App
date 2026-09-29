@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -15,6 +16,7 @@
 #include "sim/examiner.hpp"
 #include "sim/language.hpp"
 #include "sim/rate_limit.hpp"
+#include "sim/safety/safety_chain.hpp"
 #include "sim/stt.hpp"
 #include "sim/tts.hpp"
 #include "sim/worker.hpp"
@@ -36,7 +38,8 @@ public:
            std::unique_ptr<InterfaceSTT> stt,
            std::unique_ptr<InterfaceExaminer> examiner,
            std::unique_ptr<InterfaceTTS> tts,
-           std::unique_ptr<Store> store
+           std::unique_ptr<Store> store,
+           std::unique_ptr<SafetyChain> safety
         );
 
     void run();
@@ -234,6 +237,37 @@ private:
     static void send_text_on_handle(const std::shared_ptr<ConnHandle>& handle,
                                     const std::string& json);
 
+    // ---- safety ----------------------------------------------------------
+
+    enum class ScreenOutcome {
+        Continue,
+        //Allow or Mask. transcript now holds what everything downstream sees
+        TurnStopped,
+        //Halt or Escalate. The student has been told, the question refunded and
+        //the attempt closed where the action called for it. The caller returns
+    };
+
+    ScreenOutcome screen_student_speech(Session& session,
+                                        const std::shared_ptr<ConnHandle>& handle,
+                                        std::string& transcript,
+                                        const std::function<void()>& refund);
+    //checkpoint 1, called before the transcript reaches the socket, the store
+    //or the examiner - on all three paths that produce one. A helper rather
+    //than three pasted blocks because the third path is easy to miss: the
+    //whisper fallback inside the examiner's own catch also produces a
+    //transcript, and an unscreened disclosure does not become less urgent
+    //because the turn it arrived in was already failing
+
+    void record_safety(Session& session, const SafetyVerdict& verdict,
+                       SafetyStage stage);
+    //one persist_quietly write. A database that cannot record the event must
+    //not also cost the student the turn, which is the rule every other write
+    //in this file follows
+
+    static std::string safety_notice(const SafetyVerdict& verdict);
+    //what the student is told. Fixed strings, chosen by action and never
+    //carrying the category, the matched term or anything the layer saw
+
 
     std::mutex sessions_mutex_;
     std::unordered_map<crow::websocket::connection*, std::shared_ptr<Session>> sessions_;
@@ -244,6 +278,12 @@ private:
     std::unique_ptr<InterfaceSTT> stt_;
     std::unique_ptr<InterfaceExaminer> examiner_;
     std::unique_ptr<InterfaceTTS> tts_;
+
+    std::unique_ptr<SafetyChain> safety_;
+    //screens the student's transcript before the examiner is called and the
+    //examiner's reply before anything is spoken or stored. Never null: main()
+    //builds one in every mode, and the off mode is an empty chain whose
+    //ready() is false, which is what stops an exam starting unscreened
 
     std::unique_ptr<Store> store_;
     //accounts, classes and exam history. A member of Server like languages_ so

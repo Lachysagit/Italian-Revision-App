@@ -25,6 +25,18 @@ enum class AudioInput {
     Whisper,
 };
 
+enum class SafetyMode {
+    Off,
+    //no screening at all. Development only, and refused outright once
+    //AUTH_REQUIRED is on: an unscreened exam is not a degraded exam, it is no
+    //exam (compliant-flow.md, checkpoint 0b)
+    Local,
+    //the wordlist layer alone. The offline build, and everything that still
+    //works on the Pi with the network cable out
+    Azure,
+    //wordlist first, then Content Safety and Prompt Shields in Australia East
+};
+
 enum class AudioCodec {
     Flac,
     Wav,
@@ -73,6 +85,23 @@ struct Config {
     bool auth_required = false;
     //false while sign-in is being built: the pages and routes exist, nothing is
     //gated, and an exam still runs for a browser that has never signed in
+
+    SafetyMode safety_mode = SafetyMode::Local;
+    //SAFETY_MODE. Local by default so a build that says nothing about safety
+    //is screened rather than open
+    std::string safety_wordlist_dir;
+    bool safety_fail_closed = true;
+    //SAFETY_FAIL_CLOSED. A screening layer that throws halts the turn. Only
+    //ever turned off for the offline build, which has no layer that can throw
+    std::string content_safety_endpoint;
+    std::string content_safety_key;
+    //empty in the deployed configuration: the relay's managed identity holds
+    //Cognitive Services User on the resource, and a key that does not exist
+    //cannot be leaked in a log line
+    int content_safety_halt_severity = 2;
+    //0, 2, 4 or 6 on the four-level scale. Deliberately stricter than the
+    //service default, because the users are minors
+    bool safety_shield_prompts = true;
 
     std::string database_path;
     //accounts, classes and exam history. A relative path resolves against the

@@ -142,11 +142,13 @@ Server::Server(Config config,
                std::unique_ptr<InterfaceSTT> stt,
                std::unique_ptr<InterfaceExaminer> examiner,
                std::unique_ptr<InterfaceTTS> tts,
-               std::unique_ptr<Store> store)
+               std::unique_ptr<Store> store,
+               std::unique_ptr<SafetyChain> safety)
     : config_(std::move(config)),
       stt_(std::move(stt)),
       examiner_(std::move(examiner)),
       tts_(std::move(tts)),
+      safety_(std::move(safety)),
       store_(std::move(store)),
       pool_(config_.worker_threads) {
     //constructor where config_ is initialised
@@ -162,6 +164,32 @@ void Server::run()
     //knows whether a question has been asked yet. load() logs per language and
     //never throws: a missing German prompt file must still leave Italian exams
     //running, the same way a missing prompt file always has
+
+    safety_->prewarm();
+    //before the port is bound, and before the examiner prewarm occupies every
+    //pool thread. Loading the wordlists here is also what makes ready() below
+    //answer from something rather than from a directory nobody has opened
+
+    const bool safety_expected = config_.safety_mode != SafetyMode::Off;
+    if (safety_expected && !safety_->ready()) {
+        if (config_.auth_required) {
+            throw std::runtime_error(
+                "the safety chain is not ready and AUTH_REQUIRED is on. An "
+                "exam that cannot be screened does not begin: check "
+                "SAFETY_WORDLIST_DIR (" + config_.safety_wordlist_dir +
+                ") and, in azure mode, that Content Safety answered its health "
+                "check.");
+        }
+        std::cerr << "safety: chain is NOT ready - exams will run unscreened. "
+                     "This configuration is refused once AUTH_REQUIRED is on\n";
+        //loud rather than fatal while AUTH_REQUIRED is off, which is the
+        //development build the HSC work happens in
+    }
+    if (!safety_expected) {
+        std::cerr << "safety: SAFETY_MODE=off - NOTHING is screened. "
+                     "Development only; load_config refuses this with "
+                     "AUTH_REQUIRED on\n";
+    }
 
     prewarm_tts();
     prewarm_examiner();
@@ -1199,7 +1227,16 @@ void Server::handle_control(crow::websocket::connection& conn,
             refusal = "could not check your account, please try again";
         }
 
-        if (refusal.empty() && config_.auth_required && !user) {
+        if (refusal.empty() && config_.safety_mode != SafetyMode::Off &&
+            !safety_->ready()) {
+            refusal = "practice is unavailable right now, please tell your "
+                      "teacher";
+            std::cerr << "start refused: safety chain not ready\n";
+            //checkpoint 0b. An exam that cannot be screened does not begin,
+            //and it does not begin in a reduced form either: there is no
+            //degraded mode here on purpose. The student-facing wording names
+            //no component, because which layer is down is an operator fact
+        } else if (refusal.empty() && config_.auth_required && !user) {
             refusal = "sign in to start an exam";
         } else if (refusal.empty() && user && !user->onboarded &&
                    !user->is_teacher) {
@@ -1515,6 +1552,15 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                 stt_ms = ms_since(stt_started);
 
                 if (!transcript.empty()) {
+                    if (screen_student_speech(*session, handle, transcript,
+                                              refund) ==
+                        ScreenOutcome::TurnStopped) {
+                        return;
+                    }
+                    //checkpoint 1, before the transcript reaches the socket,
+                    //the store or the examiner's history. Nothing below this
+                    //line has seen an unscreened word
+
                     send_transcript(handle, transcript);
                     //paint what STT heard before the reply, so a misheard
                     //answer is visible rather than only a reply that makes no sense
@@ -1605,6 +1651,20 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                 //the student still sees their own words, which is most of what
                 //the turn owed them. The reply is lost, and the catch below
                 //sends the fixed failure string in its place
+                if (!answer.transcript.empty() &&
+                    screen_student_speech(*session, handle, answer.transcript,
+                                          refund) ==
+                        ScreenOutcome::TurnStopped) {
+                    return;
+                    //returns instead of rethrowing: the turn has already been
+                    //closed out by the screening - refunded, the student told,
+                    //and the attempt ended if it escalated - and letting the
+                    //catch below overwrite that with the generic failure
+                    //string would hide a disclosure behind a network error.
+                    //This path is easy to miss and is exactly the one that
+                    //must not be: a worrying answer does not become less
+                    //worrying because the examiner call that carried it failed
+                }
                 if (!answer.transcript.empty()) {
                     send_transcript(handle, answer.transcript);
                     session->record_answer(answer.transcript);
@@ -1624,6 +1684,20 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                     //a schema hiccup costs the student their transcript but not
                     //the turn: the reply below is still good
                 }
+
+                if (!answer.transcript.empty() &&
+                    screen_student_speech(*session, handle, answer.transcript,
+                                          refund) ==
+                        ScreenOutcome::TurnStopped) {
+                    return;
+                }
+                //checkpoint 1 on this path is a post-hoc screen and cannot be
+                //anything else: AUDIO_INPUT=gemini hands the recording to the
+                //model, which transcribes AND answers in one call, so by the
+                //time there is text to screen the reply already exists and was
+                //generated from unscreened words. That is the mechanical
+                //reason the compliant build is a cascade, and why
+                //load_config() refuses this mode once AUTH_REQUIRED is on
 
                 if (!answer.transcript.empty()) {
                     send_transcript(handle, answer.transcript);
@@ -1651,6 +1725,30 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
             //slips into markdown however plainly the prompt asks for prose, and
             //the markers reached the transcript and piper's mouth alike
             //borrows the lambda's own vector, which nothing else can touch
+
+            const SafetyVerdict outgoing = safety_->screen(
+                reply, SafetyStage::ExaminerReply, language->id);
+            record_safety(*session, outgoing, SafetyStage::ExaminerReply);
+            if (outgoing.action != SafetyAction::Allow) {
+                throw std::runtime_error("examiner reply failed screening");
+                //checkpoint 3. Screened AFTER clean_for_speech, not before:
+                //the student hears the cleaned text, so the cleaned text is
+                //what has to be clean.
+                //
+                //Thrown rather than handled here so the existing catch(...)
+                //backstop below sends the fixed failure string and recovers
+                //the session - it already refunds the question when the
+                //examiner did not answer. The asymmetry against a student
+                //turn is deliberate: a generated question is regenerable and a
+                //student's answer is not, so the examiner loses the turn where
+                //the student would only lose the word.
+                //
+                //The student is never told the examiner said something
+                //unusable, which is correct: that is an operator fact, not a
+                //pedagogical one. One silent regeneration at the same turn
+                //index is the refinement; failing the turn is the safe first
+                //version
+            }
 
             session->record_question(reply);
             session->note_question_topic(topic);
@@ -1843,6 +1941,97 @@ int Server::start_exam_clock(Session& session) {
     session.start_clock(Session::Clock::now(),
                         std::chrono::seconds(seconds + kClockSlackSeconds));
     return seconds;
+}
+
+// ---- safety -----------------------------------------------------------------
+
+void Server::record_safety(Session& session, const SafetyVerdict& verdict,
+                           SafetyStage stage) {
+    if (verdict.action == SafetyAction::Allow) return;
+    if (session.attempt_id() == 0) return;
+    //a practice run outside an attempt has nowhere to write the row. The
+    //screening still happened and still decided the turn; only the record is
+    //missing, which is the same trade every other write here makes
+
+    persist_quietly("safety event", [&] {
+        store_->record_safety_event(session.attempt_id(),
+                                    session.peek_turn_index(), stage, verdict);
+        //peek, never take. Screening runs before the turn it screened is
+        //stored, so this is that turn's own index on both checkpoints: the
+        //student turn about to be written, or the examiner turn about to be
+    });
+}
+
+std::string Server::safety_notice(const SafetyVerdict& verdict) {
+    switch (verdict.action) {
+        case SafetyAction::Mask:
+            return "a word in that answer has been hidden in your transcript. "
+                   "The exam is carrying on.";
+        case SafetyAction::Escalate:
+            //TODO(wellbeing): this wording, and the teacher workflow behind it,
+            //are to be drafted with the school's wellbeing team before any
+            //student other than the developer uses this. It should name the
+            //school's own supports. A tool that detects a disclosure and says
+            //something this generic is only barely better than one that says
+            //nothing - see section 3 of docs/compliance/compliant-flow.md
+            return "This practice has been stopped. If something is worrying "
+                   "you, please talk to a teacher, your year adviser or the "
+                   "school counsellor. Your teacher has been notified.";
+        case SafetyAction::Halt:
+        case SafetyAction::Allow:
+            break;
+    }
+    return "that turn was stopped. Please try answering the question again.";
+    //deliberately says nothing about which layer fired or what it matched: a
+    //filter that explains itself is a filter that teaches you how to get past
+    //it, and the category is an operator fact rather than a pedagogical one
+}
+
+Server::ScreenOutcome Server::screen_student_speech(
+    Session& session, const std::shared_ptr<ConnHandle>& handle,
+    std::string& transcript, const std::function<void()>& refund) {
+    if (transcript.empty()) return ScreenOutcome::Continue;
+
+    const SafetyVerdict verdict = safety_->screen(
+        transcript, SafetyStage::StudentSpeech, session.language().id);
+    record_safety(session, verdict, SafetyStage::StudentSpeech);
+
+    switch (verdict.action) {
+        case SafetyAction::Allow:
+            return ScreenOutcome::Continue;
+
+        case SafetyAction::Mask:
+            transcript = verdict.text;
+            send_error(handle, safety_notice(verdict));
+            return ScreenOutcome::Continue;
+            //the masked copy from here on, everywhere: the socket, the store
+            //and the examiner's history all see the same words. Ending a
+            //language exam over a swear word punishes the disfluent, and the
+            //examiner reading it back would be worse
+
+        case SafetyAction::Halt:
+            refund();
+            send_error(handle, safety_notice(verdict));
+            //the examiner is never called, so the reserved question goes back
+            //exactly as an examiner failure already refunds it. The exam
+            //continues: one stopped turn is not a stopped exam
+            return ScreenOutcome::TurnStopped;
+
+        case SafetyAction::Escalate:
+            refund();
+            if (session.attempt_id() != 0) {
+                persist_quietly("attempt end (escalated)", [&] {
+                    store_->end_attempt(session.attempt_id(), "escalated");
+                });
+            }
+            send_error(handle, safety_notice(verdict));
+            send_status(handle, "ended");
+            //never silent. An escalated turn that looked to the student like a
+            //network error is the failure mode Child Safe Standard 8 exists to
+            //prevent, so the status goes out and the page leaves the exam
+            return ScreenOutcome::TurnStopped;
+    }
+    return ScreenOutcome::Continue;
 }
 
 int Server::record_student_turn(Session& session, const std::string& text,

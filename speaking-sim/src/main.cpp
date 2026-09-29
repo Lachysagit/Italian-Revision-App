@@ -17,6 +17,9 @@
 
 #include "sim/examiner/gemini_examiner.hpp"
 #include "sim/examiner/hailo_examiner.hpp"
+#include "sim/safety/azure_safety.hpp"
+#include "sim/safety/safety_chain.hpp"
+#include "sim/safety/wordlist_safety.hpp"
 #include "sim/stt/whisper_stt.hpp"
 #include "sim/tts/piper_tts.hpp"
 
@@ -219,11 +222,36 @@ int main(int argc, char** argv) {
         }
         //choose the examiner backend based on config - the ONLY place this is decided
 
+        std::vector<std::unique_ptr<sim::InterfaceSafety>> layers;
+        if (config.safety_mode != sim::SafetyMode::Off) {
+            layers.push_back(std::make_unique<sim::WordlistSafety>(
+                config.safety_wordlist_dir));
+            //the local layer is always first: a word on the list costs no
+            //network hop, and on the offline build there is no second layer
+        }
+        if (config.safety_mode == sim::SafetyMode::Azure) {
+            sim::AzureSafety::Options options;
+            options.endpoint = config.content_safety_endpoint;
+            options.api_key = config.content_safety_key;
+            options.halt_severity = config.content_safety_halt_severity;
+            options.shield_prompts = config.safety_shield_prompts;
+            layers.push_back(std::make_unique<sim::AzureSafety>(
+                std::move(options)));
+        }
+        auto safety = std::make_unique<sim::SafetyChain>(
+            std::move(layers),
+            sim::SafetyChain::Options{config.safety_fail_closed});
+        //built here beside the examiner for the same reason: this is the ONLY
+        //place the safety backends are chosen. An empty chain is what
+        //SAFETY_MODE=off produces, and its ready() is false, which is what
+        //makes an unscreened build refuse to start once AUTH_REQUIRED is on
+
         sim::Server server(std::move(config),
                            std::move(stt),
                            std::move(examiner),
                            std::move(tts),
-                           std::move(store));
+                           std::move(store),
+                           std::move(safety));
         //inject the concrete pieces into the server as interfaces
 
         server.run();

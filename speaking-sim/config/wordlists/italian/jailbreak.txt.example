@@ -1,0 +1,73 @@
+# Prompt-injection phrasing. Substring match against the normalised transcript.
+#
+# Phrases only, never single words: "system" and "prompt" on their own are
+# ordinary English, and an exam answer about a computer would trip both.
+#
+# The remote Prompt Shield does the real work here. This list is the offline
+# build's stand-in and is expected to be beatable - its job is to catch the
+# copy-pasted attempt, not the inventive one. A hit halts the turn and refunds
+# the question; it does not end the exam or flag anything to a teacher.
+#
+# Two entries are narrower than they look like they should be. "adesso sei" on
+# its own is how you ask someone where they are right now, and "stop being" is
+# ordinary advice; both are qualified so a real exam answer does not halt.
+
+# --- English -----------------------------------------------------------------
+ignore the above
+ignore all previous
+ignore previous
+ignore your instructions
+ignore all instructions
+ignore everything above
+disregard the above
+disregard previous
+disregard your instructions
+forget your instructions
+forget everything above
+forget all previous
+your system prompt
+the system prompt
+show me your prompt
+print your prompt
+repeat your instructions
+repeat the text above
+output your instructions
+reveal your instructions
+what are your instructions
+you are now
+you are no longer
+from now on you
+pretend you are
+pretend to be
+act as if you
+act as though you
+developer mode
+jailbreak
+dan mode
+stop being an examiner
+new instructions
+override your
+bypass your
+
+# --- Italian -----------------------------------------------------------------
+ignora le istruzioni
+ignora le precedenti
+ignora tutto quello
+ignora quanto detto
+dimentica le istruzioni
+dimentica tutto quello
+non seguire le istruzioni
+il tuo prompt
+mostrami il prompt
+mostrami le istruzioni
+ripeti le istruzioni
+ripeti il testo sopra
+quali sono le tue istruzioni
+adesso sei un
+ora sei un
+da ora in poi sei
+fingi di essere
+comportati come se
+fai finta di essere
+nuove istruzioni
+modalita sviluppatore

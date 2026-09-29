@@ -115,6 +115,12 @@ public:
     //monotonic per session, handed to each stored turn. Not atomic on purpose -
     //the one-job latch already means a single thread touches a Session at a time
 
+    int peek_turn_index() const { return turn_index_; }
+    //the index the NEXT stored turn will take, without taking it. A safety
+    //event belongs to the turn it screened rather than to one of its own, so
+    //recording one must not consume an index - doing so would leave a gap in
+    //attempt_turns and file the event against a turn that never existed
+
     void note_question_topic(const std::string& topic);
     //from the [topic: ...] tag the student never sees. Two or three questions
     //per topic, then build_examiner_input tells the examiner it is finished.

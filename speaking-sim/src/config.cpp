@@ -109,6 +109,35 @@ std::string checked_thinking_level(const char* name) {
     return kDefaultThinkingLevel;
 }
 
+//SAFETY_MODE decides which layers the chain is built from, and an unrecognised
+//value must not quietly become the permissive one. Unlike the thinking level
+//above there is no safe default to fall back to, so this throws: a typo here
+//is the difference between a screened exam and an unscreened one, and that is
+//not a thing to discover from a log line nobody read.
+SafetyMode checked_safety_mode() {
+    const std::string mode = get_env("SAFETY_MODE", "local");
+    if (mode == "off")   return SafetyMode::Off;
+    if (mode == "local") return SafetyMode::Local;
+    if (mode == "azure") return SafetyMode::Azure;
+    throw std::runtime_error("SAFETY_MODE must be off, local or azure, got: " +
+                             mode);
+}
+
+//Content Safety returns 0, 2, 4 or 6 on the four-level scale it is asked for.
+//Any other threshold either never fires or fires on everything, and both are
+//worse than the default.
+int checked_halt_severity() {
+    const std::string text = get_env("CONTENT_SAFETY_HALT_SEVERITY", "2");
+    int value = 0;
+    if (parse_int_strict(text, value) &&
+        (value == 0 || value == 2 || value == 4 || value == 6)) {
+        return value;
+    }
+    std::cerr << "CONTENT_SAFETY_HALT_SEVERITY " << text
+              << " is not 0, 2, 4 or 6, using 2\n";
+    return 2;
+}
+
 }  // namespace
 
 Config load_config() {
@@ -188,6 +217,17 @@ Config load_config() {
     const std::string audio_input = get_env("AUDIO_INPUT", "gemini");
     config.audio_input = (audio_input == "whisper") ? AudioInput::Whisper
                                                     : AudioInput::Gemini;
+
+    config.safety_mode = checked_safety_mode();
+    config.safety_wordlist_dir =
+        get_env("SAFETY_WORDLIST_DIR", "config/wordlists");
+    config.safety_fail_closed =
+        parse_bool(get_env("SAFETY_FAIL_CLOSED", ""), true);
+    config.content_safety_endpoint = get_env("CONTENT_SAFETY_ENDPOINT", "");
+    config.content_safety_key = get_env("CONTENT_SAFETY_KEY", "");
+    config.content_safety_halt_severity = checked_halt_severity();
+    config.safety_shield_prompts =
+        parse_bool(get_env("SAFETY_SHIELD_PROMPTS", ""), true);
 
     const std::string audio_codec = get_env("AUDIO_CODEC", "flac");
     config.audio_codec =
@@ -283,6 +323,33 @@ Config load_config() {
         //it is pasted into the redirect_uri sent to Google and compared there
         //as a literal string, so a scheme-less value fails at sign-in with an
         //error that names Google rather than this setting
+    }
+
+    if (config.auth_required && config.safety_mode == SafetyMode::Off) {
+        throw std::runtime_error(
+            "AUTH_REQUIRED is on but SAFETY_MODE is off. An exam that is not "
+            "screened is not a degraded exam, it is no exam: see checkpoint 0b "
+            "in docs/compliance/compliant-flow.md. Set SAFETY_MODE=local or "
+            "azure.");
+    }
+
+    if (config.auth_required && config.audio_input == AudioInput::Gemini) {
+        throw std::runtime_error(
+            "AUTH_REQUIRED is on but AUDIO_INPUT is gemini. That path sends "
+            "the recording straight to the model, which transcribes and "
+            "replies in one call - so there is no transcript to screen before "
+            "the model reads it, and the student-speech checkpoint cannot run "
+            "at all. Set AUDIO_INPUT=whisper.");
+        //not a policy check but a mechanical one: this is the reason the
+        //compliant build is a cascade. Enforced here rather than left to
+        //phase 2 so that turning AUTH_REQUIRED on says what is missing
+        //instead of quietly shipping student audio outside the country
+    }
+
+    if (config.safety_mode == SafetyMode::Azure &&
+        config.content_safety_endpoint.empty()) {
+        throw std::runtime_error(
+            "SAFETY_MODE is azure but CONTENT_SAFETY_ENDPOINT is empty.");
     }
 
     if (config.examiner_backend == ExaminerBackend::Gemini &&
