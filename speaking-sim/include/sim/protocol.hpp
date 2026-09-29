@@ -42,6 +42,9 @@ struct Message {
     //The server's clock is the one that counts; the browser's countdown is a
     //display of it, so a page left on an old default still shows the truth
     std::int64_t class_id = 0;
+    std::int64_t plan_id = 0;
+    //sent with Start only: a named exam plan of that class, picked by the
+    //student. Absent means the class's default plan, if it has one
     //sent with Start only: the class this exam is being sat for, or absent for
     //private practice. A claim the server checks against class_members before
     //it believes it, since it decides which teacher can read the transcript

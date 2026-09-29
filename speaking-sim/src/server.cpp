@@ -20,6 +20,8 @@
 
 #include "sim/audio_encode.hpp"
 #include "sim/http_util.hpp"
+#include "sim/plan_json.hpp"
+#include "sim/tenses.hpp"
 #include "sim/protocol.hpp"
 #include "sim/question_bank.hpp"
 #include "sim/static_files.hpp"
@@ -1081,6 +1083,7 @@ void Server::handle_control(crow::websocket::connection& conn,
 
         std::optional<User> user;
         std::optional<ClassInfo> klass;
+        std::optional<ExamPlan> plan;
         std::string refusal;
         try {
             if (const auto user_id = session->user_id()) {
@@ -1091,6 +1094,21 @@ void Server::handle_control(crow::websocket::connection& conn,
                 if (klass && (klass->archived ||
                               !store_->class_role(klass->id, user->id))) {
                     klass.reset();
+                }
+            }
+            if (klass && message.plan_id > 0) {
+                plan = store_->plan_by_id(message.plan_id);
+                if (!plan || plan->class_id != klass->id || plan->archived ||
+                    !(plan->visible || plan->is_default)) {
+                    plan.reset();
+                    refusal = "that exam is not available in this class any more";
+                }
+                //a plan from another class, or one the teacher has put away,
+                //is refused rather than quietly swapped for the default: the
+                //student chose it by name
+            } else if (klass) {
+                for (ExamPlan& candidate : store_->class_plans(klass->id, false)) {
+                    if (candidate.is_default) plan = std::move(candidate);
                 }
             }
         } catch (const std::exception& e) {
@@ -1138,6 +1156,11 @@ void Server::handle_control(crow::websocket::connection& conn,
         if (pack != nullptr) {
             session->set_language(pack);
         }
+        if (plan) {
+            session->set_plan(*plan);
+            //after the language, though either order works: both rebuild the
+            //prompts from the pack and the plan together
+        }
         //an unknown or absent language leaves the default set on open, rather
         //than failing the Start: a stale client or a typo must still get an
         //exam. Set before the job is enqueued, because build_examiner_input()
@@ -1163,6 +1186,10 @@ void Server::handle_control(crow::websocket::connection& conn,
             session->set_attempt_id(store_->begin_attempt(
                 session->user_id(), session->class_id(), session->language().id,
                 session->gemini_key_name()));
+            if (plan && session->attempt_id() != 0) {
+                store_->attach_plan(session->attempt_id(), *plan,
+                                    plan_to_json(*plan, true).dump());
+            }
         });
         //opened here rather than on connect: the language and the class are not
         //known until Start names them, and an attempt row that cannot say which
@@ -1253,6 +1280,9 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                                   {
     std::vector<Turn> examiner_input = session->build_examiner_input();
     //still on Crow's socket thread, which the claim has already made exclusive
+    ReplySchema reply_schema = session->reply_schema();
+    //read straight after the input, which may have just ordered a set question
+    //the schema has to offer as an answer
 
     const LanguagePack* language = &session->language();
     //snapshotted here alongside the input, for the same reason: the socket
@@ -1269,6 +1299,7 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
         handle = std::move(handle),
         job_audio = std::move(utterance_audio),
         job_input = std::move(examiner_input),
+        reply_schema = std::move(reply_schema),
         claim = std::move(claim)]() mutable
 
     //handle is captured by value
@@ -1290,6 +1321,9 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
         long long encode_ms = 0;
         long long examiner_ms = 0;
         long long tts_ms = 0;
+        int student_turn = -1;
+        //the index the student's answer was stored under, so the examiner's
+        //reading of its tenses can be attached once the reply arrives
         //stage timings on stderr, so a slow turn names one backend. Declared
         //out here so the send below still runs after a failure
 
@@ -1322,14 +1356,7 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                     job_input.push_back(Turn{Role::Student, transcript});
                     //onto the owned snapshot, STT had not run when it was built
 
-                    if (session->attempt_id() != 0) {
-                        persist_quietly("student turn", [&] {
-                            store_->record_turn(session->attempt_id(),
-                                                session->next_turn_index(),
-                                                "student", transcript, "",
-                                                stt_ms, 0, 0);
-                        });
-                    }
+                    student_turn = record_student_turn(*session, transcript, stt_ms);
                     //before the move below, not after: record_answer takes the
                     //string by value and leaves the local empty
 
@@ -1394,7 +1421,7 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
             ExaminerReply answer;
             try {
                 answer = examiner_->respond_to_audio(
-                    job_input, spoken, session->gemini_key_name());
+                    job_input, spoken, session->gemini_key_name(), reply_schema);
             } catch (const std::exception& e) {
                 if (!examiner_listens) throw;
                 //a text turn has no second path to fall back to
@@ -1434,14 +1461,8 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                     //misheard answer should be visible as itself rather than
                     //only as a reply that makes no sense
 
-                    if (session->attempt_id() != 0) {
-                        persist_quietly("student turn", [&] {
-                            store_->record_turn(session->attempt_id(),
-                                                session->next_turn_index(),
-                                                "student", answer.transcript,
-                                                "", stt_ms, 0, 0);
-                        });
-                    }
+                    student_turn =
+                        record_student_turn(*session, answer.transcript, stt_ms);
                     //stt_ms is 0 unless whisper was the one that produced this,
                     //which is the honest figure: the examiner's own listening
                     //is not separable from examiner_ms
@@ -1463,11 +1484,14 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
 
             session->record_question(reply);
             session->note_question_topic(topic);
+            const Session::ReplyOutcome outcome =
+                session->note_examiner_reply(reply, answer);
+            //the set questions and tense targets are judged on the cleaned
+            //reply, the same words the student sees and hears
 
             int exam_seconds = 0;
             if (!session->clock_started()) {
-                start_exam_clock(*session);
-                exam_seconds = config_.exam_duration_seconds;
+                exam_seconds = start_exam_clock(*session);
             }
             //the opening question: the exam starts now, so the wait for the
             //first examiner call is not taken off the student's time
@@ -1486,12 +1510,42 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
 
             if (session->attempt_id() != 0) {
                 persist_quietly("examiner turn", [&] {
-                    store_->record_turn(session->attempt_id(),
-                                        session->next_turn_index(),
+                    const std::int64_t attempt = session->attempt_id();
+                    const int examiner_turn = session->next_turn_index();
+                    store_->record_turn(attempt, examiner_turn,
                                         "examiner", reply, topic,
                                         0, examiner_ms, tts_ms);
-                    store_->note_examiner_call(session->attempt_id(),
-                                               session->gemini_key_name());
+                    store_->note_examiner_call(attempt, session->gemini_key_name());
+
+                    std::vector<std::string> model_tenses;
+                    for (const std::string& key : answer.question_tenses) {
+                        if (is_tense_key(key)) model_tenses.push_back(key);
+                    }
+                    store_->record_turn_features(attempt, examiner_turn, "tense",
+                                                 model_tenses, "model");
+                    store_->record_turn_features(attempt, examiner_turn, "tense",
+                                                 detect_tenses(language->id, reply),
+                                                 "rules");
+
+                    if (student_turn >= 0) {
+                        std::vector<std::string> answer_tenses;
+                        for (const std::string& key : answer.answer_tenses) {
+                            if (is_tense_key(key)) answer_tenses.push_back(key);
+                        }
+                        store_->record_turn_features(attempt, student_turn, "tense",
+                                                     answer_tenses, "model");
+                        //the examiner's reading of the answer it just replied
+                        //to, attached to that answer rather than to the reply
+                    }
+
+                    for (const std::int64_t id : outcome.asked) {
+                        store_->mark_required_question(attempt, id, "asked",
+                                                       examiner_turn);
+                    }
+                    for (const std::int64_t id : outcome.missed) {
+                        store_->mark_required_question(attempt, id, "missed",
+                                                       examiner_turn);
+                    }
                 });
             }
             //written here rather than beside record_question, so the row carries
@@ -1588,10 +1642,31 @@ void Server::send_transcript(const std::shared_ptr<ConnHandle>& handle,
     //MessageType::Transcript was never constructed, so the client branch was
 }
 
-void Server::start_exam_clock(Session& session) {
-    session.start_clock(
-        Session::Clock::now() +
-        std::chrono::seconds(config_.exam_duration_seconds + kClockSlackSeconds));
+int Server::start_exam_clock(Session& session) {
+    const int seconds = session.plan_duration_seconds() > 0
+                            ? session.plan_duration_seconds()
+                            : config_.exam_duration_seconds;
+    session.start_clock(Session::Clock::now(),
+                        std::chrono::seconds(seconds + kClockSlackSeconds));
+    return seconds;
+}
+
+int Server::record_student_turn(Session& session, const std::string& text,
+                                long long stt_ms) {
+    if (session.attempt_id() == 0) {
+        return -1;
+    }
+    int index = -1;
+    persist_quietly("student turn", [&] {
+        const int turn = session.next_turn_index();
+        store_->record_turn(session.attempt_id(), turn, "student", text, "",
+                            stt_ms, 0, 0);
+        store_->record_turn_features(session.attempt_id(), turn, "tense",
+                                     detect_tenses(session.language().id, text),
+                                     "rules");
+        index = turn;
+    });
+    return index;
 }
 
 void Server::send_examiner_text(const std::shared_ptr<ConnHandle>& handle,

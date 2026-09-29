@@ -4,6 +4,7 @@
 #include <random>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace sim {
 
@@ -35,6 +36,18 @@ struct TopicMenu {
     //producing the same opening question every exam
 };
 
-TopicMenu topic_menu(std::mt19937& rng);
+TopicMenu topic_menu(std::mt19937& rng,
+                     const std::vector<std::string>& allowed = {},
+                     const std::string& first = "");
+//allowed is an exam plan's topic list: only those groups are offered, still
+//shuffled. Empty, or naming nothing known, means every group, as before
+
+std::vector<std::string> all_topic_groups();
+//the syllabus groups in kTagGroups order, for the plan editor's checkboxes
+bool is_topic_group(const std::string& group);
+
+std::vector<std::string> tags_for_groups(const std::vector<std::string>& groups);
+//the tags that map onto those groups, in kTopicTags order: the enum a plan
+//narrows the examiner's topic field to. Empty groups means every tag
 
 }  // namespace sim

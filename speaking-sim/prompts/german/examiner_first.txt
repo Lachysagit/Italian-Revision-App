@@ -1,12 +1,13 @@
 THE OPENING QUESTION ONLY. This file is the whole instruction for the first
 question of the exam, and the program adds nothing to it but the topic list
-below. Every later turn is governed by examiner_ongoing.txt instead. The two
+below and, when the student's teacher has set one, the exact opening question to
+ask - which then replaces the choice this file describes. Every later turn is governed by examiner_ongoing.txt instead. The two
 files repeat each other on purpose, so that each one can be read on its own and
 understood as everything the examiner is being told; the cost is that a rule
 meant for the whole exam has to be changed in both.
 
-The topic placeholder further down is filled in by the program with the seven
-syllabus topics, in an order drawn afresh for each exam, and the program then
+The topic placeholder further down is filled in by the program with the
+syllabus topics this exam covers, in an order drawn afresh for each exam, and the program then
 adds sample questions for whichever topic that draw put first. Asking this file
 to "vary the topic" was not enough on its own: the choice was left to the model,
 which kept making the same one. The draw makes the choice instead, and this
@@ -78,9 +79,7 @@ the question shortens that wait.
 
 "topic" names what the question is about, and must be one of these exactly:
 
-family, home, neighbourhood, people, places, communities, education,
-university, work, part-time job, earnings, friends, recreation, pastimes,
-holidays, travel, tourism, future plans, dreams, aspirations
+{{TOPIC_TAGS}}
 
 Questions about the same thing must always carry the same word. The topic is for
 the examiner software, not for the student: it never reaches them, so never

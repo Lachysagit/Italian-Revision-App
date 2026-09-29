@@ -1,6 +1,8 @@
 #pragma once
 
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace sim {
@@ -34,6 +36,31 @@ struct ExaminerReply {
     std::string transcript;
     std::string text;
     //the reply, still carrying its [topic: x] tag for topic_tag() to read
+
+    std::vector<std::string> question_tenses;
+    std::vector<std::string> answer_tenses;
+    //canonical keys from tenses.hpp: the tenses the new question is phrased in,
+    //and the ones the student used in the answer being replied to
+    std::string required_question;
+    //the id of the teacher's set question this reply asks, or empty
+    std::optional<bool> asks_opinion;
+    //the examiner's own word on whether it asked for an opinion. Empty from a
+    //backend that cannot say, and Session then falls back to matching phrases
+};
+
+// What this session needs the reply to carry. Built by Session from its exam
+// plan, so the fields and the values allowed in them follow the plan: the
+// topic enum narrows to the plan's topics, the tense fields list the tenses in
+// the exam language's own names, and the required-question field only exists
+// while there is a set question still to ask.
+struct ReplySchema {
+    std::vector<std::string> topic_tags;
+    //empty means every tag in kTopicTags
+    std::vector<std::pair<std::string, std::string>> tenses;
+    //canonical key -> this language's name for it. Empty leaves the tense
+    //fields out of the reply altogether
+    std::vector<std::string> required_ids;
+    //the set questions still pending, as "q<id>"
 };
 
 class InterfaceExaminer {
@@ -52,10 +79,17 @@ public:
     //capability it does not have
     virtual ExaminerReply respond_to_audio(const std::vector<Turn>& history,
                                            const SpokenAnswer& answer,
-                                           const std::string& gemini_key_name = "") {
+                                           const std::string& gemini_key_name,
+                                           const ReplySchema& schema) {
         (void)answer;
-        return {"", respond(history, gemini_key_name)};
+        (void)schema;
+        ExaminerReply reply;
+        reply.text = respond(history, gemini_key_name);
+        return reply;
     }
+    //schema is ignored by a backend with no structured output: the reply then
+    //carries no tenses or set-question id, and Session falls back to the rule
+    //checks and word overlap it runs anyway
 
     //Whether respond_to_audio() does anything with the audio. The server asks
     //before encoding, so a backend that cannot listen does not pay for a FLAC

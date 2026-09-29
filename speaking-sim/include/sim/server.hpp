@@ -178,9 +178,16 @@ private:
     //exam_seconds rides on the opening question only, the moment the server's
     //clock starts, so the browser's countdown starts from the same instant
 
-    void start_exam_clock(Session& session);
-    //the deadline is the configured length plus a few seconds of slack for the
-    //question reaching the browser, whose countdown starts on arrival
+    int start_exam_clock(Session& session);
+    //the deadline is the plan's length, or the configured one, plus a few
+    //seconds of slack for the question reaching the browser, whose countdown
+    //starts on arrival. Returns the length in seconds, which the browser is told
+
+    int record_student_turn(Session& session, const std::string& text,
+                            long long stt_ms);
+    //writes the student's answer and the rule-based tenses in it, and returns
+    //the turn's index so the examiner's own labels can be added once its reply
+    //arrives. -1 when the attempt is not being recorded
     //sample_rate is the session's own voice rate, passed in because two
     //languages on one server produce different ones. Ignored when
     //speech_follows is false, since no frame is coming to describe

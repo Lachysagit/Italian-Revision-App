@@ -253,6 +253,7 @@ endif()
 # added to a glob without a manual reconfigure.
 add_executable(speaking-sim
     src/main.cpp
+    src/plan_json.cpp
     src/audio_encode.cpp
     src/class_api.cpp
     src/config.cpp

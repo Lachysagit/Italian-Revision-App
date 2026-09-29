@@ -331,6 +331,11 @@ void Store::reconcile_crashed_attempts() {
         std::cerr << "store: closed " << changed
                   << " attempt(s) left open by a previous run\n";
     }
+
+    exec("UPDATE attempt_required_questions SET status = 'missed' "
+         "WHERE status = 'pending' AND attempt_id IN "
+         "(SELECT id FROM exam_attempts WHERE ended_at IS NOT NULL)");
+    //the set questions of an exam the crash ended were not asked either
 }
 
 namespace {
@@ -773,6 +778,12 @@ void Store::end_attempt(std::int64_t attempt_id, const std::string& reason) {
     if (rc != SQLITE_DONE) {
         throw std::runtime_error(std::string("end_attempt step: ") +
                                  sqlite3_errmsg(db_));
+    }
+
+    if (sqlite3_changes(db_) > 0) {
+        close_required_questions(attempt_id);
+        //here rather than at each caller, so no way of ending an exam - the
+        //clock, the End button, a dropped socket - can forget to settle them
     }
 }
 

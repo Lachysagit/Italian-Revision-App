@@ -1,9 +1,11 @@
 #include "sim/session.hpp"
 
+#include "sim/tenses.hpp"
 #include "sim/topics.hpp"
 
 #include <algorithm>
 #include <cctype>
+#include <set>
 #include <cstddef>
 #include <string>
 #include <string_view>
@@ -67,8 +69,62 @@ std::string fill_slot(std::string text, const std::string& value) {
     //a mistyped pack string costs the substitution, not the turn
 }
 
-// The prompt files carry this where their topic list used to sit.
+// The prompt files carry these where their topic list and tag list used to sit.
 constexpr std::string_view kTopicMarker = "{{TOPICS}}";
+constexpr std::string_view kTagMarker = "{{TOPIC_TAGS}}";
+
+void replace_all(std::string& text, std::string_view marker, const std::string& value) {
+    std::size_t at = text.find(marker);
+    while (at != std::string::npos) {
+        text.replace(at, marker.size(), value);
+        at = text.find(marker, at + value.size());
+    }
+}
+
+// Words for comparing a reply with a set question: lower case, split on
+// anything that is not a letter. Accented letters are multi-byte UTF-8 and
+// stay inside their word, the same way the tense rules split.
+std::set<std::string> word_set(const std::string& text) {
+    std::set<std::string> words;
+    std::string word;
+    for (const char raw : text) {
+        const unsigned char ch = static_cast<unsigned char>(raw);
+        if (std::isalpha(ch) != 0 || ch >= 0x80) {
+            word.push_back(static_cast<char>(std::tolower(ch)));
+        } else if (!word.empty()) {
+            words.insert(word);
+            word.clear();
+        }
+    }
+    if (!word.empty()) words.insert(word);
+    return words;
+}
+
+// How much of the set question the reply contains, from 0 to 1. The reply is
+// allowed a reaction before the question, so this measures the question's
+// words found in the reply, not the other way round.
+double overlap(const std::string& wanted, const std::string& reply) {
+    const std::set<std::string> want = word_set(wanted);
+    if (want.empty()) return 0.0;
+    const std::set<std::string> have = word_set(reply);
+    std::size_t found = 0;
+    for (const std::string& word : want) {
+        found += have.count(word);
+    }
+    return static_cast<double>(found) / static_cast<double>(want.size());
+}
+
+constexpr double kVerbatimMatch = 0.8;
+//a reply this close to the set question asked it, whatever the model says
+constexpr double kConfirmedMatch = 0.5;
+//close enough when the model also names the question's id: it may have
+//changed an article or the word order, but not asked something else
+
+constexpr auto kDefaultTurnPace = std::chrono::seconds(35);
+constexpr auto kMinTurnPace = std::chrono::seconds(20);
+constexpr auto kMaxTurnPace = std::chrono::seconds(90);
+//one question and its answer, before any have been timed, and the bounds on
+//the measured pace so one very quick or very slow turn cannot swing it
 
 // The filled prompt, and the group the draw put first. Both prompts are filled
 // from one draw per session, so the opening turn's samples and the menu the
@@ -78,12 +134,10 @@ struct FilledPrompt {
     std::string first_topic;
 };
 
-FilledPrompt fill_topics(std::string text, const TopicMenu& menu) {
-    std::size_t at = text.find(kTopicMarker);
-    while (at != std::string::npos) {
-        text.replace(at, kTopicMarker.size(), menu.text);
-        at = text.find(kTopicMarker, at + menu.text.size());
-    }
+FilledPrompt fill_topics(std::string text, const TopicMenu& menu,
+                         const std::string& tags) {
+    replace_all(text, kTopicMarker, menu.text);
+    replace_all(text, kTagMarker, tags);
     return FilledPrompt{std::move(text), menu.first};
     //a file with no marker comes back untouched, so an out-of-date prompt on
     //disk still runs an exam rather than stopping the server
@@ -106,9 +160,41 @@ void Session::set_language(const LanguagePack* pack) {
     }
 
     language_ = pack;
-    const TopicMenu menu = topic_menu(rng_);
-    first_prompt_ = fill_topics(pack->first_prompt, menu).text;
-    ongoing_prompt_ = fill_topics(pack->ongoing_prompt, menu).text;
+    question_bank_ = pack->question_bank;
+    //shared_ptr to const, so every session reads the one copy loaded at startup
+    rebuild_prompts();
+}
+
+void Session::rebuild_prompts() {
+    if (language_ == nullptr) {
+        return;
+        //set_plan before any language: the prompts are built once one arrives
+    }
+
+    std::vector<std::string> allowed;
+    std::string first;
+    if (plan_) {
+        for (const std::string& group : plan_->topics) {
+            if (is_topic_group(group)) allowed.push_back(group);
+        }
+        for (const RequiredState& state : required_) {
+            if (state.question.placement == "opening" &&
+                is_topic_group(state.question.topic_group)) {
+                first = state.question.topic_group;
+                break;
+            }
+        }
+    }
+
+    const TopicMenu menu = topic_menu(rng_, allowed, first);
+    std::string tags;
+    for (const std::string& tag : tags_for_groups(allowed)) {
+        if (!tags.empty()) tags += ", ";
+        tags += tag;
+    }
+
+    first_prompt_ = fill_topics(language_->first_prompt, menu, tags).text;
+    ongoing_prompt_ = fill_topics(language_->ongoing_prompt, menu, tags).text;
     opening_topic_ = menu.first;
     //one draw for both files, so the menu the opening turn reads and the menu
     //every later turn reads are the same list in the same order
@@ -118,9 +204,32 @@ void Session::set_language(const LanguagePack* pack) {
     //whole exam, so the examiner never sees the topics reshuffle under it
     //filled from the pack's copy into this session's own, so the draw is per
     //session while the file on disk is read once for the whole run
+}
 
-    question_bank_ = pack->question_bank;
-    //shared_ptr to const, so every session reads the one copy loaded at startup
+void Session::set_plan(ExamPlan plan) {
+    required_.clear();
+    for (const PlanQuestion& question : plan.questions) {
+        required_.push_back(
+            RequiredState{question, "q" + std::to_string(question.id)});
+    }
+    tenses_asked_.clear();
+    for (const TenseTarget& target : plan.tenses) {
+        tenses_asked_.emplace_back(target.tense, 0);
+    }
+    if (!plan.require_opinion) {
+        opinion_done_ = true;
+        //nothing owed, so the opinion order is never issued
+    }
+    plan_ = std::move(plan);
+    rebuild_prompts();
+}
+
+const std::optional<ExamPlan>& Session::plan() const {
+    return plan_;
+}
+
+int Session::plan_duration_seconds() const {
+    return plan_ ? plan_->duration_seconds : 0;
 }
 
 const LanguagePack& Session::language() const {
@@ -146,10 +255,11 @@ bool Session::clock_started() const {
     return deadline_.has_value();
 }
 
-void Session::start_clock(Clock::time_point deadline) {
+void Session::start_clock(Clock::time_point now, Clock::duration length) {
     std::lock_guard<std::mutex> lock(clock_mutex_);
     if (!deadline_) {
-        deadline_ = deadline;
+        deadline_ = now + length;
+        clock_started_at_ = now;
     }
     //first call wins: a second start must not buy the student more time
 }
@@ -167,6 +277,7 @@ void Session::pause_clock(Clock::time_point now) {
         //remainder a second time from a deadline that is no longer running
     }
     paused_left_ = *deadline_ > now ? *deadline_ - now : Clock::duration::zero();
+    paused_at_ = now;
 }
 
 void Session::resume_clock(Clock::time_point now) {
@@ -176,6 +287,30 @@ void Session::resume_clock(Clock::time_point now) {
     }
     deadline_ = now + *paused_left_;
     paused_left_.reset();
+    if (paused_at_) {
+        paused_total_ += now - *paused_at_;
+        paused_at_.reset();
+    }
+}
+
+int Session::remaining_turns(Clock::time_point now) const {
+    std::lock_guard<std::mutex> lock(clock_mutex_);
+    if (!deadline_) return -1;
+
+    const Clock::time_point measured_to = paused_at_ ? *paused_at_ : now;
+    const Clock::duration left =
+        paused_left_ ? *paused_left_
+                     : (*deadline_ > now ? *deadline_ - now : Clock::duration::zero());
+
+    Clock::duration pace = kDefaultTurnPace;
+    if (questions_asked_ > 0) {
+        pace = (measured_to - clock_started_at_ - paused_total_) / questions_asked_;
+        pace = std::clamp<Clock::duration>(pace, kMinTurnPace, kMaxTurnPace);
+    }
+    return static_cast<int>(left / pace);
+    //how many more questions fit, at the pace this student has been going. The
+    //plan's set questions are ordered early enough to fit in this, rather than
+    //left for a last turn the clock never reaches
 }
 
 void Session::set_user_id(std::int64_t id) {
@@ -285,6 +420,213 @@ std::string Session::change_topic_directive() const {
     return directive;
 }
 
+bool Session::pending(const RequiredState& state) const {
+    return !state.done;
+}
+
+std::optional<std::size_t> Session::pick_required(bool changing_topic,
+                                                  bool urgent) const {
+    const auto find = [this](auto&& wanted) -> std::optional<std::size_t> {
+        for (std::size_t i = 0; i < required_.size(); ++i) {
+            if (pending(required_[i]) && wanted(required_[i].question)) return i;
+        }
+        return std::nullopt;
+    };
+    const auto on_current = [this](const PlanQuestion& q) {
+        return !q.topic_group.empty() && q.topic_group == current_topic_;
+    };
+    const auto covered = [this](const std::string& group) {
+        return std::find(covered_topics_.begin(), covered_topics_.end(), group) !=
+               covered_topics_.end();
+    };
+
+    if (urgent) {
+        if (auto here = find(on_current)) return here;
+        return find([](const PlanQuestion&) { return true; });
+    }
+
+    if (changing_topic) {
+        if (auto fresh = find([&](const PlanQuestion& q) {
+                return !q.topic_group.empty() && q.topic_group != current_topic_ &&
+                       !covered(q.topic_group);
+            })) {
+            return fresh;
+            //the best moment for a set question on another topic: the program
+            //was about to change topic anyway, and this chooses which to
+        }
+        if (auto loose = find([](const PlanQuestion& q) { return q.topic_group.empty(); })) {
+            return loose;
+        }
+        return std::nullopt;
+        //a set question on a topic already finished waits for the urgent
+        //branch rather than dragging the exam back to it early
+    }
+
+    return find(on_current);
+    //mid-topic, only a set question on the topic already running: anything
+    //else would be a topic change the counters did not ask for
+}
+
+std::optional<std::string> Session::tense_due(int remaining) const {
+    if (!plan_ || plan_->tenses.empty() || questions_asked_ < 2) {
+        return std::nullopt;
+        //not on the first two questions: the opening is present tense by rule,
+        //and the student needs a turn to settle before being steered
+    }
+
+    int total = 0;
+    std::string most;
+    int most_deficit = 0;
+    for (const TenseTarget& target : plan_->tenses) {
+        int asked = 0;
+        for (const auto& [key, count] : tenses_asked_) {
+            if (key == target.tense) asked = count;
+        }
+        const int deficit = std::max(0, target.min_count - asked);
+        total += deficit;
+        if (deficit > most_deficit) {
+            most_deficit = deficit;
+            most = target.tense;
+        }
+    }
+    if (total == 0) return std::nullopt;
+
+    const bool running_out = remaining >= 0 && remaining <= total + 1;
+    const bool spaced = questions_asked_ - last_tense_order_ >= 3;
+    //every third question at most, unless time says otherwise: a tense order
+    //every turn would make the exam a grammar drill
+    if (!running_out && !spaced) return std::nullopt;
+    return most;
+}
+
+std::string Session::required_directive(const PlanQuestion& question,
+                                        bool opening) const {
+    const std::string id = "q" + std::to_string(question.id);
+    const bool paraphrase = plan_ && plan_->paraphrase_ok;
+    std::string directive;
+
+    if (opening) {
+        directive =
+            "The student's teacher has set the opening question for this exam. "
+            "Ask exactly this and nothing else: \xc2\xab" + question.text +
+            "\xc2\xbb.";
+    } else {
+        directive =
+            "The student's teacher has set a question for this exam, and it "
+            "must be asked now. React to what the student just said in at most "
+            "one short sentence, then ask ";
+        directive += paraphrase
+                         ? "this question, in your own words if that sounds more "
+                           "natural but keeping its meaning: \xc2\xab"
+                         : "this question exactly as written: \xc2\xab";
+        directive += question.text + "\xc2\xbb. Ask nothing after it.";
+    }
+    if (!question.topic_group.empty()) {
+        directive += " It is about \"" + question.topic_group +
+                     "\": tag it with a topic from that group.";
+    }
+    directive += " Set required_question to \"" + id + "\".";
+    return directive;
+    //the question is quoted between guillemets so the examiner can see exactly
+    //where the teacher's words start and stop, whatever punctuation they carry
+}
+
+std::string Session::tense_directive(const std::string& tense) const {
+    std::string label = tense;
+    std::string example;
+    for (const auto& [key, name] : language_->tense_labels) {
+        if (key == tense) label = name;
+    }
+    for (const auto& [key, opening] : language_->tense_examples) {
+        if (key == tense) example = opening;
+    }
+
+    std::string directive =
+        "The student's teacher wants the " + label + " practised. Phrase this "
+        "question so that the natural answer uses the " + label;
+    if (!example.empty()) {
+        directive += ", for example a question shaped like \"" + example + "\"";
+    }
+    directive +=
+        ". Stay on the topic already running, keep it to one short question "
+        "and one question mark, and list \"" + tense + "\" in question_tenses.";
+    return directive;
+}
+
+ReplySchema Session::reply_schema() const {
+    ReplySchema schema;
+    if (plan_) {
+        std::vector<std::string> groups;
+        for (const std::string& group : plan_->topics) {
+            if (is_topic_group(group)) groups.push_back(group);
+        }
+        if (!groups.empty()) schema.topic_tags = tags_for_groups(groups);
+    }
+    if (language_ != nullptr) {
+        schema.tenses = language_->tense_labels;
+        //asked on every exam, plan or not: a student's own history is worth
+        //having whether or not a teacher set anything
+    }
+    for (const RequiredState& state : required_) {
+        if (pending(state)) schema.required_ids.push_back(state.key);
+    }
+    return schema;
+}
+
+Session::ReplyOutcome Session::note_examiner_reply(const std::string& question,
+                                                   const ExaminerReply& reply) {
+    ReplyOutcome outcome;
+
+    if (reply.asks_opinion.value_or(false)) {
+        opinion_done_ = true;
+        //the examiner's own word, which sees an umlaut the phrase list cannot
+    }
+
+    std::set<std::string> tenses;
+    for (const std::string& key : reply.question_tenses) {
+        if (is_tense_key(key)) tenses.insert(key);
+    }
+    if (language_ != nullptr) {
+        for (const std::string& key : detect_tenses(language_->id, question)) {
+            tenses.insert(key);
+        }
+    }
+    for (const std::string& key : tenses) {
+        for (auto& [target, count] : tenses_asked_) {
+            if (target == key) ++count;
+        }
+        outcome.question_tenses.push_back(key);
+    }
+    //either source is enough to count towards a target: the model's label and
+    //the rules miss different things, and a missed count only means the order
+    //is issued once more than it needed to be
+
+    for (RequiredState& state : required_) {
+        if (!pending(state)) continue;
+        const double score = overlap(state.question.text, question);
+        const bool named = reply.required_question == state.key;
+        const bool paraphrase = plan_ && plan_->paraphrase_ok;
+        const bool asked = score >= kVerbatimMatch ||
+                           (named && (paraphrase || score >= kConfirmedMatch));
+        if (asked) {
+            state.done = true;
+            outcome.asked.push_back(state.question.id);
+        }
+    }
+    //every pending question is checked, not only the one ordered: an examiner
+    //that asks a set question of its own accord has still asked it
+
+    if (ordered_required_) {
+        RequiredState& ordered = required_[*ordered_required_];
+        if (!ordered.done && ordered.orders >= kMaxOrders) {
+            ordered.done = true;
+            outcome.missed.push_back(ordered.question.id);
+        }
+    }
+    ordered_required_.reset();
+    return outcome;
+}
+
 std::string Session::opinion_directive() const {
     std::string directive =
         "This question must ask the student for an opinion rather than for a "
@@ -303,7 +645,7 @@ std::string Session::opinion_directive() const {
     return directive;
 }
 
-std::vector<Turn> Session::build_examiner_input() const {
+std::vector<Turn> Session::build_examiner_input() {
     const bool opening_turn = !has_visible_text(last_question_);
     //nothing has been asked yet, so this is the first question of the exam
 
@@ -333,17 +675,74 @@ std::vector<Turn> Session::build_examiner_input() const {
     //whitespace only counts as no name, the same test the transcript uses:
     //a stray space in the settings box must not become the student's name
 
+    ordered_required_.reset();
     const bool changing_topic =
         !opening_turn && topic_questions_ >= topic_budget_;
 
+    if (changing_topic) {
+        std::vector<std::string> allowed;
+        if (plan_) {
+            for (const std::string& group : plan_->topics) {
+                if (is_topic_group(group)) allowed.push_back(group);
+            }
+        }
+        if (allowed.empty()) allowed = all_topic_groups();
+        const bool any_left = std::any_of(
+            allowed.begin(), allowed.end(), [this](const std::string& group) {
+                return group != current_topic_ &&
+                       std::find(covered_topics_.begin(), covered_topics_.end(),
+                                 group) == covered_topics_.end();
+            });
+        if (!any_left) {
+            covered_topics_.clear();
+            //every topic the exam may cover has had its turn. A plan of two
+            //topics gets there in a few minutes, and an order to open a new
+            //topic while forbidding every one of them is an order that cannot
+            //be obeyed - so the earlier topics are opened up again instead
+        }
+    }
+    const int remaining = opening_turn ? -1 : remaining_turns(Clock::now());
+
+    std::optional<std::size_t> required;
+    if (opening_turn) {
+        for (std::size_t i = 0; i < required_.size(); ++i) {
+            if (pending(required_[i]) && required_[i].question.placement == "opening") {
+                required = i;
+                break;
+            }
+        }
+    } else {
+        const std::size_t open = static_cast<std::size_t>(std::count_if(
+            required_.begin(), required_.end(),
+            [this](const RequiredState& state) { return pending(state); }));
+        const bool urgent = open > 0 && remaining >= 0 &&
+                            static_cast<std::size_t>(remaining) <= open;
+        //as many set questions left as turns: from here every turn asks one
+        required = pick_required(changing_topic, urgent);
+    }
+
+    std::optional<std::string> tense;
+    if (!opening_turn && !required && !changing_topic) {
+        tense = tense_due(remaining);
+    }
+
     const bool opinion_due = !opening_turn && !opinion_done_ &&
-                             !changing_topic &&
+                             !changing_topic && !required && !tense &&
                              questions_asked_ >= opinion_target_;
-    //held back on a turn that is already changing topic: one order per turn.
+    //held back on a turn that already carries an order: one order per turn.
     //It is re-issued every later turn until a reply actually asks an opinion,
     //so an examiner that ignores it once does not lose the question
 
-    if (changing_topic) {
+    if (required) {
+        ordered_required_ = required;
+        ++required_[*required].orders;
+        input.push_back(Turn{Role::System,
+                             required_directive(required_[*required].question,
+                                                opening_turn)});
+        //the teacher's question outranks everything the program would
+        //otherwise say this turn, a topic change included: a set question that
+        //belongs to another topic is itself the way the topic changes
+    } else if (changing_topic) {
         input.push_back(Turn{Role::System, change_topic_directive()});
         //the examiner only ever sees the last exchange, so the count lives here
     } else if (question_bank_) {
@@ -363,16 +762,16 @@ std::vector<Turn> Session::build_examiner_input() const {
             input.push_back(Turn{Role::System, std::move(examples)});
         }
     }
-    //never both. The samples are for the topic running, and the directive is
-    //an order to leave it, so a turn carrying the two would contradict itself.
-    //The opening turn samples too, from the group this session's shuffle put
-    //first rather than from a tag no reply has carried yet. Without them the
-    //examiner had only examiner_first.txt to go on and opened on the same
-    //memorised question every exam, whatever the temperature
-    //the first-turn instruction that used to sit here is gone: it repeated
-    //examiner_first.txt in slightly different words, and the two drifted. The
-    //only System turns the program still adds are the ones a file cannot
-    //carry, because they depend on this session's own state
+    //never both samples and an order to leave the topic. The samples are for
+    //the topic running, and the directive is an order to leave it, so a turn
+    //carrying the two would contradict itself. The opening turn samples too,
+    //from the group this session's shuffle put first, unless the teacher set
+    //the opening question outright
+
+    if (tense) {
+        input.push_back(Turn{Role::System, tense_directive(*tense)});
+        last_tense_order_ = questions_asked_;
+    }
 
     if (opinion_due) {
         input.push_back(Turn{Role::System, opinion_directive()});
