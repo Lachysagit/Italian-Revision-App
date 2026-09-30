@@ -254,6 +254,28 @@ CREATE TABLE attempt_required_questions (
   PRIMARY KEY (attempt_id, question_id)
 );
 
+-- Why each set question was or was not credited, per reply that came close.
+-- attempt_required_questions keeps the verdict; this keeps the numbers it was
+-- reached from, so a verdict can be re-judged later without the exam being sat
+-- again, and so the two thresholds in session.cpp can be measured instead of
+-- guessed at. overlap is the share of the set question's words the reply
+-- carried; model_named is whether the examiner labelled the reply with this
+-- question's id.
+--
+-- Rows below the floor in session.cpp are not written, so absence means "no
+-- reply came close", not "not measured". Joining to attempt_required_questions
+-- on (attempt_id, question_id) says which of these rows the verdict rests on:
+-- for an asked question its turn_index is the turn that closed it, and for a
+-- missed one the turn the examiner was given up on.
+CREATE TABLE required_question_evidence (
+  attempt_id  INTEGER NOT NULL REFERENCES exam_attempts(id) ON DELETE CASCADE,
+  question_id INTEGER NOT NULL,
+  turn_index  INTEGER NOT NULL,
+  overlap     REAL NOT NULL,
+  model_named INTEGER NOT NULL,
+  PRIMARY KEY (attempt_id, question_id, turn_index)
+);
+
 -- Paid access. A licence covers one account ('user') or every student in one
 -- class ('class'), which is how a school licence is sold: per class, invoiced,
 -- with no card details held anywhere. Granted from the command line for now
@@ -895,6 +917,10 @@ public:
         sqlite3_bind_text(stmt_, index, value.c_str(), -1, SQLITE_TRANSIENT);
         return *this;
     }
+    Statement& real(int index, double value) {
+        sqlite3_bind_double(stmt_, index, value);
+        return *this;
+    }
 
     bool row() {
         const int rc = sqlite3_step(stmt_);
@@ -910,6 +936,7 @@ public:
     }
 
     std::int64_t col_int64(int col) { return sqlite3_column_int64(stmt_, col); }
+    double col_double(int col) { return sqlite3_column_double(stmt_, col); }
     std::string col_text(int col) {
         const unsigned char* value = sqlite3_column_text(stmt_, col);
         return value ? std::string(reinterpret_cast<const char*>(value))
@@ -1803,6 +1830,44 @@ void Store::mark_required_question(std::int64_t attempt_id,
         "WHERE attempt_id = ? AND question_id = ?");
     row.text(1, status).int64(2, turn_index).int64(3, attempt_id)
        .int64(4, question_id).run();
+}
+
+void Store::record_question_evidence(std::int64_t attempt_id, int turn_index,
+                                    const std::vector<QuestionEvidence>& rows) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    for (const QuestionEvidence& row : rows) {
+        Statement stmt(db_,
+            "INSERT OR IGNORE INTO required_question_evidence "
+            "(attempt_id, question_id, turn_index, overlap, model_named) "
+            "VALUES (?, ?, ?, ?, ?)");
+        stmt.int64(1, attempt_id).int64(2, row.question_id)
+            .int64(3, turn_index).real(4, row.overlap)
+            .int64(5, row.model_named ? 1 : 0).run();
+    }
+    //OR IGNORE for the same reason record_turn_features uses it: one turn index
+    //is scored once, and a regenerated reply at the same index keeps the first
+}
+
+std::vector<QuestionEvidence> Store::question_evidence(std::int64_t attempt_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement stmt(db_,
+        "SELECT question_id, turn_index, overlap, model_named "
+        "FROM required_question_evidence WHERE attempt_id = ? "
+        "ORDER BY question_id, turn_index");
+    stmt.int64(1, attempt_id);
+
+    std::vector<QuestionEvidence> rows;
+    while (stmt.row()) {
+        QuestionEvidence row;
+        row.question_id = stmt.col_int64(0);
+        row.turn_index = static_cast<int>(stmt.col_int64(1));
+        row.overlap = stmt.col_double(2);
+        row.model_named = stmt.col_int64(3) != 0;
+        rows.push_back(row);
+    }
+    return rows;
 }
 
 void Store::mark_opinion_asked(std::int64_t attempt_id, int turn_index,

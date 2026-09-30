@@ -114,12 +114,6 @@ double overlap(const std::string& wanted, const std::string& reply) {
     return static_cast<double>(found) / static_cast<double>(want.size());
 }
 
-constexpr double kVerbatimMatch = 0.8;
-//a reply this close to the set question asked it, whatever the model says
-constexpr double kConfirmedMatch = 0.5;
-//close enough when the model also names the question's id: it may have
-//changed an article or the word order, but not asked something else
-
 constexpr auto kDefaultTurnPace = std::chrono::seconds(35);
 constexpr auto kMinTurnPace = std::chrono::seconds(20);
 constexpr auto kMaxTurnPace = std::chrono::seconds(90);
@@ -632,6 +626,15 @@ Session::ReplyOutcome Session::note_examiner_reply(const std::string& question,
         if (asked) {
             state.done = true;
             outcome.asked.push_back(state.question.id);
+        }
+        if (score >= kEvidenceFloor || named) {
+            outcome.evidence.push_back(
+                ReplyOutcome::QuestionEvidence{state.question.id, score, named});
+            //kept whether or not it closed the question. A score just under a
+            //threshold is what says the threshold is too high, and a labelled
+            //reply that shares almost no words with the question is what says
+            //the label cannot be trusted on its own - neither is visible from
+            //the verdict alone, which is all that used to be written down
         }
     }
     //every pending question is checked, not only the one ordered: an examiner

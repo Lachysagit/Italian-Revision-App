@@ -118,6 +118,20 @@ struct RequiredQuestionStatus {
     int turn_index = -1;
 };
 
+// One reply weighed against one set question. The verdict lives on
+// RequiredQuestionStatus; this is the measurement it came from, kept so a
+// verdict can be re-judged and so the thresholds can be checked against real
+// exams rather than trusted.
+struct QuestionEvidence {
+    std::int64_t question_id = 0;
+    int turn_index = 0;
+    //the examiner turn that was weighed
+    double overlap = 0.0;
+    //share of the set question's words the reply carried, 0 to 1
+    bool model_named = false;
+    //whether the examiner labelled that reply with this question's id
+};
+
 struct CoverageRow {
     std::int64_t user_id = 0;
     std::string role;
@@ -330,6 +344,15 @@ public:
                                 std::int64_t question_id,
                                 const std::string& status,
                                 int turn_index);
+
+    void record_question_evidence(std::int64_t attempt_id, int turn_index,
+                                 const std::vector<QuestionEvidence>& rows);
+    //the scores this examiner turn earned against the still-open set questions.
+    //turn_index comes from the caller rather than each row, so one turn's rows
+    //cannot disagree about which turn they describe
+
+    std::vector<QuestionEvidence> question_evidence(std::int64_t attempt_id);
+    //every kept score for an attempt, by question then turn
 
     void mark_opinion_asked(std::int64_t attempt_id, int turn_index,
                             const std::string& source);

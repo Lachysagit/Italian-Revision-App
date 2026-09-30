@@ -818,27 +818,42 @@ function paintRequired(required, opinion) {
     const mark = (status) => status === "asked" ? "Asked"
         : status === "missed" ? "Not asked" : "Still to ask";
 
-    (required || []).forEach((question) => {
-        const item = element("li", `required ${question.status}`);
-        item.appendChild(element("span", "requiredStatus", mark(question.status)));
-        item.appendChild(element("span", null, question.text));
+    // One row: the verdict, what was wanted, why the verdict was reached, and
+    // what the student said back.
+    function requiredRow(status, what, note, answer) {
+        const item = element("li", `required ${status}`);
+        item.appendChild(element("span", "requiredStatus", mark(status)));
+
+        const body = element("div", "requiredBody");
+        body.appendChild(what);
+        if (note) body.appendChild(element("div", "requiredNote", note));
+        if (answer) {
+            const said = element("p", "requiredAnswer");
+            said.appendChild(element("span", "answerLabel", "Answered"));
+            said.appendChild(document.createTextNode(` ${answer.text}`));
+            said.title = `Turn ${answer.turn_index}`;
+            body.appendChild(said);
+        }
+        item.appendChild(body);
         list.appendChild(item);
+    }
+
+    (required || []).forEach((question) => {
+        requiredRow(question.status,
+                    element("span", "requiredText", question.text),
+                    evidenceNote(question),
+                    question.answer);
     });
 
     const wanted = opinion && opinion.status !== "not_required";
     if (wanted) {
-        const item = element("li", `required ${opinion.status}`);
-        item.appendChild(element("span", "requiredStatus", mark(opinion.status)));
-        const what = element("span", "requiredKind", "A question asking for the student's opinion");
-        if (opinion.status === "asked" && opinion.source === "openers") {
-            what.appendChild(element("span", "muted",
-                " - recognised by its opening phrase, not labelled by the examiner"));
-            //worth showing: it is the case where the weaker of the two checks
-            //was the only one that saw it, so a teacher reading a surprising
-            //row knows which evidence it rests on
-        }
-        item.appendChild(what);
-        list.appendChild(item);
+        const what = element("span", "requiredKind",
+            "A question asking for the student's opinion");
+        requiredRow(opinion.status, what,
+                    opinion.status === "asked" && opinion.source === "openers"
+                        ? "Recognised by its opening phrase; the examiner did not label it as an opinion question."
+                        : "",
+                    opinion.answer);
     }
     //in the same list as the set questions, because a teacher checking whether
     //the exam did what the plan asked wants one place to look. It carries no
@@ -846,6 +861,37 @@ function paintRequired(required, opinion) {
     //so the kind is named where a set question's words would be
 
     card.hidden = (!required || required.length === 0) && !wanted;
+}
+
+// Why a set question got the verdict it did, in a teacher's terms. The scores
+// behind it are for tuning the thresholds and stay out of the sentence; what a
+// teacher needs to know is whether their words were used, and how close the
+// exam came when they were not.
+function evidenceNote(question) {
+    const scores = question.evidence || [];
+    const pct = (value) => `${Math.round(value * 100)}%`;
+
+    if (question.status === "asked") {
+        const decided = scores.find((score) => score.decided);
+        if (!decided || decided.verbatim) return "";
+        //asked in your words: the ordinary case needs no explaining. Whether it
+        //counts as verbatim is the server's call, so the threshold is not
+        //written down twice
+        return `Reworded - ${pct(decided.overlap)} of your wording, ` +
+            (decided.model_named
+                ? "credited because the examiner confirmed which question it was."
+                : "credited on the wording alone.");
+    }
+
+    if (question.status === "missed" && scores.length) {
+        const closest = scores.reduce(
+            (best, score) => (score.overlap > best.overlap ? score : best));
+        return `Closest the exam came: ${pct(closest.overlap)} of your wording, ` +
+            `on turn ${closest.turn_index}.`;
+        //a near miss and no attempt at all are very different failures, and the
+        //verdict alone reads the same for both
+    }
+    return "";
 }
 
 // ---------------------------------------------------------------------------

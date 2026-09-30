@@ -18,6 +18,23 @@
 
 namespace sim {
 
+// How close a reply has to be to a set question to count as having asked it.
+// The measure is the share of the set question's words the reply carried.
+// Public because the thresholds decide what a teacher is shown as well as what
+// the exam does, and a second copy of 0.8 in the dashboard would be free to
+// drift away from this one.
+constexpr double kVerbatimMatch = 0.8;
+//a reply this close asked the question, whatever the examiner says about it
+constexpr double kConfirmedMatch = 0.5;
+//close enough when the examiner also names the question's id: it may have
+//changed an article or the word order, but not asked something else
+constexpr double kEvidenceFloor = 0.3;
+//below this a score is not worth recording: on a reply about something else
+//entirely the shared words are articles and prepositions, and a table of those
+//would bury the scores that came close. Both thresholds above sit well clear
+//of it, so every score that decided anything is kept, along with the band just
+//under kConfirmedMatch where a threshold set too high would show itself
+
 class Session {
 public:
     Session();
@@ -104,6 +121,19 @@ public:
         //examiner ignored the order too many times
         std::vector<std::string> question_tenses;
         //model and rules together, as counted towards the plan's targets
+        struct QuestionEvidence {
+            std::int64_t question_id = 0;
+            double overlap = 0.0;
+            //what the word-overlap measure returned for this reply
+            bool model_named = false;
+            //whether the examiner's own reply named this question's id
+        };
+        std::vector<QuestionEvidence> evidence;
+        //why each pending set question was or was not closed by this reply.
+        //Only the scores worth keeping: everything at or above the floor, plus
+        //every reply the examiner labelled with the question's id however low
+        //it scored, because that pair is the one the verdict trusts furthest
+        //from the words actually said
         std::optional<std::string> opinion_source;
         //set on the one turn that discharges the exam's opinion question, and
         //empty on every other: "model" when the examiner said so itself,

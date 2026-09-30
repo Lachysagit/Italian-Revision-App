@@ -1814,6 +1814,20 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                         store_->mark_required_question(attempt, id, "missed",
                                                        examiner_turn);
                     }
+                    if (!outcome.evidence.empty()) {
+                        std::vector<QuestionEvidence> rows;
+                        rows.reserve(outcome.evidence.size());
+                        for (const auto& found : outcome.evidence) {
+                            rows.push_back(QuestionEvidence{
+                                found.question_id, examiner_turn,
+                                found.overlap, found.model_named});
+                        }
+                        store_->record_question_evidence(attempt, examiner_turn,
+                                                         rows);
+                        //written whether or not the reply closed anything: the
+                        //near misses are the half of the picture the verdict
+                        //cannot show
+                    }
                     if (outcome.opinion_source) {
                         store_->mark_opinion_asked(attempt, examiner_turn,
                                                    *outcome.opinion_source);
