@@ -64,6 +64,17 @@ void SafetyChain::prewarm() {
 SafetyVerdict SafetyChain::screen(const std::string& text,
                                   SafetyStage stage,
                                   const std::string& language_id) {
+    last_ = AdjudicationResult{};
+    //every exit from this function must leave last_ describing THIS call.
+    //Only adjudicated() writes it, and only a turn-stopping verdict reaches
+    //adjudicated(), so without this reset an Allow or a Mask would carry the
+    //PREVIOUS screen()'s review out to record_safety - and the guard there is
+    //"Allow and not downgraded", so a stale Downgraded writes a safety_events
+    //row for a turn on which nothing fired. The examiner-reply checkpoint hits
+    //that on the very same turn as any cleared student verdict, and the worker
+    //threads are long-lived, so the stale value would otherwise outlive the
+    //attempt that produced it
+
     SafetyVerdict carried;
     carried.text = text;
     carried.detector = "chain";
