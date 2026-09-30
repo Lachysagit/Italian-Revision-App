@@ -685,6 +685,53 @@ void test_mask_survives_a_clearance() {
     }
 }
 
+// last_adjudication() describes the call that just returned, or it describes
+// nothing. Only adjudicated() writes it and only a stopping verdict gets
+// there, so an Allow or a Mask after a downgrade used to report the earlier
+// turn's review. record_safety() writes a row whenever the verdict is not
+// Allow OR the pass downgraded, so a stale Downgraded fabricates a
+// safety_events row for a turn on which nothing fired - and the examiner-reply
+// checkpoint meets that on the same turn as every cleared student verdict.
+void test_adjudication_does_not_leak_between_calls() {
+    std::vector<std::unique_ptr<sim::InterfaceSafety>> layers;
+    layers.push_back(std::make_unique<MasksOn>("cazzo"));
+    layers.push_back(std::make_unique<HaltsOn>("guerra", "violence"));
+
+    Rig rig = make_rig();
+    rig.stub->answer = clears("fictional");
+    sim::SafetyChain chain(std::move(layers), {}, std::move(rig.policy));
+
+    const sim::SafetyVerdict cleared = chain.screen(
+        "che cazzo, il film sulla guerra", sim::SafetyStage::StudentSpeech,
+        "italian");
+    check(cleared.action == sim::SafetyAction::Mask, "the turn was cleared");
+    check(chain.last_adjudication().outcome ==
+              sim::AdjudicationOutcome::Downgraded,
+          "and the downgrade is reported on the call that produced it");
+
+    // The examiner reply on that same turn: clean, screened, and it must not
+    // inherit the student's clearance.
+    const sim::SafetyVerdict reply = chain.screen(
+        "parlami del tuo weekend", sim::SafetyStage::ExaminerReply, "italian");
+    check(reply.action == sim::SafetyAction::Allow, "the reply is allowed");
+    check(chain.last_adjudication().outcome ==
+              sim::AdjudicationOutcome::NotAdjudicable,
+          "an allowed reply reports no review, not the student's downgrade");
+    check(chain.last_adjudication().original_action == sim::SafetyAction::Allow,
+          "and carries no original_action for the row to record");
+    check(chain.last_adjudication().reason_code.empty(),
+          "nor the reason code from the utterance it did not review");
+
+    // A later masked turn keeps its own row, but must not claim a reasoning
+    // pass touched it: profanity is never adjudicable.
+    const sim::SafetyVerdict masked = chain.screen(
+        "che cazzo", sim::SafetyStage::StudentSpeech, "italian");
+    check(masked.action == sim::SafetyAction::Mask, "the mask still applies");
+    check(chain.last_adjudication().outcome ==
+              sim::AdjudicationOutcome::NotAdjudicable,
+          "a mask reports no review of its own");
+}
+
 void test_chain_counts_consensus() {
     // Two detectors agreeing must produce concurring_detectors == 2, which is
     // what makes the consensus rule enforceable at all.
@@ -776,6 +823,7 @@ int main() {
     test_adjudicator_clears_the_real_cases();
     test_chain_counts_consensus();
     test_mask_survives_a_clearance();
+    test_adjudication_does_not_leak_between_calls();
 
     if (failures != 0) {
         std::cerr << failures << " check(s) failed\n";
