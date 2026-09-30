@@ -163,6 +163,14 @@ struct AttemptSummary {
     int turn_count = 0;
     std::string plan_name;
     //empty for an exam that followed no plan
+    bool opinion_required = true;
+    //whether this exam owed the student a question asking for an opinion. True
+    //for a planless exam, and for a plan that left the box ticked
+    int opinion_turn_index = -1;
+    //the examiner turn that asked for one, or -1 if none did. Required and -1
+    //on an ended attempt is the miss
+    std::string opinion_source;
+    //"model" or "openers" - which check saw it - and empty while none has
 };
 
 // One row of safety_events, read back for a teacher view or an incident
@@ -322,6 +330,11 @@ public:
                                 std::int64_t question_id,
                                 const std::string& status,
                                 int turn_index);
+
+    void mark_opinion_asked(std::int64_t attempt_id, int turn_index,
+                            const std::string& source);
+    //the exam's opinion question, asked on this examiner turn. First call wins,
+    //so this is safe to call more than once
 
     void close_required_questions(std::int64_t attempt_id);
     //every question still pending when the exam ends becomes missed

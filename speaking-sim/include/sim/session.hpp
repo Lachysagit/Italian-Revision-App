@@ -104,12 +104,18 @@ public:
         //examiner ignored the order too many times
         std::vector<std::string> question_tenses;
         //model and rules together, as counted towards the plan's targets
+        std::optional<std::string> opinion_source;
+        //set on the one turn that discharges the exam's opinion question, and
+        //empty on every other: "model" when the examiner said so itself,
+        //"openers" when only the phrase list saw it. Which of the two found it
+        //is worth keeping - it is the only measure of how much the phrase list
+        //is actually catching, and the list is the weaker of the two checks
     };
     ReplyOutcome note_examiner_reply(const std::string& question,
                                      const ExaminerReply& reply);
     //after record_question: checks the reply against the set questions, counts
-    //its tenses and takes the examiner's own word on whether it asked an
-    //opinion. Returns what Server has to write down
+    //its tenses and decides whether this reply asked for an opinion. Returns
+    //what Server has to write down
 
     int next_turn_index();
     //monotonic per session, handed to each stored turn. Not atomic on purpose -
@@ -214,6 +220,11 @@ private:
     //every exam owes the student one question asking for an opinion. The turn
     //it falls on is drawn per session, so it is not the same beat every time
     //drawn per topic, so the examiner does not move on to a predictable rhythm
+    bool opinion_required_ = true;
+    //whether this exam owes one at all: a plan can switch it off. Kept apart
+    //from opinion_done_, which it would be easier to pre-set, because that
+    //would also switch the detection off - and then a plan wanting no opinion
+    //question and an exam that asked one anyway would leave the same record
     mutable std::mt19937 rng_;
     //mutable because build_examiner_input() is const and draws its sample from
     //it. One job at a time holds a session, so the draws cannot race

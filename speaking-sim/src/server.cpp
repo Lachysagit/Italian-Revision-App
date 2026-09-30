@@ -1814,6 +1814,13 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                         store_->mark_required_question(attempt, id, "missed",
                                                        examiner_turn);
                     }
+                    if (outcome.opinion_source) {
+                        store_->mark_opinion_asked(attempt, examiner_turn,
+                                                   *outcome.opinion_source);
+                        //only on the turn that discharged it, so the row keeps
+                        //the turn the teacher can go and read rather than the
+                        //last turn of the exam
+                    }
                 });
             }
             //written here rather than beside record_question, so the row carries

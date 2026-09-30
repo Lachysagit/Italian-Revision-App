@@ -541,6 +541,15 @@ table[hidden] {
     font-size: 0.8rem;
 }
 
+.requiredKind { font-style: italic; }
+/* the opinion row has no words of its own to show, so its line is set apart
+   from the set questions quoted above it */
+
+#attemptRequired .requiredKind .muted {
+    font-style: normal;
+    color: var(--muted);
+}
+
 .required.asked .requiredStatus { color: var(--student-ink); }
 .required.missed .requiredStatus { color: #b0392b; }
 .required.pending .requiredStatus { color: var(--muted); }

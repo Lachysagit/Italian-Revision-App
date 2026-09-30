@@ -594,8 +594,29 @@ crow::response Server::serve_attempt(const crow::request& req,
             }
         }
         json["required"] = std::move(required);
-        //a student reading their own exam while it is still running would see
-        //the set questions still to come, so they get the list once it is over
+
+        if (!is_owner || attempt->ended_at > 0) {
+            const char* status = "not_required";
+            if (attempt->opinion_required) {
+                status = attempt->opinion_turn_index >= 0 ? "asked"
+                       : attempt->ended_at > 0            ? "missed"
+                                                          : "pending";
+                //an exam the server crashed out of is ended by
+                //reconcile_crashed_attempts, so its unasked opinion question
+                //reads as missed here without needing a sweep of its own
+            }
+            crow::json::wvalue opinion;
+            opinion["required"] = attempt->opinion_required;
+            opinion["turn_index"] = attempt->opinion_turn_index;
+            opinion["source"] = attempt->opinion_source;
+            opinion["status"] = status;
+            json["opinion"] = std::move(opinion);
+        }
+        //derived here rather than in each page, so the dashboard and anything
+        //later cannot disagree about what a missed opinion question looks like.
+        //Behind the same guard as the set questions and for the same reason: a
+        //student watching their own exam would otherwise be told an opinion
+        //question is still coming
         return json_response(json);
     });
 }

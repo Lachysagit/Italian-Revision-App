@@ -761,7 +761,7 @@ function openAttempt(attemptId) {
                 endLabel(attempt) +
                 (attempt.plan_name ? ` · plan: ${attempt.plan_name}` : "");
 
-            paintRequired(data.required);
+            paintRequired(data.required, data.opinion);
 
             const container = document.getElementById("attemptTurns");
             container.textContent = "";
@@ -810,19 +810,42 @@ function turnCard(turn) {
     return card;
 }
 
-function paintRequired(required) {
+function paintRequired(required, opinion) {
     const card = document.getElementById("attemptRequiredCard");
     const list = document.getElementById("attemptRequired");
     list.textContent = "";
-    card.hidden = !required || required.length === 0;
+
+    const mark = (status) => status === "asked" ? "Asked"
+        : status === "missed" ? "Not asked" : "Still to ask";
+
     (required || []).forEach((question) => {
         const item = element("li", `required ${question.status}`);
-        const mark = question.status === "asked" ? "Asked"
-            : question.status === "missed" ? "Not asked" : "Still to ask";
-        item.appendChild(element("span", "requiredStatus", mark));
+        item.appendChild(element("span", "requiredStatus", mark(question.status)));
         item.appendChild(element("span", null, question.text));
         list.appendChild(item);
     });
+
+    const wanted = opinion && opinion.status !== "not_required";
+    if (wanted) {
+        const item = element("li", `required ${opinion.status}`);
+        item.appendChild(element("span", "requiredStatus", mark(opinion.status)));
+        const what = element("span", "requiredKind", "A question asking for the student's opinion");
+        if (opinion.status === "asked" && opinion.source === "openers") {
+            what.appendChild(element("span", "muted",
+                " - recognised by its opening phrase, not labelled by the examiner"));
+            //worth showing: it is the case where the weaker of the two checks
+            //was the only one that saw it, so a teacher reading a surprising
+            //row knows which evidence it rests on
+        }
+        item.appendChild(what);
+        list.appendChild(item);
+    }
+    //in the same list as the set questions, because a teacher checking whether
+    //the exam did what the plan asked wants one place to look. It carries no
+    //text of its own - the plan only ever asked for "an opinion question" -
+    //so the kind is named where a set question's words would be
+
+    card.hidden = (!required || required.length === 0) && !wanted;
 }
 
 // ---------------------------------------------------------------------------
