@@ -1583,7 +1583,11 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                     refund();
                     //no examiner call is made for an empty transcript, so the
                     //question reserved for it goes back
-                    send_error(handle, "didn't catch that, please try again");
+                    send_error(handle, "Please provide a response by speaking.");
+                    //distinct from the screening notice above on purpose:
+                    //nothing was heard, which is a microphone or a silence
+                    //problem, and telling that student their content was
+                    //rejected would be both wrong and alarming
                     if (stop_after_answer) {
                         if (session->attempt_id() != 0) {
                             persist_quietly("attempt end", [&] {
@@ -1992,10 +1996,16 @@ std::string Server::safety_notice(const SafetyVerdict& verdict) {
         case SafetyAction::Allow:
             break;
     }
-    return "that turn was stopped. Please try answering the question again.";
+    return "Your answer could not be processed due to its content. Please try "
+           "answering the question again.";
     //deliberately says nothing about which layer fired or what it matched: a
     //filter that explains itself is a filter that teaches you how to get past
-    //it, and the category is an operator fact rather than a pedagogical one
+    //it, and the category is an operator fact rather than a pedagogical one.
+    //
+    //It does name content as the reason, which the earlier wording did not.
+    //A student whose turn stops for no stated reason reads it as the tool
+    //being broken and says the same thing again; the exam continues and the
+    //question has been refunded, so the retry line is the actionable half
 }
 
 Server::ScreenOutcome Server::screen_student_speech(
