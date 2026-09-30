@@ -1,10 +1,12 @@
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "sim/safety.hpp"
+#include "sim/safety/semantic_adjudicator.hpp"
 
 namespace sim {
 
@@ -32,7 +34,10 @@ public:
     };
 
     SafetyChain(std::vector<std::unique_ptr<InterfaceSafety>> layers,
-                Options options);
+                Options options,
+                std::unique_ptr<SemanticAdjudicator> adjudicator = nullptr);
+    //the adjudicator is optional and null is the ordinary configuration. A
+    //chain without one behaves exactly as before: every verdict stands
 
     SafetyVerdict screen(const std::string& text,
                          SafetyStage stage,
@@ -41,6 +46,10 @@ public:
     //so every caller has exactly one shape to handle and the store gets a row
     //for the outage as well as for the hits
 
+    const AdjudicationResult& last_adjudication() const { return last_; }
+    //what the semantic pass did to the verdict just returned, for the
+    //safety_events row. Valid until the next screen() on this thread
+
     bool ready() const;
     //every layer's available(). Read by main() at startup and by the Start
     //handler: an exam that cannot be screened does not begin
@@ -48,8 +57,27 @@ public:
     void prewarm();
 
 private:
+    int count_concurring(const SafetyVerdict& verdict, const std::string& text,
+                         SafetyStage stage, const std::string& language_id,
+                         std::size_t after);
+    //how many layers independently reach the same category. Only ever called
+    //for an escalation, which is the one verdict whose reviewability depends
+    //on whether the detectors agreed
+
+    SafetyVerdict adjudicated(SafetyVerdict verdict, const SafetyVerdict& carried,
+                              const std::string& text, SafetyStage stage,
+                              const std::string& language_id);
+    //runs the semantic pass, if there is one, and records what it did in last_.
+    //`carried` is what the layers before this one had concluded - a cleared
+    //verdict falls back to it rather than to Allow, so a mask applied earlier
+    //in the chain survives the clearance
+
     std::vector<std::unique_ptr<InterfaceSafety>> layers_;
     Options options_;
+    std::unique_ptr<SemanticAdjudicator> adjudicator_;
+    static thread_local AdjudicationResult last_;
+    //thread_local rather than a plain member: one chain is shared by every
+    //worker, and the result belongs to the turn that asked, not to the chain
 };
 
 }  // namespace sim

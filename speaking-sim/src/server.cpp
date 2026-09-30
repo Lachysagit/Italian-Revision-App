@@ -1947,7 +1947,14 @@ int Server::start_exam_clock(Session& session) {
 
 void Server::record_safety(Session& session, const SafetyVerdict& verdict,
                            SafetyStage stage) {
-    if (verdict.action == SafetyAction::Allow) return;
+    const AdjudicationResult& adjudication = safety_->last_adjudication();
+    const bool downgraded =
+        adjudication.outcome == AdjudicationOutcome::Downgraded;
+
+    if (verdict.action == SafetyAction::Allow && !downgraded) return;
+    //a downgrade to Allow still gets a row. A trigger the reasoning pass
+    //cleared is exactly the thing a reviewer will want to count, and it is the
+    //one case where nothing else in the system would leave a trace
     if (session.attempt_id() == 0) return;
     //a practice run outside an attempt has nowhere to write the row. The
     //screening still happened and still decided the turn; only the record is
@@ -1955,7 +1962,8 @@ void Server::record_safety(Session& session, const SafetyVerdict& verdict,
 
     persist_quietly("safety event", [&] {
         store_->record_safety_event(session.attempt_id(),
-                                    session.peek_turn_index(), stage, verdict);
+                                    session.peek_turn_index(), stage, verdict,
+                                    safety_->last_adjudication());
         //peek, never take. Screening runs before the turn it screened is
         //stored, so this is that turn's own index on both checkpoints: the
         //student turn about to be written, or the examiner turn about to be
@@ -1965,8 +1973,11 @@ void Server::record_safety(Session& session, const SafetyVerdict& verdict,
 std::string Server::safety_notice(const SafetyVerdict& verdict) {
     switch (verdict.action) {
         case SafetyAction::Mask:
-            return "a word in that answer has been hidden in your transcript. "
-                   "The exam is carrying on.";
+            return "";
+            //masking is silent - see the Mask branch of
+            //screen_student_speech. Kept as a case rather than deleted so the
+            //switch stays exhaustive and a future action cannot be added
+            //without deciding what the student is told
         case SafetyAction::Escalate:
             //TODO(wellbeing): this wording, and the teacher workflow behind it,
             //are to be drafted with the school's wellbeing team before any
@@ -1998,16 +2009,28 @@ Server::ScreenOutcome Server::screen_student_speech(
 
     switch (verdict.action) {
         case SafetyAction::Allow:
+            transcript = verdict.text;
             return ScreenOutcome::Continue;
+            //assigned rather than left alone, which matters in exactly one
+            //case: a mask applied by an earlier layer, on a turn a later layer
+            //stopped and the reasoning pass then cleared. The chain carries
+            //the masked copy in verdict.text, and without this line the
+            //ORIGINAL unmasked transcript would continue to the socket, the
+            //store and the examiner. On an ordinary Allow it is a no-op
 
         case SafetyAction::Mask:
             transcript = verdict.text;
-            send_error(handle, safety_notice(verdict));
             return ScreenOutcome::Continue;
             //the masked copy from here on, everywhere: the socket, the store
             //and the examiner's history all see the same words. Ending a
             //language exam over a swear word punishes the disfluent, and the
             //examiner reading it back would be worse
+            //
+            //SILENT. The student is not told a word was hidden: the mask is
+            //already visible in the transcript they can see, so a notice adds
+            //nothing except a reprimand in the middle of an exam. It also
+            //stops the filter advertising its own contents, which is how a
+            //student learns what to type instead. The row is still written
 
         case SafetyAction::Halt:
             refund();

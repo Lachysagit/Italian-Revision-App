@@ -56,8 +56,9 @@ bool is_word_char(char ch) {
     return std::isalnum(c) != 0;
 }
 
-bool read_lines_into(const std::string& path,
-                     std::vector<std::string>& out) {
+// Terms, for the profanity list: no "!" marker, because a token match against
+// a curated list is never adjudicable in the first place.
+bool read_terms_into(const std::string& path, std::vector<std::string>& out) {
     std::ifstream file(path);
     if (!file) return false;
 
@@ -71,15 +72,41 @@ bool read_lines_into(const std::string& path,
     return true;
 }
 
+// Phrases, for the jailbreak and escalation lists. A leading "!" marks the
+// entry non-adjudicable: the semantic reasoning pass may not reduce a verdict
+// this phrase produced. The marker is stripped before normalising, so marking
+// an entry never changes what it matches - only what may be done about it.
+bool read_phrases_into(const std::string& path,
+                       std::vector<WordlistSafety::Phrase>& out) {
+    std::ifstream file(path);
+    if (!file) return false;
+
+    std::string line;
+    while (std::getline(file, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty() || line[0] == '#') continue;
+
+        WordlistSafety::Phrase phrase;
+        std::string body = line;
+        if (!body.empty() && body[0] == '!') {
+            phrase.non_adjudicable = true;
+            body.erase(0, 1);
+        }
+        phrase.text = normalise_for_match(body);
+        if (!phrase.text.empty()) out.push_back(std::move(phrase));
+    }
+    return true;
+}
+
 // The live file wins; the tracked .example beside it is the fallback. A clone
 // that has never had a wordlist directory is still screened, rather than
 // running with three empty lists and a ready() that says yes anyway.
-bool load_list(const std::string& base, const char* name,
-               std::vector<std::string>& out) {
+template <typename Out, typename Read>
+bool load_list(const std::string& base, const char* name, Out& out, Read read) {
     const std::string path = base + name + ".txt";
-    if (read_lines_into(path, out)) return true;
+    if (read(path, out)) return true;
 
-    if (read_lines_into(path + ".example", out)) {
+    if (read(path + ".example", out)) {
         std::cerr << "safety: " << path << " not found, using the tracked "
                   << name << ".txt.example seed list\n";
         return true;
@@ -171,16 +198,16 @@ const WordlistSafety::Lists& WordlistSafety::lists_for(
     const std::string base = directory_ + "/" + language_id + "/";
 
     std::vector<std::string> profanity;
-    if (!load_list(base, "profanity", profanity)) {
+    if (!load_list(base, "profanity", profanity, read_terms_into)) {
         std::cerr << "safety: no profanity list for " << language_id
                   << " at " << base << "profanity.txt\n";
     }
     for (std::string& term : profanity) lists.profanity.insert(std::move(term));
 
-    if (!load_list(base, "jailbreak", lists.jailbreak)) {
+    if (!load_list(base, "jailbreak", lists.jailbreak, read_phrases_into)) {
         std::cerr << "safety: no jailbreak list for " << language_id << '\n';
     }
-    if (!load_list(base, "escalate", lists.escalate)) {
+    if (!load_list(base, "escalate", lists.escalate, read_phrases_into)) {
         std::cerr << "safety: no escalation list for " << language_id << '\n';
     }
 
@@ -220,23 +247,29 @@ SafetyVerdict WordlistSafety::screen(const std::string& text,
     // Escalation first, then jailbreak, then profanity: a turn can trip more
     // than one, and the one that gets recorded should be the one that decided
     // what happened rather than whichever was checked first.
-    for (const std::string& phrase : lists.escalate) {
-        if (normalised.find(phrase) != std::string::npos) {
+    for (const Phrase& phrase : lists.escalate) {
+        if (normalised.find(phrase.text) != std::string::npos) {
             verdict.action = SafetyAction::Escalate;
             verdict.category = "self_harm";
             verdict.severity = kWordlistSeverity;
-            verdict.matches.push_back(phrase);
+            verdict.matches.push_back(phrase.text);
+            verdict.non_adjudicable = phrase.non_adjudicable;
+            verdict.concurring_detectors = 1;
             return verdict;
         }
     }
 
-    for (const std::string& phrase : lists.jailbreak) {
-        if (normalised.find(phrase) != std::string::npos) {
+    for (const Phrase& phrase : lists.jailbreak) {
+        if (normalised.find(phrase.text) != std::string::npos) {
             verdict.action = SafetyAction::Halt;
             verdict.category = "jailbreak";
             verdict.severity = kWordlistSeverity;
-            verdict.matches.push_back(phrase);
+            verdict.matches.push_back(phrase.text);
+            verdict.non_adjudicable = true;
+            verdict.concurring_detectors = 1;
             return verdict;
+            //jailbreak is never adjudicable whatever the file says, so the
+            //flag is set here rather than read from the entry
         }
     }
 
@@ -281,6 +314,10 @@ SafetyVerdict WordlistSafety::screen(const std::string& text,
     verdict.category = "profanity";
     verdict.severity = kWordlistSeverity;
     verdict.matches = std::move(hits);
+    verdict.non_adjudicable = true;
+    verdict.concurring_detectors = 1;
+    //an exact match against a curated token list has no ambiguity for a model
+    //to resolve
 
     // The asymmetry that matters. A student swearing loses the word; an
     // examiner that swears loses the turn, because a generated question is

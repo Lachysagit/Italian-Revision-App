@@ -287,7 +287,20 @@ CREATE TABLE safety_events (
   severity   INTEGER NOT NULL,
   detector   TEXT NOT NULL,     -- wordlist | content_safety | prompt_shield | chain
   matches    TEXT NOT NULL,     -- comma-separated normalised terms, never a sentence
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+
+  -- The semantic reasoning pass. A trigger a model cleared must not become an
+  -- invisible trigger, so the row is written either way and records what was
+  -- stopped as well as what was finally done about it.
+  --
+  -- There is no free-text reason column, and there must never be one: a
+  -- model's explanation of why an utterance was benign is a paraphrase of
+  -- that utterance, and it would put the sensitive text straight into the one
+  -- table designed to hold none. reason_code is a closed enum and carries
+  -- everything an audit needs.
+  original_action TEXT NOT NULL DEFAULT '',  -- the verdict before review
+  adjudication    TEXT NOT NULL DEFAULT '',  -- not_adjudicable|upheld|downgraded|unavailable
+  reason_code     TEXT NOT NULL DEFAULT ''   -- genuine|idiomatic|quoted|fictional|historical|ambiguous
 );
 CREATE INDEX safety_events_attempt ON safety_events(attempt_id);
 CREATE INDEX safety_events_action  ON safety_events(action, created_at DESC);
@@ -1393,22 +1406,31 @@ SafetyEvent read_safety_event(Statement& stmt) {
     event.detector = stmt.col_text(7);
     event.matches = stmt.col_text(8);
     event.created_at = stmt.col_int64(9);
+    event.original_action = stmt.col_text(10);
+    event.adjudication = stmt.col_text(11);
+    event.reason_code = stmt.col_text(12);
     return event;
 }
 
 constexpr const char* kSafetyColumns =
     "s.id, s.attempt_id, s.turn_index, s.stage, s.action, s.category, "
-    "s.severity, s.detector, s.matches, s.created_at";
+    "s.severity, s.detector, s.matches, s.created_at, "
+    "s.original_action, s.adjudication, s.reason_code";
 
 }  // namespace
 
 void Store::record_safety_event(std::int64_t attempt_id,
                                 int turn_index,
                                 SafetyStage stage,
-                                const SafetyVerdict& verdict) {
-    if (verdict.action == SafetyAction::Allow) return;
-    //nothing was stopped, so there is nothing to record. Checked here rather
-    //than at every call site so no caller can forget
+                                const SafetyVerdict& verdict,
+                                const AdjudicationResult& adjudication) {
+    const bool downgraded =
+        adjudication.outcome == AdjudicationOutcome::Downgraded;
+    if (verdict.action == SafetyAction::Allow && !downgraded) return;
+    //nothing was stopped and nothing was cleared, so there is nothing to
+    //record. Checked here rather than at every call site so no caller can
+    //forget - and the downgrade term is what stops a cleared trigger
+    //disappearing from the record entirely
 
     std::lock_guard<std::recursive_mutex> lock(m_);
 
@@ -1423,9 +1445,10 @@ void Store::record_safety_event(std::int64_t attempt_id,
     Statement stmt(db_,
         "INSERT INTO safety_events "
         "(attempt_id, turn_index, stage, action, category, severity, "
-        " detector, matches, created_at) "
+        " detector, matches, created_at, original_action, adjudication, "
+        " reason_code) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, "
-        "        CAST(strftime('%s','now') AS INTEGER))");
+        "        CAST(strftime('%s','now') AS INTEGER), ?, ?, ?)");
     stmt.int64(1, attempt_id)
         .int64(2, turn_index)
         .text(3, to_string(stage))
@@ -1433,8 +1456,15 @@ void Store::record_safety_event(std::int64_t attempt_id,
         .text(5, verdict.category)
         .int64(6, verdict.severity)
         .text(7, verdict.detector)
-        .text(8, matches);
+        .text(8, matches)
+        .text(9, downgraded ? to_string(adjudication.original_action) : "")
+        .text(10, to_string(adjudication.outcome))
+        .text(11, adjudication.reason_code);
     stmt.run();
+    //`action` is what was finally done; `original_action` is what the filters
+    //had decided before the reasoning pass, filled only when a downgrade
+    //actually moved it. A cleared escalation therefore reads
+    //action=halt, original_action=escalate, adjudication=downgraded
 }
 
 std::vector<SafetyEvent> Store::attempt_safety_events(std::int64_t attempt_id) {
@@ -1467,8 +1497,8 @@ std::vector<SafetyEvent> Store::class_escalations(std::int64_t class_id) {
     std::vector<SafetyEvent> events;
     while (stmt.row()) {
         SafetyEvent event = read_safety_event(stmt);
-        event.student_name = stmt.col_text(10);
-        event.student_email = stmt.col_text(11);
+        event.student_name = stmt.col_text(13);
+        event.student_email = stmt.col_text(14);
         events.push_back(std::move(event));
     }
     return events;

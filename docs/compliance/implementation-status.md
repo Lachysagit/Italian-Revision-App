@@ -22,6 +22,8 @@ Phase numbering follows section 11 of the design.
 | Checkpoint 3 — examiner reply, after `clean_for_speech` | `src/server.cpp`, worker lambda |
 | `SAFETY_MODE` / `SAFETY_FAIL_CLOSED` / severity validation at startup | `src/config.cpp` |
 | Seed wordlists for Italian and German, incl. self-harm | `speaking-sim/config/wordlists/` |
+| Semantic reasoning pass — policy | `src/safety/semantic_adjudicator.cpp` |
+| Semantic reasoning pass — backend | `src/safety/examiner_adjudicator.cpp` |
 | Offline tests | `speaking-sim/tests/safety_tests.cpp` |
 
 Three details worth knowing, because each is a decision rather than an
@@ -42,10 +44,125 @@ sentence carrying both a swear word and a disclosure would otherwise be
 masked and waved through. The chain carries the masked copy forward and keeps
 going; only `Halt` and `Escalate` stop it. There is a test for exactly this.
 
+**The semantic pass is a tie-breaker, not an appeal court.** See the section
+below; it is the part of this build most worth reading before a reviewer asks.
+
 **`safety_events` holds no sentences.** `matches` holds normalised terms — the
 word that fired, not the utterance it sat in. The utterance is already in
 `attempt_turns` under that table's access rules, and duplicating it into a
 safety log would put the most sensitive text in the least governed place.
+
+---
+
+## The semantic reasoning pass
+
+NSWEduChat's own published description of its safety stack includes a
+**semantic content filter** that "checks the meaning behind your words", and an
+orchestrator that "applies one more round of semantic and profanity filters" to
+the response. A meaning-level stage is therefore not an invention here.
+
+What is an extension is letting that stage **reduce** another layer's verdict.
+DoE's semantic filter is described as a filter — it blocks on meaning. Ours
+additionally reasons about a trigger our own filters produced, and can clear
+it. That is worth stating plainly rather than blurring, because it is the one
+place where a reviewer could reasonably ask *"so an AI decides whether to
+escalate a child protection concern?"*
+
+The answer is no, and these are the mechanics that make it no:
+
+**The rule.** Adjudication resolves disagreement between detectors. It never
+overrides consensus. A self-harm verdict that both the local wordlist and Azure
+Content Safety reached is untouchable — no model is asked.
+
+**Self-harm needs four gates, all of them.**
+
+1. **At least two detectors are configured.** One cannot disagree with itself,
+   so a lone escalation is the only judgement that exists, and letting a model
+   overturn it would be a veto rather than a tie-break.
+2. Those detectors actually disagreed.
+3. The matched phrase is not marked `!`.
+4. A flag separate from the category list is on, which it is not by default.
+
+Gate 1 is what makes the flag genuinely inert under `SAFETY_MODE=local`, where
+only the wordlist exists. It was missing from the first version of this code:
+the startup warning promised the flag had no effect while the policy let the
+review through, because "one detector" and "two detectors that disagreed" both
+arrive as `concurring_detectors == 1`. `SafetyChain` now passes its own layer
+count to the policy at construction — the chain is what knows — and the test
+suite fails if that gate is removed.
+
+**Categories out of reach entirely.** `jailbreak` is never sent to a model: the
+text being judged is text that just tried to subvert one, so asking a second
+model whether to allow it *is* the attack. `profanity` is never sent either —
+an exact match against a curated token list has no ambiguity to resolve. The
+tests assert that the backend is not merely overruled in these cases but *never
+called*, which is what makes the exclusion an injection defence rather than a
+preference.
+
+**Phrases out of reach.** An `escalate.txt` entry prefixed `!` can never be
+reduced, whatever a model concludes. The 31 Italian and 27 German entries with
+no innocent reading — `voglio morire`, `kill myself`, `togliermi la vita`,
+`selbstmord` — all carry it. `hits me` and `es beenden` do not, because "the
+song hits me" and "das Spiel beenden" exist.
+
+**Floors.** A cleared verdict falls only so far:
+
+| Category | Floor |
+|---|---|
+| `self_harm` | `Halt` — never `Mask`, never `Allow` |
+| `hate`, `sexual`, `violence` | `Allow` |
+
+The worst case of a wrong downgrade on self-harm is a student losing one turn
+and getting the question refunded. The worst case of the opposite is a child's
+disclosure discarded by a language model. Those are not comparable errors and
+the floor says so.
+
+**A clearance keeps what the other layers concluded.** Clearing a verdict does
+not mean "nothing was wrong" — it means "everything the other layers concluded,
+minus the one just cleared". The case that drove this: the wordlist masks a
+swear word, Content Safety then halts the masked copy on `violence`, and the
+reasoning pass clears the violence. The turn continues **with the mask still
+applied**. Clearing to a bare `Allow` would have sent the original, unmasked
+words to the socket, the store and the examiner. Nothing is ever re-screened —
+there is one screening pass and one review, and only the verdict's action
+changes.
+
+`hate` floors at `Allow` for a related reason. It used to floor at `Mask`, which
+was unimplementable: `Mask` means "replace these tokens", and Content Safety
+reports a category and a severity but no spans, so a cleared `hate` halt
+produced a verdict that *said* a word was hidden while the text went through
+verbatim. Clearing outright is safe because the actual slurs live in
+`profanity.txt`, the wordlist masks them, that layer is non-adjudicable, and
+that mask now survives a clearance. What `hate` adds on top is a judgement about
+meaning — and "we studied the White Australia policy" is a history answer.
+
+**Everything upholds.** A downgrade needs an affirmative, well-formed,
+high-confidence answer with a reason code that permits it. `genuine`,
+`ambiguous`, anything below high confidence, an unrecognised code, a malformed
+reply, a timeout, a transport error, an unhealthy backend — all uphold. There
+is exactly one code path that reduces a verdict.
+
+**Nothing is erased.** A cleared trigger still writes a `safety_events` row:
+`action` is what was finally done, `original_action` what the filters had
+decided, `adjudication` says `downgraded`. A teacher's view can list cleared
+items separately and you can report a clear rate per category. There is no
+free-text reason column and there must never be one — a model's explanation of
+why an utterance was benign is a paraphrase of that utterance, and it would put
+the sensitive text into the one table designed to hold none.
+
+**Where it runs.** Through `InterfaceExaminer`, so it runs on whatever the
+examiner runs on and follows it to Australia East rather than needing its own
+compliance story. `load_config()` refuses `SAFETY_ADJUDICATOR=examiner` with
+`AUTH_REQUIRED` on while the examiner is Gemini: flagged speech is the most
+sensitive text this system handles, and offshore is where it must not go.
+
+**Default off.** `SAFETY_ADJUDICATOR=off`, and self-harm review has a second
+flag of its own that is also off. In `SAFETY_MODE=local` there is only one
+detector, so the consensus gate can never be satisfied and self-harm review has
+no effect — the server says so at startup rather than leaving it to be
+discovered.
+
+---
 
 ## Phase 2 — enforced, not yet implemented
 
@@ -81,14 +198,24 @@ Listed rather than left for a reviewer to find.
    returns the rows; nothing renders them. Until that exists, an escalation
    reaches a teacher only if someone reads the database. This is phase 5 and
    it is the single most important thing to build next.
-3. **Notices reuse the error channel.** A masked turn tells the student
-   through the same message type as a failure, because that is the only
-   mechanism the protocol has. A dedicated notice type would read better.
+3. **Halt and escalation notices reuse the error channel**, because that is the
+   only mechanism the protocol has. A dedicated notice type would read better.
+   Masking is silent by design and sends nothing: the mask is already visible in
+   the transcript the student can see, so a notice would add only a reprimand
+   mid-exam, and it would advertise the filter's contents to anyone probing it.
+   The `safety_events` row is still written.
 4. **An escalation on the very last turn of an exam** leaves the attempt
    closed as `escalated`, but a halt on that turn returns before the
    timer/quota path closes the attempt, so it is closed as `disconnect` when
    the socket drops. The event row is still written and still correct.
-5. **The wordlists are a starting point.** They were seeded from the sources
+5. **The reasoning pass has never run against a real model.** Its policy is
+   fully tested against stub backends, and `ExaminerAdjudicator` compiles and
+   is wired, but nothing here has exercised it against Gemini or Azure OpenAI.
+   The prompt wording in `adjudication_system_prompt` in particular is
+   untested, and `prewarm()` deliberately refuses to trust a backend that
+   cannot recognise "mi piace da morire" as an idiom. Expect to tune the prompt
+   the first time it runs for real.
+6. **The wordlists are a starting point.** They were seeded from the sources
    the README names and pruned for false positives against realistic exam
    sentences, but they have not been reviewed by a teacher or a wellbeing
    team, and the design requires that review each term with the date recorded

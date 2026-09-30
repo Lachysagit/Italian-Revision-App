@@ -9,6 +9,7 @@
 
 #include "sim/exam_plan.hpp"
 #include "sim/safety.hpp"
+#include "sim/safety/adjudicator.hpp"
 
 struct sqlite3;
 
@@ -178,6 +179,13 @@ struct SafetyEvent {
     std::string matches;
     //the normalised terms, comma separated and in the order they fired
     std::int64_t created_at = 0;
+
+    std::string original_action;
+    //non-empty only when the semantic pass moved the verdict. A cleared
+    //escalation reads action="halt", original_action="escalate"
+    std::string adjudication;
+    //not_adjudicable | upheld | downgraded | unavailable
+    std::string reason_code;
 
     std::string student_name;
     std::string student_email;
@@ -402,9 +410,12 @@ public:
     void record_safety_event(std::int64_t attempt_id,
                              int turn_index,
                              SafetyStage stage,
-                             const SafetyVerdict& verdict);
-    //an Allow verdict writes nothing: the table is a record of what the chain
-    //stopped, and a row per clean turn would bury the handful that matter
+                             const SafetyVerdict& verdict,
+                             const AdjudicationResult& adjudication);
+    //an Allow verdict writes nothing UNLESS the semantic pass is what made it
+    //Allow: a clean turn is not worth a row, but a trigger a model cleared
+    //very much is. That single exception is what keeps "downgraded" auditable
+    //rather than invisible
 
     std::vector<SafetyEvent> attempt_safety_events(std::int64_t attempt_id);
     //everything the chain caught in one exam, oldest first. The per-attempt

@@ -277,6 +277,8 @@ add_executable(speaking-sim
     src/safety/wordlist_safety.cpp
     src/safety/azure_safety.cpp
     src/safety/safety_chain.cpp
+    src/safety/semantic_adjudicator.cpp
+    src/safety/examiner_adjudicator.cpp
     src/examiner/gemini_examiner.cpp
     src/examiner/hailo_examiner.cpp
     src/stt/whisper_stt.cpp
@@ -329,7 +331,10 @@ endif()
 # nothing installed: no Crow, no sqlite, no model weights, no network. That is
 # the same property that makes the wordlist layer worth keeping separate from
 # the Azure one, so the test target is kept equally free of dependencies and
-# links only the two offline sources.
+# links only the offline sources. examiner_adjudicator.cpp is excluded on
+# purpose: it needs Crow's JSON, and the policy it feeds - which is the part
+# worth testing - lives in semantic_adjudicator.cpp with no dependencies at
+# all.
 #
 # EXCLUDE_FROM_ALL so an ordinary build of the server does not pay for it:
 #   cmake --build <dir> --target safety-tests && ./<dir>/safety-tests
@@ -337,6 +342,7 @@ add_executable(safety-tests EXCLUDE_FROM_ALL
     tests/safety_tests.cpp
     src/safety/wordlist_safety.cpp
     src/safety/safety_chain.cpp
+    src/safety/semantic_adjudicator.cpp
 )
 target_include_directories(safety-tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(safety-tests PRIVATE Threads::Threads)
