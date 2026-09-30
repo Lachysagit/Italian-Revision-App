@@ -35,8 +35,10 @@ const PLACEMENTS = [
     ["with_topic", "While its topic is running"],
     ["opening", "As the opening question"],
 ];
-const LENGTHS = [0, 180, 240, 300, 360, 480, 600];
-//0 keeps the server's own exam length
+const LENGTHS = [0, 60, 120, 180, 240, 300, 360, 480, 600];
+//0 keeps the server's own exam length. The rest are filtered against the
+//bounds /api/exam-options reports, so this list may offer more than a given
+//server accepts and never less
 
 function examOptions(language) {
     if (optionsByLanguage[language]) {
@@ -62,9 +64,17 @@ function capitaliseTopic(group) {
 function formatLength(seconds) {
     if (!seconds) {
         const standard = currentOptions ? currentOptions.default_duration_seconds : 300;
-        return `Standard (${Math.round(standard / 60)} min)`;
+        return `Standard (${shortLength(standard)})`;
     }
-    return `${Math.round(seconds / 60)} min`;
+    return shortLength(seconds);
+}
+
+// The menu's own form. Exact for the same reason describeLength is: a length
+// saved through the API need not be a round number of minutes, and the menu
+// now keeps such a length as an option of its own rather than rounding it away.
+function shortLength(seconds) {
+    if (seconds % 60 === 0) return `${seconds / 60} min`;
+    return `${Math.floor(seconds / 60)} min ${seconds % 60} s`;
 }
 
 function initTeacher(user) {
@@ -540,15 +550,7 @@ function openPlanEditor(planId) {
     document.getElementById("planParaphrase").checked = plan.paraphrase_ok;
     document.getElementById("planArchive").hidden = !editingPlan;
 
-    const duration = document.getElementById("planDuration");
-    duration.textContent = "";
-    LENGTHS.forEach((seconds) => {
-        const option = element("option", null, formatLength(seconds));
-        option.value = String(seconds);
-        duration.appendChild(option);
-    });
-    duration.value = String(LENGTHS.includes(plan.duration_seconds)
-        ? plan.duration_seconds : 0);
+    paintDuration(plan.duration_seconds);
 
     const topics = document.getElementById("planTopics");
     topics.textContent = "";
@@ -603,6 +605,73 @@ function openPlanEditor(planId) {
     refreshQuestionTopics();
     showPanel("plan");
     window.scrollTo(0, 0);
+}
+
+// The lengths this server will accept, in the order they are offered. Standard
+// is always there; the rest are the offered lengths inside the server's bounds,
+// so the menu cannot put up a length that Save would then refuse.
+function allowedLengths() {
+    const min = currentOptions.min_duration_seconds;
+    const max = currentOptions.max_duration_seconds;
+    return LENGTHS.filter((seconds) =>
+        seconds === 0 || (seconds >= min && seconds <= max));
+}
+
+// Fill the length menu and choose `stored`. A plan saved before the bounds
+// narrowed can hold a length no longer allowed, and one saved through the API
+// can hold a length that is allowed but not on the menu; both used to fall
+// through to "Standard" silently, which quietly rewrote the exam's length the
+// next time anybody saved an unrelated edit.
+function paintDuration(stored) {
+    const select = document.getElementById("planDuration");
+    const note = document.getElementById("planDurationNote");
+    const offered = allowedLengths();
+    const min = currentOptions.min_duration_seconds;
+    const max = currentOptions.max_duration_seconds;
+
+    let chosen = stored > 0 ? stored : 0;
+    let message = "";
+
+    if (chosen > 0 && (chosen < min || chosen > max)) {
+        const bound = chosen < min ? min : max;
+        message = `This exam was saved as ${describeLength(stored)}, outside the ` +
+            `${describeLength(min)} to ${describeLength(max)} an exam may now run. ` +
+            `It is set to ${describeLength(bound)} below - save to confirm.`;
+        chosen = bound;
+        //snapped to the bound rather than dropped to Standard: the teacher
+        //asked for a long exam, and the longest allowed is the nearest thing
+        //to it. Saying so is the point - the length is changing either way,
+        //and an exam whose length changed without a word is the bug
+    } else if (chosen > 0 && !offered.includes(chosen)) {
+        offered.push(chosen);
+        offered.sort((a, b) => a - b);
+        //allowed, just not one of the menu's round numbers. Kept as its own
+        //option so saving an unrelated edit does not round it away
+    }
+
+    select.textContent = "";
+    offered.forEach((seconds) => {
+        const option = element("option", null, formatLength(seconds));
+        option.value = String(seconds);
+        select.appendChild(option);
+    });
+    select.value = String(chosen);
+
+    note.textContent = message;
+    note.hidden = !message;
+}
+
+// An exact reading of a length, for a sentence rather than the menu's "10 min".
+// Exact, not rounded: a stored 30 seconds described as "1 minute" made the note
+// about it read as a quarrel with itself, since the minimum is also 1 minute.
+function describeLength(seconds) {
+    if (seconds < 60) {
+        return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    const rest = seconds % 60;
+    const whole = `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+    return rest ? `${whole} ${rest}s` : whole;
 }
 
 function tickedTopics() {
@@ -677,7 +746,10 @@ function paintFit() {
     const count = document.querySelectorAll("#planQuestions .questionRow").length;
     const fit = document.getElementById("planFit");
     fit.textContent = `A ${Math.round(chosen / 60)}-minute exam has room for ` +
-        `${room} set questions` + (count > room ? ` - you have ${count}.` : ".");
+        `${room} set ${room === 1 ? "question" : "questions"}` +
+        (count > room ? ` - you have ${count}.` : ".");
+    //the singular is reachable now that an exam can be one minute long: a
+    //minute fits two questions, one of which is left for the examiner's own
     fit.classList.toggle("error", count > room);
     // the same sum the server checks on save, shown while typing so the
     // refusal is never a surprise
@@ -761,7 +833,7 @@ function openAttempt(attemptId) {
                 endLabel(attempt) +
                 (attempt.plan_name ? ` · plan: ${attempt.plan_name}` : "");
 
-            paintRequired(data.required);
+            paintRequired(data.required, data.opinion);
 
             const container = document.getElementById("attemptTurns");
             container.textContent = "";
@@ -810,19 +882,88 @@ function turnCard(turn) {
     return card;
 }
 
-function paintRequired(required) {
+function paintRequired(required, opinion) {
     const card = document.getElementById("attemptRequiredCard");
     const list = document.getElementById("attemptRequired");
     list.textContent = "";
-    card.hidden = !required || required.length === 0;
-    (required || []).forEach((question) => {
-        const item = element("li", `required ${question.status}`);
-        const mark = question.status === "asked" ? "Asked"
-            : question.status === "missed" ? "Not asked" : "Still to ask";
-        item.appendChild(element("span", "requiredStatus", mark));
-        item.appendChild(element("span", null, question.text));
+
+    const mark = (status) => status === "asked" ? "Asked"
+        : status === "missed" ? "Not asked" : "Still to ask";
+
+    // One row: the verdict, what was wanted, why the verdict was reached, and
+    // what the student said back.
+    function requiredRow(status, what, note, answer) {
+        const item = element("li", `required ${status}`);
+        item.appendChild(element("span", "requiredStatus", mark(status)));
+
+        const body = element("div", "requiredBody");
+        body.appendChild(what);
+        if (note) body.appendChild(element("div", "requiredNote", note));
+        if (answer) {
+            const said = element("p", "requiredAnswer");
+            said.appendChild(element("span", "answerLabel", "Answered"));
+            said.appendChild(document.createTextNode(` ${answer.text}`));
+            said.title = `Turn ${answer.turn_index}`;
+            body.appendChild(said);
+        }
+        item.appendChild(body);
         list.appendChild(item);
+    }
+
+    (required || []).forEach((question) => {
+        requiredRow(question.status,
+                    element("span", "requiredText", question.text),
+                    evidenceNote(question),
+                    question.answer);
     });
+
+    const wanted = opinion && opinion.status !== "not_required";
+    if (wanted) {
+        const what = element("span", "requiredKind",
+            "A question asking for the student's opinion");
+        requiredRow(opinion.status, what,
+                    opinion.status === "asked" && opinion.source === "openers"
+                        ? "Recognised by its opening phrase; the examiner did not label it as an opinion question."
+                        : "",
+                    opinion.answer);
+    }
+    //in the same list as the set questions, because a teacher checking whether
+    //the exam did what the plan asked wants one place to look. It carries no
+    //text of its own - the plan only ever asked for "an opinion question" -
+    //so the kind is named where a set question's words would be
+
+    card.hidden = (!required || required.length === 0) && !wanted;
+}
+
+// Why a set question got the verdict it did, in a teacher's terms. The scores
+// behind it are for tuning the thresholds and stay out of the sentence; what a
+// teacher needs to know is whether their words were used, and how close the
+// exam came when they were not.
+function evidenceNote(question) {
+    const scores = question.evidence || [];
+    const pct = (value) => `${Math.round(value * 100)}%`;
+
+    if (question.status === "asked") {
+        const decided = scores.find((score) => score.decided);
+        if (!decided || decided.verbatim) return "";
+        //asked in your words: the ordinary case needs no explaining. Whether it
+        //counts as verbatim is the server's call, so the threshold is not
+        //written down twice
+        return `Reworded - ${pct(decided.overlap)} of your wording, ` +
+            (decided.model_named
+                ? "credited because the examiner confirmed which question it was."
+                : "credited on the wording alone.");
+    }
+
+    if (question.status === "missed" && scores.length) {
+        const closest = scores.reduce(
+            (best, score) => (score.overlap > best.overlap ? score : best));
+        return `Closest the exam came: ${pct(closest.overlap)} of your wording, ` +
+            `on turn ${closest.turn_index}.`;
+        //a near miss and no attempt at all are very different failures, and the
+        //verdict alone reads the same for both
+    }
+    return "";
 }
 
 // ---------------------------------------------------------------------------

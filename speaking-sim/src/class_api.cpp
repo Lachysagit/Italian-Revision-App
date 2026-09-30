@@ -552,8 +552,12 @@ crow::response Server::serve_attempt(const crow::request& req,
         const bool is_owner = attempt->user_id == user.id;
 
         const std::vector<TurnFeature> features = store_->attempt_features(attempt_id);
+        const std::vector<AttemptTurn> all_turns = store_->attempt_turns(attempt_id);
+        //held rather than iterated straight through: the set questions below
+        //pair each one with the answer it drew, which is a walk over this list
+
         std::vector<crow::json::wvalue> turns;
-        for (const AttemptTurn& turn : store_->attempt_turns(attempt_id)) {
+        for (const AttemptTurn& turn : all_turns) {
             crow::json::wvalue json;
             json["index"] = turn.turn_index;
             json["role"] = turn.role;
@@ -581,8 +585,28 @@ crow::response Server::serve_attempt(const crow::request& req,
         json["attempt"] = attempt_json(*attempt);
         json["turns"] = std::move(turns);
 
+        // The student turn that answered the examiner turn at `asked_at`, or
+        // nothing if the exam ended before one arrived. A join over the turn
+        // list rather than anything stored: the answer to a question is simply
+        // the next thing the student said after it.
+        const auto answer_to = [&all_turns](int asked_at)
+                -> const AttemptTurn* {
+            if (asked_at < 0) return nullptr;
+            for (const AttemptTurn& turn : all_turns) {
+                if (turn.turn_index > asked_at && turn.role == "student") {
+                    return &turn;
+                }
+            }
+            return nullptr;
+        };
+        //turn_count is small - a few dozen at most - and this runs once per set
+        //question, so the scan is cheaper than an index would be
+
         std::vector<crow::json::wvalue> required;
         if (!is_owner || attempt->ended_at > 0) {
+            const std::vector<QuestionEvidence> evidence =
+                store_->question_evidence(attempt_id);
+
             for (const RequiredQuestionStatus& row : store_->attempt_required(attempt_id)) {
                 crow::json::wvalue item;
                 item["id"] = row.question_id;
@@ -590,12 +614,62 @@ crow::response Server::serve_attempt(const crow::request& req,
                 item["topic_group"] = row.topic_group;
                 item["status"] = row.status;
                 item["turn_index"] = row.turn_index;
+
+                std::vector<crow::json::wvalue> weighed;
+                for (const QuestionEvidence& found : evidence) {
+                    if (found.question_id != row.question_id) continue;
+                    crow::json::wvalue score;
+                    score["turn_index"] = found.turn_index;
+                    score["overlap"] = found.overlap;
+                    score["model_named"] = found.model_named;
+                    score["verbatim"] = found.overlap >= kVerbatimMatch;
+                    //decided here, so the threshold has one home
+                    score["decided"] = found.turn_index == row.turn_index;
+                    //the row the verdict rests on, marked so a reader does not
+                    //have to compare turn numbers to find it
+                    weighed.push_back(std::move(score));
+                }
+                item["evidence"] = std::move(weighed);
+
+                if (const AttemptTurn* answer =
+                        row.status == "asked" ? answer_to(row.turn_index) : nullptr) {
+                    item["answer"]["turn_index"] = answer->turn_index;
+                    item["answer"]["text"] = answer->text;
+                }
+                //only for a question that was asked: on a missed one turn_index
+                //is the turn the examiner was given up on, and the student's
+                //next words answered something else entirely
                 required.push_back(std::move(item));
             }
         }
         json["required"] = std::move(required);
-        //a student reading their own exam while it is still running would see
-        //the set questions still to come, so they get the list once it is over
+
+        if (!is_owner || attempt->ended_at > 0) {
+            const char* status = "not_required";
+            if (attempt->opinion_required) {
+                status = attempt->opinion_turn_index >= 0 ? "asked"
+                       : attempt->ended_at > 0            ? "missed"
+                                                          : "pending";
+                //an exam the server crashed out of is ended by
+                //reconcile_crashed_attempts, so its unasked opinion question
+                //reads as missed here without needing a sweep of its own
+            }
+            crow::json::wvalue opinion;
+            opinion["required"] = attempt->opinion_required;
+            opinion["turn_index"] = attempt->opinion_turn_index;
+            opinion["source"] = attempt->opinion_source;
+            opinion["status"] = status;
+            if (const AttemptTurn* answer = answer_to(attempt->opinion_turn_index)) {
+                opinion["answer"]["turn_index"] = answer->turn_index;
+                opinion["answer"]["text"] = answer->text;
+            }
+            json["opinion"] = std::move(opinion);
+        }
+        //derived here rather than in each page, so the dashboard and anything
+        //later cannot disagree about what a missed opinion question looks like.
+        //Behind the same guard as the set questions and for the same reason: a
+        //student watching their own exam would otherwise be told an opinion
+        //question is still coming
         return json_response(json);
     });
 }

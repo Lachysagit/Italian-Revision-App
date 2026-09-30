@@ -114,12 +114,6 @@ double overlap(const std::string& wanted, const std::string& reply) {
     return static_cast<double>(found) / static_cast<double>(want.size());
 }
 
-constexpr double kVerbatimMatch = 0.8;
-//a reply this close to the set question asked it, whatever the model says
-constexpr double kConfirmedMatch = 0.5;
-//close enough when the model also names the question's id: it may have
-//changed an article or the word order, but not asked something else
-
 constexpr auto kDefaultTurnPace = std::chrono::seconds(35);
 constexpr auto kMinTurnPace = std::chrono::seconds(20);
 constexpr auto kMaxTurnPace = std::chrono::seconds(90);
@@ -216,10 +210,11 @@ void Session::set_plan(ExamPlan plan) {
     for (const TenseTarget& target : plan.tenses) {
         tenses_asked_.emplace_back(target.tense, 0);
     }
-    if (!plan.require_opinion) {
-        opinion_done_ = true;
-        //nothing owed, so the opinion order is never issued
-    }
+    opinion_required_ = plan.require_opinion;
+    //the order is gated on this rather than opinion_done_ being pre-set.
+    //Marking the debt paid up front would also switch the detection off, and
+    //an examiner that asks an opinion question anyway is worth recording: the
+    //teacher then sees what the exam did, not only what it was told to do
     plan_ = std::move(plan);
     rebuild_prompts();
 }
@@ -357,12 +352,11 @@ void Session::record_answer(std::string answer) {
 void Session::record_question(std::string question) {
     last_question_ = std::move(question);
     ++questions_asked_;
-
-    if (!opinion_done_ && language_ != nullptr &&
-        asks_opinion(last_question_, language_->opinion_openers)) {
-        opinion_done_ = true;
-        //an opinion asked without being told to still discharges the debt
-    }
+    //the opinion check used to sit here too. It moved into
+    //note_examiner_reply, which Server calls on the same reply a line later,
+    //so that one place decides and can say which check found it: split across
+    //the two, this one always ran first and left the other with nothing to
+    //report even when the examiner had labelled the question itself
 }
 
 void Session::note_question_topic(const std::string& topic) {
@@ -585,10 +579,23 @@ Session::ReplyOutcome Session::note_examiner_reply(const std::string& question,
                                                    const ExaminerReply& reply) {
     ReplyOutcome outcome;
 
-    if (reply.asks_opinion.value_or(false)) {
-        opinion_done_ = true;
-        //the examiner's own word, which sees an umlaut the phrase list cannot
+    if (!opinion_done_) {
+        if (reply.asks_opinion.value_or(false)) {
+            outcome.opinion_source = "model";
+            //the examiner's own word, which sees an accent or an umlaut the
+            //phrase list cannot, and a question that asks for an opinion
+            //without reaching for any of the set openings
+        } else if (language_ != nullptr &&
+                   asks_opinion(question, language_->opinion_openers)) {
+            outcome.opinion_source = "openers";
+            //an opinion asked without being told to still discharges the debt.
+            //Second, not first: the model's label is the better evidence, so
+            //when both would fire the record names the better one
+        }
+        opinion_done_ = outcome.opinion_source.has_value();
     }
+    //checked whether or not the plan asked for an opinion question: the
+    //directive is what require_opinion switches off, not the record
 
     std::set<std::string> tenses;
     for (const std::string& key : reply.question_tenses) {
@@ -619,6 +626,15 @@ Session::ReplyOutcome Session::note_examiner_reply(const std::string& question,
         if (asked) {
             state.done = true;
             outcome.asked.push_back(state.question.id);
+        }
+        if (score >= kEvidenceFloor || named) {
+            outcome.evidence.push_back(
+                ReplyOutcome::QuestionEvidence{state.question.id, score, named});
+            //kept whether or not it closed the question. A score just under a
+            //threshold is what says the threshold is too high, and a labelled
+            //reply that shares almost no words with the question is what says
+            //the label cannot be trusted on its own - neither is visible from
+            //the verdict alone, which is all that used to be written down
         }
     }
     //every pending question is checked, not only the one ordered: an examiner
@@ -734,9 +750,9 @@ std::vector<Turn> Session::build_examiner_input() {
         tense = tense_due(remaining);
     }
 
-    const bool opinion_due = !opening_turn && !opinion_done_ &&
-                             !changing_topic && !required && !tense &&
-                             questions_asked_ >= opinion_target_;
+    const bool opinion_due = opinion_required_ && !opening_turn &&
+                             !opinion_done_ && !changing_topic && !required &&
+                             !tense && questions_asked_ >= opinion_target_;
     //held back on a turn that already carries an order: one order per turn.
     //It is re-issued every later turn until a reply actually asks an opinion,
     //so an examiner that ignores it once does not lose the question

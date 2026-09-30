@@ -541,6 +541,40 @@ table[hidden] {
     font-size: 0.8rem;
 }
 
+.requiredKind { font-style: italic; }
+/* the opinion row has no words of its own to show, so its line is set apart
+   from the set questions quoted above it */
+
+.requiredBody {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+    /* min-width so a long answer wraps inside the row rather than stretching
+       the flex line and pushing the status column off the card */
+}
+
+.requiredNote {
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.requiredAnswer {
+    margin: 0.15rem 0 0;
+    font-size: 0.85rem;
+    padding-left: 0.6rem;
+    border-left: 2px solid var(--line);
+}
+
+.answerLabel {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-right: 0.3rem;
+}
+
 .required.asked .requiredStatus { color: var(--student-ink); }
 .required.missed .requiredStatus { color: #b0392b; }
 .required.pending .requiredStatus { color: var(--muted); }
@@ -548,6 +582,10 @@ table[hidden] {
 /* ---- narrow screens ----------------------------------------------------- */
 
 @media (max-width: 50rem) {
+    #attemptRequired li { flex-direction: column; gap: 0.25rem; }
+    .requiredStatus { flex-basis: auto; }
+    /* the status stops being a column of its own once the row is this narrow */
+
     .questionRow { grid-template-columns: minmax(0, 1fr); }
     .planRow { flex-direction: column; align-items: flex-start; }
     #dashboard { grid-template-columns: minmax(0, 1fr); }

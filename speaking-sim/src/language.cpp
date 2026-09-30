@@ -63,7 +63,14 @@ std::vector<LanguagePack> built_in_packs() {
     italian.opening_turn_text = "Inizia l'esame.";
     italian.prewarm_text = "Buongiorno.";
     italian.opinion_openers = {"secondo te", "cosa ne pensi", "che ne pensi",
-                               "sei d'accordo"};
+                               "sei d'accordo", "la tua opinione",
+                               "dal tuo punto di vista"};
+    //"la tua opinione" rather than the whole "qual e' la tua opinione": the
+    //phrase as a teacher says it carries an accented e, and this list has to
+    //stay ASCII (see the note in language.hpp). The shorter substring matches
+    //that question and every other way of reaching for it - "mi dici la tua
+    //opinione", "qual'e' la tua opinione" - so nothing is lost by cutting the
+    //accent off the front of it
     italian.opinion_opener_label = "Secondo te";
     italian.student_name_sentence =
         "Lo studente si chiama {0}. Sai gia come si chiama, quindi non "

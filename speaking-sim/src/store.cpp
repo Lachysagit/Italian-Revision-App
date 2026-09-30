@@ -146,8 +146,22 @@ CREATE TABLE exam_attempts (
   plan_id   INTEGER REFERENCES exam_plans(id) ON DELETE SET NULL,
   plan_name TEXT NOT NULL DEFAULT '',
   plan_json TEXT,
+  opinion_required INTEGER NOT NULL DEFAULT 1,
+  opinion_turn_index INTEGER,
+  opinion_source TEXT NOT NULL DEFAULT '',
   score_overall REAL, score_json TEXT, scored_at INTEGER
 );
+-- The opinion question is the one thing a plan asks for that is not a row of
+-- its own anywhere: no id, no text, just "somewhere in this exam, ask what the
+-- student thinks". So it is recorded on the attempt. Defaults to 1 because
+-- Session owes one on every exam until a plan turns it off, a planless practice
+-- run included; attach_plan writes the plan's own answer over it.
+-- opinion_turn_index is the examiner turn that asked it and NULL until one
+-- does, so "required and still null on an ended attempt" is the miss - the same
+-- shape as attempt_required_questions, without needing a table for one flag.
+-- opinion_source says which check saw it, 'model' or 'openers': the phrase list
+-- is the weak one, and this is the only way to find out how often it is
+-- carrying the result on its own.
 CREATE INDEX attempts_user_time  ON exam_attempts(user_id, started_at DESC);
 CREATE INDEX attempts_class_time ON exam_attempts(class_id, started_at DESC);
 
@@ -238,6 +252,28 @@ CREATE TABLE attempt_required_questions (
   status TEXT NOT NULL DEFAULT 'pending',
   turn_index INTEGER,
   PRIMARY KEY (attempt_id, question_id)
+);
+
+-- Why each set question was or was not credited, per reply that came close.
+-- attempt_required_questions keeps the verdict; this keeps the numbers it was
+-- reached from, so a verdict can be re-judged later without the exam being sat
+-- again, and so the two thresholds in session.cpp can be measured instead of
+-- guessed at. overlap is the share of the set question's words the reply
+-- carried; model_named is whether the examiner labelled the reply with this
+-- question's id.
+--
+-- Rows below the floor in session.cpp are not written, so absence means "no
+-- reply came close", not "not measured". Joining to attempt_required_questions
+-- on (attempt_id, question_id) says which of these rows the verdict rests on:
+-- for an asked question its turn_index is the turn that closed it, and for a
+-- missed one the turn the examiner was given up on.
+CREATE TABLE required_question_evidence (
+  attempt_id  INTEGER NOT NULL REFERENCES exam_attempts(id) ON DELETE CASCADE,
+  question_id INTEGER NOT NULL,
+  turn_index  INTEGER NOT NULL,
+  overlap     REAL NOT NULL,
+  model_named INTEGER NOT NULL,
+  PRIMARY KEY (attempt_id, question_id, turn_index)
 );
 
 -- Paid access. A licence covers one account ('user') or every student in one
@@ -881,6 +917,10 @@ public:
         sqlite3_bind_text(stmt_, index, value.c_str(), -1, SQLITE_TRANSIENT);
         return *this;
     }
+    Statement& real(int index, double value) {
+        sqlite3_bind_double(stmt_, index, value);
+        return *this;
+    }
 
     bool row() {
         const int rc = sqlite3_step(stmt_);
@@ -896,6 +936,7 @@ public:
     }
 
     std::int64_t col_int64(int col) { return sqlite3_column_int64(stmt_, col); }
+    double col_double(int col) { return sqlite3_column_double(stmt_, col); }
     std::string col_text(int col) {
         const unsigned char* value = sqlite3_column_text(stmt_, col);
         return value ? std::string(reinterpret_cast<const char*>(value))
@@ -964,7 +1005,8 @@ constexpr const char* kAttemptColumns =
     "a.id, COALESCE(a.user_id, 0), COALESCE(a.class_id, 0), "
     "COALESCE(u.display_name, ''), COALESCE(u.email, ''), a.language_id, "
     "a.started_at, COALESCE(a.ended_at, 0), COALESCE(a.end_reason, ''), "
-    "a.turn_count, a.plan_name";
+    "a.turn_count, a.plan_name, a.opinion_required, "
+    "COALESCE(a.opinion_turn_index, -1), a.opinion_source";
 
 AttemptSummary read_attempt(Statement& stmt) {
     AttemptSummary attempt;
@@ -979,6 +1021,9 @@ AttemptSummary read_attempt(Statement& stmt) {
     attempt.end_reason = stmt.col_text(8);
     attempt.turn_count = static_cast<int>(stmt.col_int64(9));
     attempt.plan_name = stmt.col_text(10);
+    attempt.opinion_required = stmt.col_int64(11) != 0;
+    attempt.opinion_turn_index = static_cast<int>(stmt.col_int64(12));
+    attempt.opinion_source = stmt.col_text(13);
     return attempt;
 }
 
@@ -1737,10 +1782,13 @@ void Store::attach_plan(std::int64_t attempt_id, const ExamPlan& plan,
     exec("BEGIN IMMEDIATE");
     try {
         Statement attempt(db_,
-            "UPDATE exam_attempts SET plan_id = ?, plan_name = ?, plan_json = ? "
-            "WHERE id = ?");
+            "UPDATE exam_attempts SET plan_id = ?, plan_name = ?, plan_json = ?, "
+            "  opinion_required = ? WHERE id = ?");
         attempt.int64(1, plan.id).text(2, plan.name).text(3, plan_json)
-               .int64(4, attempt_id).run();
+               .int64(4, plan.require_opinion ? 1 : 0)
+               .int64(5, attempt_id).run();
+        //written in the same transaction as the plan itself, so an attempt can
+        //never carry a plan whose opinion setting was not recorded with it
 
         for (const PlanQuestion& question : plan.questions) {
             Statement row(db_,
@@ -1782,6 +1830,57 @@ void Store::mark_required_question(std::int64_t attempt_id,
         "WHERE attempt_id = ? AND question_id = ?");
     row.text(1, status).int64(2, turn_index).int64(3, attempt_id)
        .int64(4, question_id).run();
+}
+
+void Store::record_question_evidence(std::int64_t attempt_id, int turn_index,
+                                    const std::vector<QuestionEvidence>& rows) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    for (const QuestionEvidence& row : rows) {
+        Statement stmt(db_,
+            "INSERT OR IGNORE INTO required_question_evidence "
+            "(attempt_id, question_id, turn_index, overlap, model_named) "
+            "VALUES (?, ?, ?, ?, ?)");
+        stmt.int64(1, attempt_id).int64(2, row.question_id)
+            .int64(3, turn_index).real(4, row.overlap)
+            .int64(5, row.model_named ? 1 : 0).run();
+    }
+    //OR IGNORE for the same reason record_turn_features uses it: one turn index
+    //is scored once, and a regenerated reply at the same index keeps the first
+}
+
+std::vector<QuestionEvidence> Store::question_evidence(std::int64_t attempt_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement stmt(db_,
+        "SELECT question_id, turn_index, overlap, model_named "
+        "FROM required_question_evidence WHERE attempt_id = ? "
+        "ORDER BY question_id, turn_index");
+    stmt.int64(1, attempt_id);
+
+    std::vector<QuestionEvidence> rows;
+    while (stmt.row()) {
+        QuestionEvidence row;
+        row.question_id = stmt.col_int64(0);
+        row.turn_index = static_cast<int>(stmt.col_int64(1));
+        row.overlap = stmt.col_double(2);
+        row.model_named = stmt.col_int64(3) != 0;
+        rows.push_back(row);
+    }
+    return rows;
+}
+
+void Store::mark_opinion_asked(std::int64_t attempt_id, int turn_index,
+                               const std::string& source) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    Statement row(db_,
+        "UPDATE exam_attempts SET opinion_turn_index = ?, opinion_source = ? "
+        "WHERE id = ? AND opinion_turn_index IS NULL");
+    row.int64(1, turn_index).text(2, source).int64(3, attempt_id).run();
+    //first asking wins. Session stops reporting once the debt is paid, so a
+    //second call should not arrive - and if one does, the turn the teacher is
+    //shown stays the turn the question was actually asked on
 }
 
 void Store::close_required_questions(std::int64_t attempt_id) {

@@ -6,6 +6,19 @@
 
 namespace sim {
 
+// How long an exam may run. One definition for the two places that each held
+// their own copy of these numbers - the plan validator and the
+// EXAM_DURATION_SECONDS parser - because nothing tied the copies together and
+// nothing would have caught them parting: a plan refused at a length the
+// server's own default happily runs would be a rule with no reason a teacher
+// could see.
+constexpr int kMinExamSeconds = 60;
+//under a minute there is time for the opening question and nothing after it,
+//so the exam ends before the student has said anything worth marking
+constexpr int kMaxExamSeconds = 600;
+//ten minutes. Longer is a typo far more often than it is a real oral, and a
+//runaway length is charged for one Gemini call at a time
+
 // An exam plan: what a teacher asks the examiner to cover. Plain data, in its
 // own header because both sides need it - Store reads and writes plans, and
 // Session follows one - and Session must not include the Store.

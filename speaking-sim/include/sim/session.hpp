@@ -18,6 +18,23 @@
 
 namespace sim {
 
+// How close a reply has to be to a set question to count as having asked it.
+// The measure is the share of the set question's words the reply carried.
+// Public because the thresholds decide what a teacher is shown as well as what
+// the exam does, and a second copy of 0.8 in the dashboard would be free to
+// drift away from this one.
+constexpr double kVerbatimMatch = 0.8;
+//a reply this close asked the question, whatever the examiner says about it
+constexpr double kConfirmedMatch = 0.5;
+//close enough when the examiner also names the question's id: it may have
+//changed an article or the word order, but not asked something else
+constexpr double kEvidenceFloor = 0.3;
+//below this a score is not worth recording: on a reply about something else
+//entirely the shared words are articles and prepositions, and a table of those
+//would bury the scores that came close. Both thresholds above sit well clear
+//of it, so every score that decided anything is kept, along with the band just
+//under kConfirmedMatch where a threshold set too high would show itself
+
 class Session {
 public:
     Session();
@@ -104,12 +121,31 @@ public:
         //examiner ignored the order too many times
         std::vector<std::string> question_tenses;
         //model and rules together, as counted towards the plan's targets
+        struct QuestionEvidence {
+            std::int64_t question_id = 0;
+            double overlap = 0.0;
+            //what the word-overlap measure returned for this reply
+            bool model_named = false;
+            //whether the examiner's own reply named this question's id
+        };
+        std::vector<QuestionEvidence> evidence;
+        //why each pending set question was or was not closed by this reply.
+        //Only the scores worth keeping: everything at or above the floor, plus
+        //every reply the examiner labelled with the question's id however low
+        //it scored, because that pair is the one the verdict trusts furthest
+        //from the words actually said
+        std::optional<std::string> opinion_source;
+        //set on the one turn that discharges the exam's opinion question, and
+        //empty on every other: "model" when the examiner said so itself,
+        //"openers" when only the phrase list saw it. Which of the two found it
+        //is worth keeping - it is the only measure of how much the phrase list
+        //is actually catching, and the list is the weaker of the two checks
     };
     ReplyOutcome note_examiner_reply(const std::string& question,
                                      const ExaminerReply& reply);
     //after record_question: checks the reply against the set questions, counts
-    //its tenses and takes the examiner's own word on whether it asked an
-    //opinion. Returns what Server has to write down
+    //its tenses and decides whether this reply asked for an opinion. Returns
+    //what Server has to write down
 
     int next_turn_index();
     //monotonic per session, handed to each stored turn. Not atomic on purpose -
@@ -214,6 +250,11 @@ private:
     //every exam owes the student one question asking for an opinion. The turn
     //it falls on is drawn per session, so it is not the same beat every time
     //drawn per topic, so the examiner does not move on to a predictable rhythm
+    bool opinion_required_ = true;
+    //whether this exam owes one at all: a plan can switch it off. Kept apart
+    //from opinion_done_, which it would be easier to pre-set, because that
+    //would also switch the detection off - and then a plan wanting no opinion
+    //question and an exam that asked one anyway would leave the same record
     mutable std::mt19937 rng_;
     //mutable because build_examiner_input() is const and draws its sample from
     //it. One job at a time holds a session, so the draws cannot race

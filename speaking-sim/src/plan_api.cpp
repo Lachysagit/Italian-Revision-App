@@ -247,8 +247,13 @@ crow::response Server::serve_exam_options(const crow::request& req) {
     }
     json["tenses"] = std::move(tenses);
     json["default_duration_seconds"] = config_.exam_duration_seconds;
+    json["min_duration_seconds"] = kMinExamSeconds;
+    json["max_duration_seconds"] = kMaxExamSeconds;
     json["seconds_per_question"] = kSecondsPerQuestion;
-    //so the editor can say how many set questions fit before it saves
+    //so the editor can say how many set questions fit, and offer only lengths
+    //the server would accept, before it saves. The bounds are served rather
+    //than written into the page: changing them here must not need the
+    //dashboard edited to match
     return json_response(json);
 }
 
