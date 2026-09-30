@@ -11,6 +11,11 @@
 #include <system_error>
 #include <thread>
 
+#include "sim/exam_plan.hpp"
+//for kMinExamSeconds and kMaxExamSeconds, which a plan's own length is held to
+//as well: one set of bounds, so the server default can never be a length a
+//teacher is refused
+
 namespace sim {
 
 namespace {
@@ -86,11 +91,6 @@ std::vector<GeminiKeyOption> parse_gemini_keys(const std::string& text) {
     }
     return options;
 }
-
-//an exam shorter than a minute is not an exam and one over an hour is a
-//typo; both bounds are clamped to rather than rejected
-constexpr int kMinExamSeconds = 60;
-constexpr int kMaxExamSeconds = 60 * 60;
 
 //Gemini 3.x takes an enum here, not the 2.5-series thinkingBudget integer, and
 //3.8 dropped the "minimal" that 3.5 and 3.6 accepted. A value outside the set
@@ -318,6 +318,15 @@ Config load_config() {
     }
     config.exam_duration_seconds =
         std::clamp(exam_seconds, kMinExamSeconds, kMaxExamSeconds);
+    if (config.exam_duration_seconds != exam_seconds) {
+        std::cerr << "EXAM_DURATION_SECONDS " << exam_seconds
+                  << " is outside " << kMinExamSeconds << "-" << kMaxExamSeconds
+                  << " seconds, using " << config.exam_duration_seconds << "\n";
+        //clamped rather than refused, as before - a server that will not start
+        //over one number is worse than a server running a sane length - but no
+        //longer silently: the old clamp left an operator who asked for half an
+        //hour with a five minute exam and nothing in the log to explain it
+    }
 
     const std::string threads_text = get_env("WORKER_THREADS", "0");
     config.worker_threads = 0;

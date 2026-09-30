@@ -1956,9 +1956,15 @@ Server::Allowance Server::allowance_for(const User& user) {
 }
 
 int Server::start_exam_clock(Session& session) {
-    const int seconds = session.plan_duration_seconds() > 0
-                            ? session.plan_duration_seconds()
-                            : config_.exam_duration_seconds;
+    const int seconds =
+        session.plan_duration_seconds() > 0
+            ? std::clamp(session.plan_duration_seconds(), kMinExamSeconds,
+                         kMaxExamSeconds)
+            : config_.exam_duration_seconds;
+    //clamped here as well as refused at save, because a plan stored before
+    //these bounds narrowed still holds whatever length it was saved with, and
+    //a plan nobody reopens would otherwise go on running past the maximum.
+    //config_.exam_duration_seconds is already clamped by the config parser
     session.start_clock(Session::Clock::now(),
                         std::chrono::seconds(seconds + kClockSlackSeconds));
     return seconds;

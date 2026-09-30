@@ -56,8 +56,6 @@ constexpr std::size_t kMaxNameBytes = 80;
 constexpr std::size_t kMaxQuestionBytes = 300;
 constexpr std::size_t kMaxQuestions = 20;
 constexpr int kMaxTenseCount = 5;
-constexpr int kMinDuration = 60;
-constexpr int kMaxDuration = 60 * 60;
 
 std::string trimmed(const std::string& text) {
     const std::size_t begin = text.find_first_not_of(" \t\r\n");
@@ -99,10 +97,28 @@ std::optional<ExamPlan> plan_from_json(const crow::json::rvalue& body,
         body["duration_seconds"].t() == crow::json::type::Number) {
         plan.duration_seconds = static_cast<int>(body["duration_seconds"].i());
     }
-    if (plan.duration_seconds != 0 &&
-        (plan.duration_seconds < kMinDuration || plan.duration_seconds > kMaxDuration)) {
-        error = "an exam runs between 1 and 60 minutes";
+    if (plan.duration_seconds < 0) {
+        error = "an exam cannot be a negative length";
         return std::nullopt;
+        //caught before the bounds check so the sentence names the real
+        //mistake: "shorter than 1 minute" reads like a rounding quarrel
+    }
+    if (plan.duration_seconds != 0 &&
+        (plan.duration_seconds < kMinExamSeconds ||
+         plan.duration_seconds > kMaxExamSeconds)) {
+        error = std::string("an exam runs between ") +
+                std::to_string(kMinExamSeconds / 60) + " and " +
+                std::to_string(kMaxExamSeconds / 60) + " minutes, or 0 to keep " +
+                "the standard length; " +
+                std::to_string(plan.duration_seconds) + " seconds is " +
+                (plan.duration_seconds < kMinExamSeconds ? "shorter" : "longer") +
+                " than that";
+        return std::nullopt;
+        //refused rather than clamped, unlike EXAM_DURATION_SECONDS: an operator
+        //setting an env var is not watching, and a teacher pressing Save is.
+        //Silently shortening their exam is how a plan comes to run for a length
+        //nobody chose. The bounds are read from the constants so the sentence
+        //cannot go stale the way the old fixed "1 and 60 minutes" did
     }
 
     plan.require_opinion = flag(body, "require_opinion", true);
