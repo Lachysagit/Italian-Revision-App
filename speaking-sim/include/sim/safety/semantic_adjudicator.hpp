@@ -28,8 +28,10 @@ namespace sim {
 //   profanity    NEVER. An exact match against a curated token list has no
 //                ambiguity to resolve, and a mask is cheap enough not to
 //                justify a model call
-//   hate         may fall to Mask, never lower. A slur quoted and a slur used
-//                are genuinely different, and being wrong is still serious
+//   hate         may fall to Allow. Safe because the listed slurs are masked
+//                by the wordlist layer, which is non-adjudicable and whose mask
+//                now survives a clearance - so what is being cleared here is a
+//                judgement about meaning, not permission to say a slur
 //   sexual       may fall to Allow. This is where the false positives are:
 //   violence     a film plot or a war topic is legitimate exam content that a
 //                severity-2 threshold will flag
@@ -53,7 +55,8 @@ namespace sim {
 //   4. self_harm is explicitly enabled in the configuration, which it is not
 //      by default
 //
-// Even then the floor is Halt, never Allow or Mask. The worst case of a wrong
+// Even then the floor is Halt, never Mask or Allow. Self-harm is the ONLY
+// category with a floor above Allow. The worst case of a wrong
 // downgrade is a student losing one turn and getting the question refunded;
 // the worst case of the opposite is a child's disclosure discarded by a
 // language model. Those are not comparable errors and the floor says so.

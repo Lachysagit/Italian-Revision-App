@@ -64,10 +64,13 @@ private:
     //for an escalation, which is the one verdict whose reviewability depends
     //on whether the detectors agreed
 
-    SafetyVerdict adjudicated(SafetyVerdict verdict, const std::string& text,
-                              SafetyStage stage,
+    SafetyVerdict adjudicated(SafetyVerdict verdict, const SafetyVerdict& carried,
+                              const std::string& text, SafetyStage stage,
                               const std::string& language_id);
-    //runs the semantic pass, if there is one, and records what it did in last_
+    //runs the semantic pass, if there is one, and records what it did in last_.
+    //`carried` is what the layers before this one had concluded - a cleared
+    //verdict falls back to it rather than to Allow, so a mask applied earlier
+    //in the chain survives the clearance
 
     std::vector<std::unique_ptr<InterfaceSafety>> layers_;
     Options options_;

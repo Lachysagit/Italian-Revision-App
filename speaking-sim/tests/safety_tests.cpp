@@ -356,8 +356,9 @@ void test_adjudicator_floors() {
     check(sim::SemanticAdjudicator::floor_for("self_harm") ==
               sim::SafetyAction::Halt,
           "self-harm can never be cleared below Halt");
-    check(sim::SemanticAdjudicator::floor_for("hate") == sim::SafetyAction::Mask,
-          "hate can never be cleared below Mask");
+    check(sim::SemanticAdjudicator::floor_for("hate") == sim::SafetyAction::Allow,
+          "hate may be cleared outright - the listed slurs are masked by the "
+          "wordlist layer regardless, and that layer is non-adjudicable");
     check(sim::SemanticAdjudicator::floor_for("violence") ==
               sim::SafetyAction::Allow,
           "violence may be cleared outright");
@@ -536,16 +537,30 @@ void test_adjudicator_clears_the_real_cases() {
               std::string("and clears to Allow for ") + category);
     }
 
-    // Hate stops at Mask, so a Mask verdict has nowhere to go and is upheld
-    // rather than reported as a downgrade that changed nothing.
+    // Quoted hate clears too, for the reason in floor_for: an actual slur is
+    // already masked by the non-adjudicable wordlist layer, so what clears
+    // here is a judgement about meaning.
     {
         Rig rig = make_rig();
         rig.stub->answer = clears("quoted");
         const sim::AdjudicationResult result = rig.policy->review(
-            "x", flagged(sim::SafetyAction::Mask, "hate"), "italian");
+            "we studied the white australia policy",
+            flagged(sim::SafetyAction::Halt, "hate"), "italian");
+        check(result.outcome == sim::AdjudicationOutcome::Downgraded,
+              "a quoted hate flag clears");
+        check(result.action == sim::SafetyAction::Allow, "outright");
+    }
+
+    // A verdict already sitting at its floor has nowhere to go, and is
+    // reported as upheld rather than as a downgrade that changed nothing.
+    {
+        Rig rig = make_rig(true);
+        rig.stub->answer = clears();
+        const sim::AdjudicationResult result = rig.policy->review(
+            "x", flagged(sim::SafetyAction::Halt, "self_harm"), "italian");
         check(result.outcome == sim::AdjudicationOutcome::Upheld,
-              "a verdict already at its floor is upheld, not downgraded");
-        check(result.action == sim::SafetyAction::Mask, "and does not move");
+              "a self-harm Halt is already at its floor, so it is upheld");
+        check(result.action == sim::SafetyAction::Halt, "and does not move");
     }
 }
 
@@ -572,6 +587,103 @@ public:
 private:
     std::string needle_;
 };
+
+
+// Masks a fixed token, standing in for the wordlist layer.
+class MasksOn : public sim::InterfaceSafety {
+public:
+    explicit MasksOn(std::string needle) : needle_(std::move(needle)) {}
+    sim::SafetyVerdict screen(const std::string& text, sim::SafetyStage,
+                              const std::string&) override {
+        sim::SafetyVerdict v;
+        v.text = text;
+        const std::size_t at = text.find(needle_);
+        if (at != std::string::npos) {
+            v.text = text.substr(0, at) + "***" +
+                     text.substr(at + needle_.size());
+            v.action = sim::SafetyAction::Mask;
+            v.category = "profanity";
+            v.detector = "stub";
+            v.non_adjudicable = true;
+            v.concurring_detectors = 1;
+            v.matches.push_back(needle_);
+        }
+        return v;
+    }
+    bool available() const override { return true; }
+private:
+    std::string needle_;
+};
+
+// Halts on a fixed token, standing in for Content Safety.
+class HaltsOn : public sim::InterfaceSafety {
+public:
+    HaltsOn(std::string needle, std::string category)
+        : needle_(std::move(needle)), category_(std::move(category)) {}
+    sim::SafetyVerdict screen(const std::string& text, sim::SafetyStage,
+                              const std::string&) override {
+        sim::SafetyVerdict v;
+        v.text = text;
+        if (text.find(needle_) != std::string::npos) {
+            v.action = sim::SafetyAction::Halt;
+            v.category = category_;
+            v.severity = 2;
+            v.detector = "stub";
+            v.concurring_detectors = 1;
+        }
+        return v;
+    }
+    bool available() const override { return true; }
+private:
+    std::string needle_;
+    std::string category_;
+};
+
+// The compound case, and the reason adjudicated() takes the carried state: a
+// swear word is masked, a later layer halts the masked copy on violence, and
+// the reasoning pass clears the violence. The turn must continue AND the mask
+// must survive - clearing to a bare Allow would send the original, unmasked
+// words to the socket, the store and the examiner.
+void test_mask_survives_a_clearance() {
+    std::vector<std::unique_ptr<sim::InterfaceSafety>> layers;
+    layers.push_back(std::make_unique<MasksOn>("cazzo"));
+    layers.push_back(std::make_unique<HaltsOn>("guerra", "violence"));
+
+    Rig rig = make_rig();
+    rig.stub->answer = clears("fictional");
+    sim::SafetyChain chain(std::move(layers), {}, std::move(rig.policy));
+
+    const sim::SafetyVerdict v = chain.screen(
+        "che cazzo, il film sulla guerra", sim::SafetyStage::StudentSpeech,
+        "italian");
+
+    check(rig.stub->calls == 1, "the halted turn reaches the reasoning pass");
+    check(v.action == sim::SafetyAction::Mask,
+          "the cleared violence leaves the mask standing, not a bare Allow");
+    equal(v.text, "che ***, il film sulla guerra",
+          "and the masked copy is what continues");
+    check(chain.last_adjudication().outcome ==
+              sim::AdjudicationOutcome::Downgraded,
+          "the clearance is still recorded as a downgrade");
+    check(chain.last_adjudication().original_action == sim::SafetyAction::Halt,
+          "with the halt it cleared");
+
+    // Upheld instead: the turn stops, and the mask is irrelevant because
+    // nothing continues.
+    {
+        std::vector<std::unique_ptr<sim::InterfaceSafety>> strict;
+        strict.push_back(std::make_unique<MasksOn>("cazzo"));
+        strict.push_back(std::make_unique<HaltsOn>("guerra", "violence"));
+        Rig upheld = make_rig();
+        upheld.stub->answer = sim::AdjudicatorOpinion{};  //genuine by default
+        sim::SafetyChain chain2(std::move(strict), {}, std::move(upheld.policy));
+        const sim::SafetyVerdict stopped = chain2.screen(
+            "che cazzo, il film sulla guerra", sim::SafetyStage::StudentSpeech,
+            "italian");
+        check(stopped.action == sim::SafetyAction::Halt,
+              "an upheld violence flag still stops the turn");
+    }
+}
 
 void test_chain_counts_consensus() {
     // Two detectors agreeing must produce concurring_detectors == 2, which is
@@ -663,6 +775,7 @@ int main() {
     test_adjudicator_upholds();
     test_adjudicator_clears_the_real_cases();
     test_chain_counts_consensus();
+    test_mask_survives_a_clearance();
 
     if (failures != 0) {
         std::cerr << failures << " check(s) failed\n";

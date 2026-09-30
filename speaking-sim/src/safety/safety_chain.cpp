@@ -16,6 +16,18 @@ bool stops_the_turn(SafetyAction action) {
     return action == SafetyAction::Halt || action == SafetyAction::Escalate;
 }
 
+int rank(SafetyAction action) {
+    switch (action) {
+        case SafetyAction::Allow:    return 0;
+        case SafetyAction::Mask:     return 1;
+        case SafetyAction::Halt:     return 2;
+        case SafetyAction::Escalate: return 3;
+    }
+    return 3;
+    //an unknown action ranks most severe, so a future enum value cannot be
+    //quietly treated as harmless
+}
+
 }  // namespace
 
 thread_local AdjudicationResult SafetyChain::last_;
@@ -73,13 +85,13 @@ SafetyVerdict SafetyChain::screen(const std::string& text,
                     count_concurring(verdict, text, stage, language_id, here);
                 //`here`, not `index`: index has already moved past this layer,
                 //and passing it would skip the very next layer's opinion
-                return adjudicated(verdict, text, stage, language_id);
+                return adjudicated(verdict, carried, text, stage, language_id);
             }
             if (stops_the_turn(verdict.action)) {
                 if (verdict.concurring_detectors == 0) {
                     verdict.concurring_detectors = 1;
                 }
-                return adjudicated(verdict, text, stage, language_id);
+                return adjudicated(verdict, carried, text, stage, language_id);
             }
 
             if (verdict.action == SafetyAction::Mask) {
@@ -162,6 +174,7 @@ int SafetyChain::count_concurring(const SafetyVerdict& verdict,
 }
 
 SafetyVerdict SafetyChain::adjudicated(SafetyVerdict verdict,
+                                       const SafetyVerdict& carried,
                                        const std::string& text,
                                        SafetyStage stage,
                                        const std::string& language_id) {
@@ -177,11 +190,25 @@ SafetyVerdict SafetyChain::adjudicated(SafetyVerdict verdict,
     }
 
     last_ = adjudicator_->review(text, verdict, language_id);
-    verdict.action = last_.action;
+    if (last_.outcome != AdjudicationOutcome::Downgraded) return verdict;
+
+    // Cleared. What should continue is not "nothing was wrong" but "everything
+    // the OTHER layers concluded, minus the one just cleared" - and the other
+    // layers may already have masked a word.
+    //
+    // The case that drove this: the wordlist masks a swear word, Content Safety
+    // then halts the masked copy on violence, and the reasoning pass clears the
+    // violence. The turn must continue, and it must continue with the MASK
+    // STILL APPLIED. Taking verdict.text alone would be correct; taking the
+    // carried state is correct and also keeps the mask's action, so the stored
+    // row does not claim the turn passed clean.
+    verdict.text = carried.text;
+    verdict.action = rank(carried.action) > rank(last_.action) ? carried.action
+                                                              : last_.action;
     return verdict;
-    //the verdict keeps its category, severity, detector and matches. What the
-    //chain stopped is recorded as what it stopped even when the action was
-    //reduced, so an audit can count clear rates per category
+    //the verdict keeps its category, severity, detector and matches from the
+    //layer that stopped it, so an audit can still count clear rates per
+    //category. last_ carries what the reasoning pass did to it
 }
 
 }  // namespace sim

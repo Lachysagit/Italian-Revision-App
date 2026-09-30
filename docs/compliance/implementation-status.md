@@ -109,14 +109,32 @@ song hits me" and "das Spiel beenden" exist.
 
 | Category | Floor |
 |---|---|
-| `self_harm` | `Halt` — never `Allow`, never `Mask` |
-| `hate` | `Mask` |
-| `sexual`, `violence` | `Allow` |
+| `self_harm` | `Halt` — never `Mask`, never `Allow` |
+| `hate`, `sexual`, `violence` | `Allow` |
 
 The worst case of a wrong downgrade on self-harm is a student losing one turn
 and getting the question refunded. The worst case of the opposite is a child's
 disclosure discarded by a language model. Those are not comparable errors and
 the floor says so.
+
+**A clearance keeps what the other layers concluded.** Clearing a verdict does
+not mean "nothing was wrong" — it means "everything the other layers concluded,
+minus the one just cleared". The case that drove this: the wordlist masks a
+swear word, Content Safety then halts the masked copy on `violence`, and the
+reasoning pass clears the violence. The turn continues **with the mask still
+applied**. Clearing to a bare `Allow` would have sent the original, unmasked
+words to the socket, the store and the examiner. Nothing is ever re-screened —
+there is one screening pass and one review, and only the verdict's action
+changes.
+
+`hate` floors at `Allow` for a related reason. It used to floor at `Mask`, which
+was unimplementable: `Mask` means "replace these tokens", and Content Safety
+reports a category and a severity but no spans, so a cleared `hate` halt
+produced a verdict that *said* a word was hidden while the text went through
+verbatim. Clearing outright is safe because the actual slurs live in
+`profanity.txt`, the wordlist masks them, that layer is non-adjudicable, and
+that mask now survives a clearance. What `hate` adds on top is a judgement about
+meaning — and "we studied the White Australia policy" is a history answer.
 
 **Everything upholds.** A downgrade needs an affirmative, well-formed,
 high-confidence answer with a reason code that permits it. `genuine`,
@@ -180,9 +198,12 @@ Listed rather than left for a reviewer to find.
    returns the rows; nothing renders them. Until that exists, an escalation
    reaches a teacher only if someone reads the database. This is phase 5 and
    it is the single most important thing to build next.
-3. **Notices reuse the error channel.** A masked turn tells the student
-   through the same message type as a failure, because that is the only
-   mechanism the protocol has. A dedicated notice type would read better.
+3. **Halt and escalation notices reuse the error channel**, because that is the
+   only mechanism the protocol has. A dedicated notice type would read better.
+   Masking is silent by design and sends nothing: the mask is already visible in
+   the transcript the student can see, so a notice would add only a reprimand
+   mid-exam, and it would advertise the filter's contents to anyone probing it.
+   The `safety_events` row is still written.
 4. **An escalation on the very last turn of an exam** leaves the attempt
    closed as `escalated`, but a halt on that turn returns before the
    timer/quota path closes the attempt, so it is closed as `disconnect` when

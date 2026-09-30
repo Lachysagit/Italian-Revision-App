@@ -67,11 +67,27 @@ void SemanticAdjudicator::set_detector_count(int detectors) {
 
 SafetyAction SemanticAdjudicator::floor_for(const std::string& category) {
     if (category == "self_harm") return SafetyAction::Halt;
-    if (category == "hate")      return SafetyAction::Mask;
     return SafetyAction::Allow;
-    //sexual and violence are the two categories a downgrade may clear
-    //outright, because a film plot and a history answer are legitimate exam
-    //content that a severity-2 threshold flags on sight
+
+    // hate used to floor at Mask, on the reasoning that a slur quoted and a
+    // slur used are different and the middle ground was worth keeping. That
+    // floor was unimplementable and quietly dishonest: Mask means "replace
+    // these tokens", Content Safety reports a category and a severity but no
+    // spans, so a Halt cleared to Mask produced a verdict that SAID a word was
+    // hidden while the text went through verbatim.
+    //
+    // Clearing it outright is safe for a reason that is worth stating: the
+    // actual slurs are in profanity.txt, the wordlist layer masks them, and
+    // that layer is non-adjudicable. So a listed slur is masked whatever the
+    // reasoning pass concludes about the sentence around it, and the chain now
+    // carries that mask through a clearance. What "hate" adds on top is a
+    // judgement about MEANING, and meaning is exactly what the reasoning pass
+    // is better placed to judge than a severity threshold - "we studied the
+    // White Australia policy" is a history answer.
+    //
+    // The general principle, which this follows: prefer letting text through.
+    // An exam stopped over a legitimate answer is a cost paid by every student
+    // who phrases something awkwardly.
 }
 
 bool SemanticAdjudicator::adjudicable(const SafetyVerdict& verdict) const {
