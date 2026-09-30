@@ -48,11 +48,21 @@ public:
     bool available() const override;
     //false until at least one list has been loaded with something in it
 
+    struct Phrase {
+        std::string text;
+        bool non_adjudicable = false;
+        //written in the file as a leading "!". The marker is stripped before
+        //normalisation, so "!kill myself" and "kill myself" match identically
+        //and differ only in whether the semantic pass may touch the verdict
+    };
+    //public so the file readers can name it: this is the on-disk shape of a
+    //phrase list, which is a detail of the format rather than of this class
+
 private:
     struct Lists {
         std::unordered_set<std::string> profanity;
-        std::vector<std::string> jailbreak;
-        std::vector<std::string> escalate;
+        std::vector<Phrase> jailbreak;
+        std::vector<Phrase> escalate;
         bool loaded = false;
     };
 

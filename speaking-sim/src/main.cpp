@@ -18,6 +18,8 @@
 #include "sim/examiner/gemini_examiner.hpp"
 #include "sim/examiner/hailo_examiner.hpp"
 #include "sim/safety/azure_safety.hpp"
+#include "sim/safety/examiner_adjudicator.hpp"
+#include "sim/safety/semantic_adjudicator.hpp"
 #include "sim/safety/safety_chain.hpp"
 #include "sim/safety/wordlist_safety.hpp"
 #include "sim/stt/whisper_stt.hpp"
@@ -238,9 +240,25 @@ int main(int argc, char** argv) {
             layers.push_back(std::make_unique<sim::AzureSafety>(
                 std::move(options)));
         }
+        std::unique_ptr<sim::SemanticAdjudicator> adjudicator;
+        if (config.adjudicator_mode == sim::AdjudicatorMode::Examiner) {
+            sim::SemanticAdjudicator::Options options;
+            options.categories = config.adjudicate_categories;
+            options.self_harm = config.adjudicate_self_harm;
+            adjudicator = std::make_unique<sim::SemanticAdjudicator>(
+                std::make_unique<sim::ExaminerAdjudicator>(examiner.get(), ""),
+                std::move(options));
+            //the adjudicator borrows the examiner, which Server is about to
+            //take ownership of. That is safe because Server owns both for the
+            //same lifetime and destroys the chain before the examiner - but it
+            //is the one raw pointer in this wiring, so it is spelled out here
+            //rather than left to be discovered
+        }
+
         auto safety = std::make_unique<sim::SafetyChain>(
             std::move(layers),
-            sim::SafetyChain::Options{config.safety_fail_closed});
+            sim::SafetyChain::Options{config.safety_fail_closed},
+            std::move(adjudicator));
         //built here beside the examiner for the same reason: this is the ONLY
         //place the safety backends are chosen. An empty chain is what
         //SAFETY_MODE=off produces, and its ready() is false, which is what

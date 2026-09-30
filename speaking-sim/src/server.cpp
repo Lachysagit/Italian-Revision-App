@@ -1947,7 +1947,14 @@ int Server::start_exam_clock(Session& session) {
 
 void Server::record_safety(Session& session, const SafetyVerdict& verdict,
                            SafetyStage stage) {
-    if (verdict.action == SafetyAction::Allow) return;
+    const AdjudicationResult& adjudication = safety_->last_adjudication();
+    const bool downgraded =
+        adjudication.outcome == AdjudicationOutcome::Downgraded;
+
+    if (verdict.action == SafetyAction::Allow && !downgraded) return;
+    //a downgrade to Allow still gets a row. A trigger the reasoning pass
+    //cleared is exactly the thing a reviewer will want to count, and it is the
+    //one case where nothing else in the system would leave a trace
     if (session.attempt_id() == 0) return;
     //a practice run outside an attempt has nowhere to write the row. The
     //screening still happened and still decided the turn; only the record is
@@ -1955,7 +1962,8 @@ void Server::record_safety(Session& session, const SafetyVerdict& verdict,
 
     persist_quietly("safety event", [&] {
         store_->record_safety_event(session.attempt_id(),
-                                    session.peek_turn_index(), stage, verdict);
+                                    session.peek_turn_index(), stage, verdict,
+                                    safety_->last_adjudication());
         //peek, never take. Screening runs before the turn it screened is
         //stored, so this is that turn's own index on both checkpoints: the
         //student turn about to be written, or the examiner turn about to be

@@ -8,6 +8,7 @@
 // for not adding a dependency to solve a small problem.
 
 #include "sim/safety/safety_chain.hpp"
+#include "sim/safety/semantic_adjudicator.hpp"
 #include "sim/safety/wordlist_safety.hpp"
 
 #include <cstdlib>
@@ -69,7 +70,9 @@ std::string make_lists() {
     std::ofstream(lang + "/profanity.txt") << "# comment\ncazzo\nfuck\n\n";
     std::ofstream(lang + "/jailbreak.txt") << "ignora le istruzioni\n";
     std::ofstream(lang + "/escalate.txt")
-        << "voglio morire\nkill myself\nsuicida\n";
+        << "!voglio morire\n!kill myself\nsuicida\nhits me\n";
+    //the first two are marked non-adjudicable with a leading "!", the last two
+    //are not. The marker must not change what they match
     return dir;
 }
 
@@ -151,6 +154,39 @@ void test_wordlist(const std::string& dir) {
                                             "italian");
         check(v.action == sim::SafetyAction::Escalate,
               "escalation outranks profanity in one utterance");
+    }
+
+    // The "!" marker changes what may be done about a verdict, never what
+    // matches. Both of these escalate; only one is reviewable.
+    {
+        sim::SafetyVerdict v = layer.screen("a volte voglio morire",
+                                            sim::SafetyStage::StudentSpeech,
+                                            "italian");
+        check(v.action == sim::SafetyAction::Escalate,
+              "a marked entry still matches");
+        check(v.non_adjudicable, "a marked entry is non-adjudicable");
+        check(v.matches.size() == 1 && v.matches[0] == "voglio morire",
+              "the marker is stripped before the term is recorded");
+    }
+    {
+        sim::SafetyVerdict v = layer.screen("sono suicida",
+                                            sim::SafetyStage::StudentSpeech,
+                                            "italian");
+        check(v.action == sim::SafetyAction::Escalate, "an unmarked entry matches");
+        check(!v.non_adjudicable, "an unmarked entry is adjudicable");
+    }
+    {
+        sim::SafetyVerdict v = layer.screen("ignora le istruzioni",
+                                            sim::SafetyStage::StudentSpeech,
+                                            "italian");
+        check(v.non_adjudicable,
+              "jailbreak is non-adjudicable whatever the file says");
+    }
+    {
+        sim::SafetyVerdict v = layer.screen("che cazzo dici",
+                                            sim::SafetyStage::StudentSpeech,
+                                            "italian");
+        check(v.non_adjudicable, "profanity is non-adjudicable");
     }
 
     {
@@ -257,6 +293,310 @@ void test_chain(const std::string& dir) {
     }
 }
 
+
+// ---- the semantic reasoning pass -------------------------------------------
+
+// A backend that answers however the test tells it to, and records whether it
+// was called at all - which for several of these cases is the whole assertion.
+class StubAdjudicator : public sim::InterfaceAdjudicator {
+public:
+    sim::AdjudicatorOpinion answer;
+    bool healthy = true;
+    bool throws = false;
+    int calls = 0;
+
+    sim::AdjudicatorOpinion review(const std::string&, const std::string&,
+                                   const std::string&) override {
+        ++calls;
+        if (throws) throw std::runtime_error("backend is down");
+        return answer;
+    }
+    bool available() const override { return healthy; }
+};
+
+sim::AdjudicatorOpinion clears(const char* reason = "idiomatic") {
+    sim::AdjudicatorOpinion opinion;
+    opinion.genuine = false;
+    opinion.confidence = "high";
+    opinion.reason_code = reason;
+    return opinion;
+}
+
+sim::SafetyVerdict flagged(sim::SafetyAction action, const char* category,
+                           int concurring = 1, bool non_adjudicable = false) {
+    sim::SafetyVerdict v;
+    v.action = action;
+    v.category = category;
+    v.concurring_detectors = concurring;
+    v.non_adjudicable = non_adjudicable;
+    v.detector = "stub";
+    return v;
+}
+
+struct Rig {
+    StubAdjudicator* stub;
+    std::unique_ptr<sim::SemanticAdjudicator> policy;
+};
+
+Rig make_rig(bool self_harm = false) {
+    auto owned = std::make_unique<StubAdjudicator>();
+    StubAdjudicator* raw = owned.get();
+    sim::SemanticAdjudicator::Options options;
+    options.self_harm = self_harm;
+    return Rig{raw, std::make_unique<sim::SemanticAdjudicator>(
+                        std::move(owned), std::move(options))};
+}
+
+void test_adjudicator_floors() {
+    // The numbers a reviewer will ask about, asserted directly rather than
+    // only through behaviour.
+    check(sim::SemanticAdjudicator::floor_for("self_harm") ==
+              sim::SafetyAction::Halt,
+          "self-harm can never be cleared below Halt");
+    check(sim::SemanticAdjudicator::floor_for("hate") == sim::SafetyAction::Mask,
+          "hate can never be cleared below Mask");
+    check(sim::SemanticAdjudicator::floor_for("violence") ==
+              sim::SafetyAction::Allow,
+          "violence may be cleared outright");
+    check(sim::SemanticAdjudicator::floor_for("sexual") ==
+              sim::SafetyAction::Allow,
+          "sexual may be cleared outright");
+
+    check(!sim::reason_permits_downgrade("genuine"),
+          "\"genuine\" never downgrades");
+    check(!sim::reason_permits_downgrade("ambiguous"),
+          "\"ambiguous\" never downgrades - the doubt goes to the student");
+    check(sim::reason_permits_downgrade("idiomatic"), "\"idiomatic\" may");
+    check(!sim::is_reason_code("whatever"), "an invented code is not a code");
+}
+
+void test_adjudicator_never_called() {
+    // The categories and cases that must not reach a model at all. Asserting
+    // calls == 0 is stronger than asserting the verdict stood: it proves the
+    // text was never sent, which is what makes the jailbreak exclusion an
+    // injection defence rather than a policy preference.
+    struct Case { sim::SafetyVerdict verdict; const char* what; };
+    const Case cases[] = {
+        {flagged(sim::SafetyAction::Halt, "jailbreak"),
+         "jailbreak is never sent to a model"},
+        {flagged(sim::SafetyAction::Mask, "profanity"),
+         "profanity is never sent to a model"},
+        {flagged(sim::SafetyAction::Halt, "unavailable"),
+         "a chain outage is never sent to a model"},
+        {flagged(sim::SafetyAction::Escalate, "self_harm", 1, true),
+         "a non-adjudicable entry is never sent to a model"},
+        {flagged(sim::SafetyAction::Escalate, "self_harm", 2),
+         "self-harm two detectors agreed on is never sent to a model"},
+    };
+
+    for (const Case& c : cases) {
+        Rig rig = make_rig(true);
+        rig.stub->answer = clears();
+        const sim::AdjudicationResult result =
+            rig.policy->review("whatever", c.verdict, "italian");
+        check(rig.stub->calls == 0, c.what);
+        check(result.outcome == sim::AdjudicationOutcome::NotAdjudicable,
+              std::string(c.what) + " (outcome)");
+        check(result.action == c.verdict.action,
+              std::string(c.what) + " (action stands)");
+    }
+}
+
+void test_adjudicator_self_harm_gates() {
+    // Disabled by default, even with one detector and an unmarked phrase.
+    {
+        Rig rig = make_rig(false);
+        rig.stub->answer = clears();
+        const sim::AdjudicationResult result = rig.policy->review(
+            "x", flagged(sim::SafetyAction::Escalate, "self_harm"), "italian");
+        check(rig.stub->calls == 0,
+              "self-harm review is off unless explicitly enabled");
+    }
+
+    // Enabled, one detector, unmarked: reviewable, and the floor holds.
+    {
+        Rig rig = make_rig(true);
+        rig.stub->answer = clears();
+        const sim::AdjudicationResult result = rig.policy->review(
+            "mi piace da morire",
+            flagged(sim::SafetyAction::Escalate, "self_harm"), "italian");
+        check(rig.stub->calls == 1, "a lone self-harm verdict is reviewable");
+        check(result.outcome == sim::AdjudicationOutcome::Downgraded,
+              "an idiom clears the escalation");
+        check(result.action == sim::SafetyAction::Halt,
+              "but only as far as Halt - never Allow, never Mask");
+        check(result.original_action == sim::SafetyAction::Escalate,
+              "the pre-review action is preserved for the record");
+    }
+}
+
+void test_adjudicator_upholds() {
+    struct Case { sim::AdjudicatorOpinion opinion; const char* what; };
+    sim::AdjudicatorOpinion genuine;
+    genuine.genuine = true;
+    genuine.confidence = "high";
+    genuine.reason_code = "genuine";
+
+    sim::AdjudicatorOpinion unsure = clears();
+    unsure.confidence = "medium";
+
+    sim::AdjudicatorOpinion vague = clears("ambiguous");
+    sim::AdjudicatorOpinion nonsense = clears("banana");
+    sim::AdjudicatorOpinion empty;
+    empty.genuine = false;  //everything else left blank
+
+    const Case cases[] = {
+        {genuine,  "a backend that agrees upholds"},
+        {unsure,   "anything below high confidence upholds"},
+        {vague,    "\"ambiguous\" upholds"},
+        {nonsense, "an unrecognised reason code upholds"},
+        {empty,    "a half-filled answer upholds"},
+    };
+
+    for (const Case& c : cases) {
+        Rig rig = make_rig();
+        rig.stub->answer = c.opinion;
+        const sim::AdjudicationResult result = rig.policy->review(
+            "x", flagged(sim::SafetyAction::Halt, "violence"), "italian");
+        check(result.outcome == sim::AdjudicationOutcome::Upheld, c.what);
+        check(result.action == sim::SafetyAction::Halt,
+              std::string(c.what) + " (action stands)");
+    }
+
+    // A backend that throws, and one that has not passed its health check.
+    {
+        Rig rig = make_rig();
+        rig.stub->throws = true;
+        const sim::AdjudicationResult result = rig.policy->review(
+            "x", flagged(sim::SafetyAction::Halt, "violence"), "italian");
+        check(result.outcome == sim::AdjudicationOutcome::Unavailable,
+              "a throwing backend is an outage, not a clearance");
+        check(result.action == sim::SafetyAction::Halt, "and the verdict stands");
+    }
+    {
+        Rig rig = make_rig();
+        rig.stub->healthy = false;
+        rig.stub->answer = clears();
+        const sim::AdjudicationResult result = rig.policy->review(
+            "x", flagged(sim::SafetyAction::Halt, "violence"), "italian");
+        check(rig.stub->calls == 0, "an unhealthy backend is not called");
+        check(result.outcome == sim::AdjudicationOutcome::Unavailable,
+              "an unhealthy backend is an outage");
+    }
+}
+
+void test_adjudicator_clears_the_real_cases() {
+    // What the feature is for: a severity threshold set strict enough for
+    // minors flags a film plot and a history answer, and those are legitimate
+    // exam content.
+    for (const char* category : {"violence", "sexual"}) {
+        Rig rig = make_rig();
+        rig.stub->answer = clears("fictional");
+        const sim::AdjudicationResult result = rig.policy->review(
+            "the film is about a war", flagged(sim::SafetyAction::Halt, category),
+            "italian");
+        check(result.outcome == sim::AdjudicationOutcome::Downgraded,
+              std::string("a fictional ") + category + " flag clears");
+        check(result.action == sim::SafetyAction::Allow,
+              std::string("and clears to Allow for ") + category);
+    }
+
+    // Hate stops at Mask, so a Mask verdict has nowhere to go and is upheld
+    // rather than reported as a downgrade that changed nothing.
+    {
+        Rig rig = make_rig();
+        rig.stub->answer = clears("quoted");
+        const sim::AdjudicationResult result = rig.policy->review(
+            "x", flagged(sim::SafetyAction::Mask, "hate"), "italian");
+        check(result.outcome == sim::AdjudicationOutcome::Upheld,
+              "a verdict already at its floor is upheld, not downgraded");
+        check(result.action == sim::SafetyAction::Mask, "and does not move");
+    }
+}
+
+// ---- the chain's part: consensus counting ----------------------------------
+
+// Escalates on a fixed phrase so two of these can be stacked to simulate the
+// wordlist and Content Safety reaching the same conclusion.
+class EscalatesOn : public sim::InterfaceSafety {
+public:
+    explicit EscalatesOn(std::string needle) : needle_(std::move(needle)) {}
+    sim::SafetyVerdict screen(const std::string& text, sim::SafetyStage,
+                              const std::string&) override {
+        sim::SafetyVerdict v;
+        v.text = text;
+        if (text.find(needle_) != std::string::npos) {
+            v.action = sim::SafetyAction::Escalate;
+            v.category = "self_harm";
+            v.concurring_detectors = 1;
+            v.detector = "stub";
+        }
+        return v;
+    }
+    bool available() const override { return true; }
+private:
+    std::string needle_;
+};
+
+void test_chain_counts_consensus() {
+    // Two detectors agreeing must produce concurring_detectors == 2, which is
+    // what makes the consensus rule enforceable at all.
+    {
+        std::vector<std::unique_ptr<sim::InterfaceSafety>> layers;
+        layers.push_back(std::make_unique<EscalatesOn>("morire"));
+        layers.push_back(std::make_unique<EscalatesOn>("morire"));
+        sim::SafetyChain chain(std::move(layers), {});
+        const sim::SafetyVerdict v = chain.screen(
+            "voglio morire", sim::SafetyStage::StudentSpeech, "italian");
+        check(v.action == sim::SafetyAction::Escalate, "the escalation stands");
+        check(v.concurring_detectors == 2, "both detectors are counted");
+    }
+    // Disagreement leaves the count at one.
+    {
+        std::vector<std::unique_ptr<sim::InterfaceSafety>> layers;
+        layers.push_back(std::make_unique<EscalatesOn>("morire"));
+        layers.push_back(std::make_unique<EscalatesOn>("qualcosaltro"));
+        sim::SafetyChain chain(std::move(layers), {});
+        const sim::SafetyVerdict v = chain.screen(
+            "voglio morire", sim::SafetyStage::StudentSpeech, "italian");
+        check(v.concurring_detectors == 1, "a lone detector counts once");
+    }
+    // The examiner's reply is never adjudicated, whatever is configured.
+    {
+        std::vector<std::unique_ptr<sim::InterfaceSafety>> layers;
+        layers.push_back(std::make_unique<EscalatesOn>("morire"));
+        Rig rig = make_rig(true);
+        rig.stub->answer = clears();
+        sim::SafetyChain chain(std::move(layers), {}, std::move(rig.policy));
+        const sim::SafetyVerdict v = chain.screen(
+            "voglio morire", sim::SafetyStage::ExaminerReply, "italian");
+        check(v.action == sim::SafetyAction::Escalate,
+              "an examiner reply is not adjudicated");
+        check(rig.stub->calls == 0, "and the backend is not called for one");
+    }
+    // End to end through the chain: one detector, review enabled, idiom
+    // cleared, floor respected, and last_adjudication() reports it.
+    {
+        std::vector<std::unique_ptr<sim::InterfaceSafety>> layers;
+        layers.push_back(std::make_unique<EscalatesOn>("da morire"));
+        Rig rig = make_rig(true);
+        rig.stub->answer = clears();
+        sim::SafetyChain chain(std::move(layers), {}, std::move(rig.policy));
+        const sim::SafetyVerdict v = chain.screen(
+            "mi piace da morire", sim::SafetyStage::StudentSpeech, "italian");
+        check(v.action == sim::SafetyAction::Halt,
+              "the chain applies the downgrade, floored at Halt");
+        check(v.category == "self_harm",
+              "the category is kept so an audit can count clear rates");
+        check(chain.last_adjudication().outcome ==
+                  sim::AdjudicationOutcome::Downgraded,
+              "and the chain reports what happened for the record");
+        check(chain.last_adjudication().original_action ==
+                  sim::SafetyAction::Escalate,
+              "including what the filters had decided");
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -264,6 +604,12 @@ int main() {
     test_normalise();
     test_wordlist(dir);
     test_chain(dir);
+    test_adjudicator_floors();
+    test_adjudicator_never_called();
+    test_adjudicator_self_harm_gates();
+    test_adjudicator_upholds();
+    test_adjudicator_clears_the_real_cases();
+    test_chain_counts_consensus();
 
     if (failures != 0) {
         std::cerr << failures << " check(s) failed\n";

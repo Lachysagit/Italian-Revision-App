@@ -1,6 +1,7 @@
 #include "sim/safety/safety_chain.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <iostream>
 #include <utility>
 
@@ -17,9 +18,14 @@ bool stops_the_turn(SafetyAction action) {
 
 }  // namespace
 
+thread_local AdjudicationResult SafetyChain::last_;
+
 SafetyChain::SafetyChain(std::vector<std::unique_ptr<InterfaceSafety>> layers,
-                         Options options)
-    : layers_(std::move(layers)), options_(options) {}
+                         Options options,
+                         std::unique_ptr<SemanticAdjudicator> adjudicator)
+    : layers_(std::move(layers)),
+      options_(options),
+      adjudicator_(std::move(adjudicator)) {}
 
 bool SafetyChain::ready() const {
     for (const auto& layer : layers_) {
@@ -32,6 +38,7 @@ bool SafetyChain::ready() const {
 
 void SafetyChain::prewarm() {
     for (auto& layer : layers_) layer->prewarm();
+    if (adjudicator_) adjudicator_->prewarm();
 }
 
 SafetyVerdict SafetyChain::screen(const std::string& text,
@@ -41,11 +48,31 @@ SafetyVerdict SafetyChain::screen(const std::string& text,
     carried.text = text;
     carried.detector = "chain";
 
+    std::size_t index = 0;
     for (auto& layer : layers_) {
+        const std::size_t here = index++;
         try {
             SafetyVerdict verdict = layer->screen(carried.text, stage, language_id);
 
-            if (stops_the_turn(verdict.action)) return verdict;
+            if (verdict.action == SafetyAction::Escalate) {
+                // The one verdict the loop does NOT return on immediately.
+                // Whether a semantic pass may review an escalation depends on
+                // whether the other detectors agreed, so the remaining layers
+                // are asked before anything is decided. An escalation is rare
+                // enough that the extra call is affordable, and it is the one
+                // verdict where being wrong matters most.
+                verdict.concurring_detectors =
+                    count_concurring(verdict, text, stage, language_id, here);
+                //`here`, not `index`: index has already moved past this layer,
+                //and passing it would skip the very next layer's opinion
+                return adjudicated(verdict, text, stage, language_id);
+            }
+            if (stops_the_turn(verdict.action)) {
+                if (verdict.concurring_detectors == 0) {
+                    verdict.concurring_detectors = 1;
+                }
+                return adjudicated(verdict, text, stage, language_id);
+            }
 
             if (verdict.action == SafetyAction::Mask) {
                 // The masked copy is what the next layer reads. A remote
@@ -94,7 +121,59 @@ SafetyVerdict SafetyChain::screen(const std::string& text,
     }
 
     return carried;
-    //Allow with the untouched text, or Mask with the accumulated masked copy
+    //Allow with the untouched text, or Mask with the accumulated masked copy.
+    //Neither is adjudicated: a mask is not reviewable, and an allow has
+    //nothing to review
+}
+
+// Asks the layers AFTER the one that escalated whether they reach the same
+// category. Their verdicts are thrown away apart from the count - this is
+// about agreement, not about a better answer. A layer that throws here is not
+// an outage for the turn: the escalation already stands, and a missing second
+// opinion simply leaves the count at one, which is the conservative reading
+// for every caller except the adjudicator's own gate.
+int SafetyChain::count_concurring(const SafetyVerdict& verdict,
+                                  const std::string& text, SafetyStage stage,
+                                  const std::string& language_id,
+                                  std::size_t after) {
+    int concurring = 1;
+    for (std::size_t i = after + 1; i < layers_.size(); ++i) {
+        try {
+            const SafetyVerdict second =
+                layers_[i]->screen(text, stage, language_id);
+            if (second.action != SafetyAction::Allow &&
+                second.category == verdict.category) {
+                ++concurring;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "safety: second opinion unavailable on "
+                      << verdict.category << ": " << e.what() << '\n';
+        }
+    }
+    return concurring;
+}
+
+SafetyVerdict SafetyChain::adjudicated(SafetyVerdict verdict,
+                                       const std::string& text,
+                                       SafetyStage stage,
+                                       const std::string& language_id) {
+    last_ = AdjudicationResult{};
+    last_.original_action = verdict.action;
+    last_.action = verdict.action;
+
+    if (!adjudicator_ || stage != SafetyStage::StudentSpeech) {
+        return verdict;
+        //an examiner reply is never adjudicated. A generated question is
+        //regenerable, so upholding and regenerating is strictly cheaper than
+        //reasoning about whether the model meant it
+    }
+
+    last_ = adjudicator_->review(text, verdict, language_id);
+    verdict.action = last_.action;
+    return verdict;
+    //the verdict keeps its category, severity, detector and matches. What the
+    //chain stopped is recorded as what it stopped even when the action was
+    //reduced, so an audit can count clear rates per category
 }
 
 }  // namespace sim

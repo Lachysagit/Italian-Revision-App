@@ -138,6 +138,49 @@ int checked_halt_severity() {
     return 2;
 }
 
+AdjudicatorMode checked_adjudicator_mode() {
+    const std::string mode = get_env("SAFETY_ADJUDICATOR", "off");
+    if (mode == "off")      return AdjudicatorMode::Off;
+    if (mode == "examiner") return AdjudicatorMode::Examiner;
+    throw std::runtime_error(
+        "SAFETY_ADJUDICATOR must be off or examiner, got: " + mode);
+}
+
+//Comma separated, whitespace trimmed, and filtered against the categories a
+//reasoning pass is permitted to touch at all. jailbreak and profanity are
+//dropped here as well as refused inside SemanticAdjudicator: defence in depth
+//for the one setting where a typo would widen what a model may overrule.
+std::vector<std::string> parse_adjudicate_categories(const std::string& text) {
+    std::vector<std::string> out;
+    std::size_t start = 0;
+    while (start <= text.size()) {
+        const std::size_t comma = text.find(',', start);
+        const std::size_t end = comma == std::string::npos ? text.size() : comma;
+
+        std::string item = text.substr(start, end - start);
+        const std::size_t first = item.find_first_not_of(" \t");
+        const std::size_t last = item.find_last_not_of(" \t");
+        if (first != std::string::npos) {
+            item = item.substr(first, last - first + 1);
+        } else {
+            item.clear();
+        }
+
+        if (item == "sexual" || item == "violence" || item == "hate") {
+            out.push_back(item);
+        } else if (!item.empty()) {
+            std::cerr << "SAFETY_ADJUDICATE_CATEGORIES: ignoring \"" << item
+                      << "\" - only sexual, violence and hate may be reviewed "
+                         "(self-harm has its own flag, and jailbreak and "
+                         "profanity are never reviewable)\n";
+        }
+
+        if (comma == std::string::npos) break;
+        start = comma + 1;
+    }
+    return out;
+}
+
 }  // namespace
 
 Config load_config() {
@@ -228,6 +271,12 @@ Config load_config() {
     config.content_safety_halt_severity = checked_halt_severity();
     config.safety_shield_prompts =
         parse_bool(get_env("SAFETY_SHIELD_PROMPTS", ""), true);
+
+    config.adjudicator_mode = checked_adjudicator_mode();
+    config.adjudicate_categories = parse_adjudicate_categories(
+        get_env("SAFETY_ADJUDICATE_CATEGORIES", "sexual,violence,hate"));
+    config.adjudicate_self_harm =
+        parse_bool(get_env("SAFETY_ADJUDICATE_SELF_HARM", ""), false);
 
     const std::string audio_codec = get_env("AUDIO_CODEC", "flac");
     config.audio_codec =
@@ -344,6 +393,41 @@ Config load_config() {
         //compliant build is a cascade. Enforced here rather than left to
         //phase 2 so that turning AUTH_REQUIRED on says what is missing
         //instead of quietly shipping student audio outside the country
+    }
+
+    if (config.adjudicator_mode != AdjudicatorMode::Off &&
+        config.safety_mode == SafetyMode::Off) {
+        throw std::runtime_error(
+            "SAFETY_ADJUDICATOR is set but SAFETY_MODE is off. There would be "
+            "no verdicts to review.");
+    }
+
+    if (config.adjudicator_mode == AdjudicatorMode::Examiner &&
+        config.auth_required &&
+        config.examiner_backend == ExaminerBackend::Gemini) {
+        throw std::runtime_error(
+            "SAFETY_ADJUDICATOR=examiner with AUTH_REQUIRED on requires an "
+            "examiner backend inside the compliance boundary. The reasoning "
+            "pass is sent exactly the text a safety layer just objected to - "
+            "the most sensitive speech this system handles - so it must not "
+            "leave the country. Set SAFETY_ADJUDICATOR=off, or move the "
+            "examiner to the Australia East backend first.");
+    }
+
+    if (config.adjudicate_self_harm &&
+        config.adjudicator_mode == AdjudicatorMode::Off) {
+        std::cerr << "SAFETY_ADJUDICATE_SELF_HARM is on but SAFETY_ADJUDICATOR "
+                     "is off, so nothing reviews anything\n";
+    }
+
+    if (config.adjudicate_self_harm && config.safety_mode != SafetyMode::Azure) {
+        std::cerr << "SAFETY_ADJUDICATE_SELF_HARM is on with only one "
+                     "detector configured. A self-harm verdict may only be "
+                     "reviewed when the detectors DISAGREE, and one detector "
+                     "can never disagree with itself, so this setting will "
+                     "have no effect until SAFETY_MODE=azure\n";
+        //said plainly rather than left as a surprise: the flag is not broken,
+        //the consensus rule is doing exactly what it promises
     }
 
     if (config.safety_mode == SafetyMode::Azure &&

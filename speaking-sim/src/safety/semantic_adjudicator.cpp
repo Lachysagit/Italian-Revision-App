@@ -1,0 +1,172 @@
+#include "sim/safety/semantic_adjudicator.hpp"
+
+#include <algorithm>
+#include <iostream>
+
+namespace sim {
+
+namespace {
+
+constexpr const char* kReasonCodes[] = {
+    "genuine", "idiomatic", "quoted", "fictional", "historical", "ambiguous",
+};
+
+int rank(SafetyAction action) {
+    switch (action) {
+        case SafetyAction::Allow:    return 0;
+        case SafetyAction::Mask:     return 1;
+        case SafetyAction::Halt:     return 2;
+        case SafetyAction::Escalate: return 3;
+    }
+    return 3;
+    //an unknown action ranks as the most severe, so a future enum value added
+    //without touching this switch cannot be silently downgraded
+}
+
+}  // namespace
+
+bool is_reason_code(const std::string& code) {
+    return std::find(std::begin(kReasonCodes), std::end(kReasonCodes), code) !=
+           std::end(kReasonCodes);
+}
+
+bool reason_permits_downgrade(const std::string& code) {
+    return code == "idiomatic" || code == "quoted" || code == "fictional" ||
+           code == "historical";
+    //"genuine" is the backend agreeing with the layer. "ambiguous" is the
+    //backend saying it cannot tell, which is an uphold rather than a pass:
+    //the benefit of the doubt belongs to the student's safety, not to the
+    //smoothness of their exam
+}
+
+const char* to_string(AdjudicationOutcome outcome) {
+    switch (outcome) {
+        case AdjudicationOutcome::NotAdjudicable: return "not_adjudicable";
+        case AdjudicationOutcome::Upheld:         return "upheld";
+        case AdjudicationOutcome::Downgraded:     return "downgraded";
+        case AdjudicationOutcome::Unavailable:    return "unavailable";
+    }
+    return "upheld";
+}
+
+SemanticAdjudicator::SemanticAdjudicator(
+    std::unique_ptr<InterfaceAdjudicator> backend, Options options)
+    : backend_(std::move(backend)), options_(std::move(options)) {}
+
+bool SemanticAdjudicator::available() const {
+    return backend_ && backend_->available();
+}
+
+void SemanticAdjudicator::prewarm() {
+    if (backend_) backend_->prewarm();
+}
+
+SafetyAction SemanticAdjudicator::floor_for(const std::string& category) {
+    if (category == "self_harm") return SafetyAction::Halt;
+    if (category == "hate")      return SafetyAction::Mask;
+    return SafetyAction::Allow;
+    //sexual and violence are the two categories a downgrade may clear
+    //outright, because a film plot and a history answer are legitimate exam
+    //content that a severity-2 threshold flags on sight
+}
+
+bool SemanticAdjudicator::adjudicable(const SafetyVerdict& verdict) const {
+    if (verdict.action == SafetyAction::Allow) return false;
+
+    if (verdict.non_adjudicable) return false;
+    //an escalate.txt entry prefixed "!" - the unambiguous phrasings, which no
+    //model may talk the server out of whatever else is true
+
+    const std::string& category = verdict.category;
+
+    if (category == "jailbreak") return false;
+    if (category == "profanity") return false;
+    if (category == "unavailable") return false;
+    //a chain outage is not a semantic question, and reviewing it would mean
+    //asking a model to overrule a fail-closed policy
+
+    if (category == "self_harm") {
+        if (!options_.self_harm) return false;
+        if (verdict.concurring_detectors > 1) return false;
+        //consensus is untouchable. Two independent detectors calling the same
+        //utterance self-harm is not a disagreement for a third opinion to
+        //settle
+        return true;
+    }
+
+    return std::find(options_.categories.begin(), options_.categories.end(),
+                     category) != options_.categories.end();
+}
+
+AdjudicationResult SemanticAdjudicator::review(const std::string& text,
+                                               const SafetyVerdict& verdict,
+                                               const std::string& language_id) {
+    AdjudicationResult result;
+    result.original_action = verdict.action;
+    result.action = verdict.action;
+
+    if (!adjudicable(verdict)) {
+        result.outcome = AdjudicationOutcome::NotAdjudicable;
+        return result;
+        //no backend call is made at all, which is the point: the categories
+        //above never leave the server, so there is nothing for an injected
+        //instruction inside them to reach
+    }
+
+    if (!available()) {
+        result.outcome = AdjudicationOutcome::Unavailable;
+        return result;
+    }
+
+    AdjudicatorOpinion opinion;
+    try {
+        opinion = backend_->review(text, verdict.category, language_id);
+    } catch (const std::exception& e) {
+        std::cerr << "adjudicator failed on " << verdict.category << ": "
+                  << e.what() << '\n';
+        result.outcome = AdjudicationOutcome::Unavailable;
+        return result;
+    }
+
+    result.reason_code =
+        is_reason_code(opinion.reason_code) ? opinion.reason_code : "";
+
+    // Four independent reasons to uphold, checked separately rather than as
+    // one condition so that the log and the stored row can say which applied.
+    if (opinion.genuine) {
+        result.outcome = AdjudicationOutcome::Upheld;
+        return result;
+    }
+    if (opinion.confidence != "high") {
+        result.outcome = AdjudicationOutcome::Upheld;
+        return result;
+    }
+    if (result.reason_code.empty()) {
+        result.outcome = AdjudicationOutcome::Upheld;
+        return result;
+        //an unrecognised code means the backend did not answer the question
+        //that was asked, which is not evidence of anything
+    }
+    if (!reason_permits_downgrade(result.reason_code)) {
+        result.outcome = AdjudicationOutcome::Upheld;
+        return result;
+    }
+
+    const SafetyAction floor = floor_for(verdict.category);
+    if (rank(floor) >= rank(verdict.action)) {
+        result.outcome = AdjudicationOutcome::Upheld;
+        return result;
+        //the floor is already at or above where the verdict sits, so there is
+        //nothing a downgrade could do. Recorded as Upheld rather than
+        //Downgraded because nothing changed
+    }
+
+    result.outcome = AdjudicationOutcome::Downgraded;
+    result.action = floor;
+    return result;
+    //one code path reduces a verdict, and reaching it takes an affirmative,
+    //well-formed, high-confidence answer with a reason that permits it, about
+    //a category that allows it, on a verdict no other detector concurred with
+}
+
+}  // namespace sim

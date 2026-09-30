@@ -284,6 +284,13 @@ private:
     //examiner's reply before anything is spoken or stored. Never null: main()
     //builds one in every mode, and the off mode is an empty chain whose
     //ready() is false, which is what stops an exam starting unscreened
+    //
+    //MUST stay declared AFTER examiner_. When the semantic reasoning pass is
+    //configured it holds a borrowed InterfaceExaminer*, and members are
+    //destroyed in reverse declaration order, so this ordering is what makes
+    //that pointer valid for the chain's whole life. Moving this line above
+    //examiner_ would turn the last screening call of a shutdown into a use
+    //after free
 
     std::unique_ptr<Store> store_;
     //accounts, classes and exam history. A member of Server like languages_ so

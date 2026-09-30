@@ -59,6 +59,16 @@ struct SafetyVerdict {
     //the normalised tokens or phrases that fired, never the surrounding
     //sentence. Enough to tune the lists without copying student speech into
     //a second place it did not need to be
+
+    bool non_adjudicable = false;
+    //set by a wordlist entry prefixed "!" - the phrasings that are unambiguous
+    //enough that no semantic reasoning pass may reduce them. See
+    //sim/safety/adjudicator.hpp
+
+    int concurring_detectors = 0;
+    //how many layers independently reached this category. The semantic pass
+    //may only review a verdict that ONE detector produced: it exists to settle
+    //disagreement between layers, not to overrule their agreement
 };
 
 class InterfaceSafety {

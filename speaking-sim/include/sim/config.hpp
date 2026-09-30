@@ -37,6 +37,16 @@ enum class SafetyMode {
     //wordlist first, then Content Safety and Prompt Shields in Australia East
 };
 
+enum class AdjudicatorMode {
+    Off,
+    //no semantic reasoning pass. Every verdict the chain reaches stands,
+    //which is the behaviour before this existed and the default
+    Examiner,
+    //flagged text is sent back to the examiner backend for a reasoning pass.
+    //Runs on whatever the examiner runs on, so it follows the examiner to
+    //Australia East rather than needing its own compliance story
+};
+
 enum class AudioCodec {
     Flac,
     Wav,
@@ -102,6 +112,17 @@ struct Config {
     //0, 2, 4 or 6 on the four-level scale. Deliberately stricter than the
     //service default, because the users are minors
     bool safety_shield_prompts = true;
+
+    AdjudicatorMode adjudicator_mode = AdjudicatorMode::Off;
+    //SAFETY_ADJUDICATOR. Off by default: the system is correct without the
+    //reasoning pass, and switching it on is a decision someone signs off
+    std::vector<std::string> adjudicate_categories;
+    //SAFETY_ADJUDICATE_CATEGORIES. Which categories a reasoning pass may
+    //review. Never includes jailbreak or profanity, whatever is written here
+    bool adjudicate_self_harm = false;
+    //SAFETY_ADJUDICATE_SELF_HARM. Separate from the list above so self-harm
+    //cannot be switched on by editing a comma-separated string. Even when
+    //true, a verdict two detectors agreed on is still untouchable
 
     std::string database_path;
     //accounts, classes and exam history. A relative path resolves against the

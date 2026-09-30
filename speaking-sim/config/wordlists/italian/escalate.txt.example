@@ -23,30 +23,42 @@
 #       - both are ordinary Italian for "I have to" and "I have had enough of
 #         this homework". High frequency, low signal.
 #
+#
+# A leading "!" marks an entry NON-ADJUDICABLE: the semantic reasoning pass
+# (docs/compliance/compliant-flow.md, and sim/safety/adjudicator.hpp) may not
+# reduce a verdict this phrase produced, whatever a model concludes about the
+# context. The marker is stripped before matching, so it changes nothing about
+# WHAT the entry matches - only what may afterwards be done about it.
+#
+# The rule for applying it: mark a phrase when you cannot construct a sentence
+# in which a student says it and means something else. "voglio morire" is
+# marked; "hits me" and "es beenden" are not, because "the song hits me" and
+# "das Spiel beenden" exist.
+#
 # The asymmetry that decides the rest of the list: under-detecting a suicide
 # disclosure and over-detecting one are not comparable errors, so where a
 # phrase is unambiguous it is in even if it is rare.
 
 # --- English: suicide ---------------------------------------------------------
-kill myself
-killing myself
+!kill myself
+!killing myself
 i want to kill
-end my life
-ending my life
-take my own life
-taking my own life
+!end my life
+!ending my life
+!take my own life
+!taking my own life
 end it all
-suicide
-suicidal
-commit suicide
+!suicide
+!suicidal
+!commit suicide
 want to die
 wanna die
-i want to die
-i wish i was dead
-i wish i were dead
+!i want to die
+!i wish i was dead
+!i wish i were dead
 better off dead
-no reason to live
-nothing to live for
+!no reason to live
+!nothing to live for
 dont want to be here anymore
 do not want to be here anymore
 want to disappear
@@ -58,10 +70,10 @@ going to end it
 # --- English: self-harm -------------------------------------------------------
 hurt myself
 hurting myself
-harm myself
-self harm
-cut myself
-cutting myself
+!harm myself
+!self harm
+!cut myself
+!cutting myself
 cuts on my
 burn myself
 
@@ -80,27 +92,27 @@ scared of my dad
 scared of my mum
 
 # --- Italian: suicide ---------------------------------------------------------
-uccidermi
-ammazzarmi
-suicidarmi
-suicidio
-suicida
-togliermi la vita
-farla finita
-voglio morire
-vorrei morire
+!uccidermi
+!ammazzarmi
+!suicidarmi
+!suicidio
+!suicida
+!togliermi la vita
+!farla finita
+!voglio morire
+!vorrei morire
 voglio sparire
 meglio senza di me
 nessuno sentirebbe la mia mancanza
 non vedo un futuro
-voglio farla finita
+!voglio farla finita
 
 # --- Italian: self-harm -------------------------------------------------------
 farmi del male
 farmi male apposta
-tagliarmi
-mi taglio
-mi faccio del male
+!tagliarmi
+!mi taglio
+!mi faccio del male
 bruciarmi
 
 # --- Italian: abuse disclosure ------------------------------------------------
