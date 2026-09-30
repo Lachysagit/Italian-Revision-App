@@ -61,6 +61,10 @@ void SemanticAdjudicator::prewarm() {
     if (backend_) backend_->prewarm();
 }
 
+void SemanticAdjudicator::set_detector_count(int detectors) {
+    options_.detectors = detectors;
+}
+
 SafetyAction SemanticAdjudicator::floor_for(const std::string& category) {
     if (category == "self_harm") return SafetyAction::Halt;
     if (category == "hate")      return SafetyAction::Mask;
@@ -87,10 +91,19 @@ bool SemanticAdjudicator::adjudicable(const SafetyVerdict& verdict) const {
 
     if (category == "self_harm") {
         if (!options_.self_harm) return false;
+
+        if (options_.detectors < 2) return false;
+        //there is no second opinion to weigh against the first, so there is no
+        //disagreement to settle. A lone detector's escalation is the only
+        //judgement that exists, and giving a model the casting vote on it is
+        //not a tie-break - it is a veto. This is the gate that makes
+        //SAFETY_MODE=local behave the way the documentation says it does
+
         if (verdict.concurring_detectors > 1) return false;
         //consensus is untouchable. Two independent detectors calling the same
         //utterance self-harm is not a disagreement for a third opinion to
         //settle
+
         return true;
     }
 

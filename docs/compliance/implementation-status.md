@@ -74,6 +74,23 @@ The answer is no, and these are the mechanics that make it no:
 overrides consensus. A self-harm verdict that both the local wordlist and Azure
 Content Safety reached is untouchable — no model is asked.
 
+**Self-harm needs four gates, all of them.**
+
+1. **At least two detectors are configured.** One cannot disagree with itself,
+   so a lone escalation is the only judgement that exists, and letting a model
+   overturn it would be a veto rather than a tie-break.
+2. Those detectors actually disagreed.
+3. The matched phrase is not marked `!`.
+4. A flag separate from the category list is on, which it is not by default.
+
+Gate 1 is what makes the flag genuinely inert under `SAFETY_MODE=local`, where
+only the wordlist exists. It was missing from the first version of this code:
+the startup warning promised the flag had no effect while the policy let the
+review through, because "one detector" and "two detectors that disagreed" both
+arrive as `concurring_detectors == 1`. `SafetyChain` now passes its own layer
+count to the policy at construction — the chain is what knows — and the test
+suite fails if that gate is removed.
+
 **Categories out of reach entirely.** `jailbreak` is never sent to a model: the
 text being judged is text that just tried to subvert one, so asking a second
 model whether to allow it *is* the attack. `profanity` is never sent either —

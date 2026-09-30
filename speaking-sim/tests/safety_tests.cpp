@@ -338,11 +338,14 @@ struct Rig {
     std::unique_ptr<sim::SemanticAdjudicator> policy;
 };
 
-Rig make_rig(bool self_harm = false) {
+Rig make_rig(bool self_harm = false, int detectors = 2) {
     auto owned = std::make_unique<StubAdjudicator>();
     StubAdjudicator* raw = owned.get();
     sim::SemanticAdjudicator::Options options;
     options.self_harm = self_harm;
+    options.detectors = detectors;
+    //two by default, which is the azure shape: wordlist plus Content Safety.
+    //A lone detector is its own case below
     return Rig{raw, std::make_unique<sim::SemanticAdjudicator>(
                         std::move(owned), std::move(options))};
 }
@@ -413,14 +416,46 @@ void test_adjudicator_self_harm_gates() {
               "self-harm review is off unless explicitly enabled");
     }
 
-    // Enabled, one detector, unmarked: reviewable, and the floor holds.
+    // A single detector cannot corroborate anything, so self-harm review must
+    // not run at all - whatever the flag says and whatever the model would
+    // have answered. This is the SAFETY_MODE=local case, and it is the one an
+    // earlier version of this code got wrong: the startup warning promised the
+    // flag had no effect while adjudicable() let the review through, because
+    // "one detector" and "two detectors that disagreed" both arrive here as
+    // concurring_detectors == 1.
+    {
+        Rig rig = make_rig(true, 1);
+        rig.stub->answer = clears();
+        const sim::AdjudicationResult result = rig.policy->review(
+            "a volte voglio morire",
+            flagged(sim::SafetyAction::Escalate, "self_harm"), "italian");
+        check(rig.stub->calls == 0,
+              "a lone detector's self-harm verdict is never sent to a model");
+        check(result.outcome == sim::AdjudicationOutcome::NotAdjudicable,
+              "and is reported as out of reach rather than upheld");
+        check(result.action == sim::SafetyAction::Escalate,
+              "and the escalation stands untouched");
+    }
+
+    // Zero detectors is the same case, and is what an unconfigured Options
+    // gives - so the default is the safe one.
+    {
+        Rig rig = make_rig(true, 0);
+        rig.stub->answer = clears();
+        rig.policy->review("x", flagged(sim::SafetyAction::Escalate, "self_harm"),
+                           "italian");
+        check(rig.stub->calls == 0, "zero detectors reviews nothing");
+    }
+
+    // Two detectors, one of which disagreed: reviewable, and the floor holds.
     {
         Rig rig = make_rig(true);
         rig.stub->answer = clears();
         const sim::AdjudicationResult result = rig.policy->review(
             "mi piace da morire",
             flagged(sim::SafetyAction::Escalate, "self_harm"), "italian");
-        check(rig.stub->calls == 1, "a lone self-harm verdict is reviewable");
+        check(rig.stub->calls == 1,
+              "a self-harm verdict one of two detectors reached is reviewable");
         check(result.outcome == sim::AdjudicationOutcome::Downgraded,
               "an idiom clears the escalation");
         check(result.action == sim::SafetyAction::Halt,
@@ -574,11 +609,29 @@ void test_chain_counts_consensus() {
               "an examiner reply is not adjudicated");
         check(rig.stub->calls == 0, "and the backend is not called for one");
     }
-    // End to end through the chain: one detector, review enabled, idiom
+    // The chain is what knows how many detectors exist, and it must tell the
+    // adjudicator - otherwise the gate above is unenforceable in the only
+    // place it matters. A one-layer chain reviews no self-harm.
+    {
+        std::vector<std::unique_ptr<sim::InterfaceSafety>> layers;
+        layers.push_back(std::make_unique<EscalatesOn>("da morire"));
+        Rig rig = make_rig(true);
+        rig.stub->answer = clears();
+        sim::SafetyChain chain(std::move(layers), {}, std::move(rig.policy));
+        const sim::SafetyVerdict v = chain.screen(
+            "mi piace da morire", sim::SafetyStage::StudentSpeech, "italian");
+        check(v.action == sim::SafetyAction::Escalate,
+              "a one-layer chain cannot review self-harm, flag or no flag");
+        check(rig.stub->calls == 0,
+              "and the chain's layer count is what enforces it");
+    }
+
+    // End to end through a two-layer chain: the detectors disagree, review
     // cleared, floor respected, and last_adjudication() reports it.
     {
         std::vector<std::unique_ptr<sim::InterfaceSafety>> layers;
         layers.push_back(std::make_unique<EscalatesOn>("da morire"));
+        layers.push_back(std::make_unique<EscalatesOn>("qualcosaltro"));
         Rig rig = make_rig(true);
         rig.stub->answer = clears();
         sim::SafetyChain chain(std::move(layers), {}, std::move(rig.policy));

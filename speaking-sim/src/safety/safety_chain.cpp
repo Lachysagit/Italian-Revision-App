@@ -25,7 +25,15 @@ SafetyChain::SafetyChain(std::vector<std::unique_ptr<InterfaceSafety>> layers,
                          std::unique_ptr<SemanticAdjudicator> adjudicator)
     : layers_(std::move(layers)),
       options_(options),
-      adjudicator_(std::move(adjudicator)) {}
+      adjudicator_(std::move(adjudicator)) {
+    if (adjudicator_) {
+        adjudicator_->set_detector_count(static_cast<int>(layers_.size()));
+        //the chain is what knows how many detectors exist, and the self-harm
+        //gate needs that number: below two there is no second opinion, so
+        //there is no disagreement for a reasoning pass to settle. Told here
+        //rather than configured, so the two can never drift apart
+    }
+}
 
 bool SafetyChain::ready() const {
     for (const auto& layer : layers_) {

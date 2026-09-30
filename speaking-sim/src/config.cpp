@@ -421,13 +421,17 @@ Config load_config() {
     }
 
     if (config.adjudicate_self_harm && config.safety_mode != SafetyMode::Azure) {
-        std::cerr << "SAFETY_ADJUDICATE_SELF_HARM is on with only one "
-                     "detector configured. A self-harm verdict may only be "
-                     "reviewed when the detectors DISAGREE, and one detector "
-                     "can never disagree with itself, so this setting will "
-                     "have no effect until SAFETY_MODE=azure\n";
-        //said plainly rather than left as a surprise: the flag is not broken,
-        //the consensus rule is doing exactly what it promises
+        std::cerr << "SAFETY_ADJUDICATE_SELF_HARM is on but only one detector "
+                     "is configured, so it has no effect. A self-harm verdict "
+                     "may only be reviewed when two detectors disagree, and "
+                     "one cannot disagree with itself - a lone escalation is "
+                     "the only judgement there is, so letting a model overturn "
+                     "it would be a veto rather than a tie-break. Set "
+                     "SAFETY_MODE=azure for this flag to do anything.\n";
+        //enforced in SemanticAdjudicator::adjudicable() by a detector-count
+        //gate, not merely described here. An earlier version of this warning
+        //claimed no effect while the code allowed the review, which is the
+        //worst possible place for a message and its behaviour to disagree
     }
 
     if (config.safety_mode == SafetyMode::Azure &&

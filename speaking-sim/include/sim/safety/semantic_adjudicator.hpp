@@ -37,13 +37,20 @@ namespace sim {
 //
 // ---- the self-harm rule ----------------------------------------------------
 //
-// Three gates, all required:
+// Four gates, all required:
 //
-//   1. the detectors disagree. concurring_detectors must be 1 - if the local
-//      list AND Content Safety both called it self-harm, no model gets a vote
-//   2. the matched phrase is not marked non-adjudicable. Entries prefixed "!"
+//   1. corroboration is POSSIBLE at all: at least two detectors are configured.
+//      One detector cannot disagree with itself, so a lone wordlist hit is not
+//      a tie for anything to break - it is the only opinion there is, and
+//      handing a model the deciding vote on the only opinion there is would be
+//      the opposite of a tie-break. This is what makes the rule mean the same
+//      thing in SAFETY_MODE=local as it does in azure
+//   2. the detectors actually disagree. concurring_detectors must be 1 - if the
+//      local list AND Content Safety both called it self-harm, no model gets a
+//      vote
+//   3. the matched phrase is not marked non-adjudicable. Entries prefixed "!"
 //      in escalate.txt are outside this class's reach whatever else is true
-//   3. self_harm is explicitly enabled in the configuration, which it is not
+//   4. self_harm is explicitly enabled in the configuration, which it is not
 //      by default
 //
 // Even then the floor is Halt, never Allow or Mask. The worst case of a wrong
@@ -58,6 +65,13 @@ public:
         //flag below rather than by membership here, so it cannot be switched
         //on by editing a comma-separated list
         bool self_harm = false;
+
+        int detectors = 0;
+        //how many independent screening layers the chain holds. Set by
+        //SafetyChain at construction, because the chain is what knows. Gate 1
+        //above reads it: below two, self-harm review cannot run at all, so the
+        //offline build is not quietly operating a rule it has no second
+        //opinion to apply
     };
 
     SemanticAdjudicator(std::unique_ptr<InterfaceAdjudicator> backend,
@@ -71,6 +85,11 @@ public:
 
     bool available() const;
     void prewarm();
+
+    void set_detector_count(int detectors);
+    //called by SafetyChain once, at construction. Separate from Options so the
+    //count comes from the chain that actually holds the layers rather than
+    //from a configuration value someone could set wrongly
 
     static SafetyAction floor_for(const std::string& category);
     //the lowest action a downgrade may reach for a category. Exposed for the
