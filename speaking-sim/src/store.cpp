@@ -8,8 +8,13 @@
 #include <openssl/rand.h>
 
 #include <cctype>
+#include <ctime>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
+#include <string>
+
+#include "crow/json.h"
 
 namespace sim {
 
@@ -24,7 +29,6 @@ CREATE TABLE users (
   id INTEGER PRIMARY KEY,
   email TEXT NOT NULL UNIQUE COLLATE NOCASE,
   display_name TEXT NOT NULL DEFAULT '',
-  picture_url  TEXT NOT NULL DEFAULT '',
   is_teacher   INTEGER NOT NULL DEFAULT 0,
   year_level    TEXT NOT NULL DEFAULT '',
   subject_level TEXT NOT NULL DEFAULT '',
@@ -460,17 +464,16 @@ User read_user_row(sqlite3_stmt* stmt) {
     user.id = sqlite3_column_int64(stmt, 0);
     user.email = text(1);
     user.display_name = text(2);
-    user.picture_url = text(3);
-    user.is_teacher = sqlite3_column_int(stmt, 4) != 0;
-    user.year_level = text(5);
-    user.subject_level = text(6);
-    user.preferred_language = text(7);
-    user.onboarded = sqlite3_column_type(stmt, 8) != SQLITE_NULL;
+    user.is_teacher = sqlite3_column_int(stmt, 3) != 0;
+    user.year_level = text(4);
+    user.subject_level = text(5);
+    user.preferred_language = text(6);
+    user.onboarded = sqlite3_column_type(stmt, 7) != SQLITE_NULL;
     return user;
 }
 
 constexpr const char* kUserColumns =
-    "users.id, users.email, users.display_name, users.picture_url, "
+    "users.id, users.email, users.display_name, "
     "users.is_teacher, users.year_level, users.subject_level, "
     "users.preferred_language, users.onboarded_at";
 //table qualified: user_for_auth_token joins auth_sessions, which has its own
@@ -515,17 +518,15 @@ User Store::upsert_google_user(const GoogleProfile& profile, bool is_teacher) {
         if (user_id == 0) {
             sqlite3_stmt* insert = nullptr;
             sqlite3_prepare_v2(db_,
-                "INSERT INTO users (email, display_name, picture_url, "
+                "INSERT INTO users (email, display_name, "
                 " is_teacher, created_at, last_seen_at) "
-                "VALUES (?, ?, ?, ?, CAST(strftime('%s','now') AS INTEGER), "
+                "VALUES (?, ?, ?, CAST(strftime('%s','now') AS INTEGER), "
                 "        CAST(strftime('%s','now') AS INTEGER))",
                 -1, &insert, nullptr);
             sqlite3_bind_text(insert, 1, profile.email.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_text(insert, 2, profile.display_name.c_str(), -1,
                               SQLITE_TRANSIENT);
-            sqlite3_bind_text(insert, 3, profile.picture_url.c_str(), -1,
-                              SQLITE_TRANSIENT);
-            sqlite3_bind_int(insert, 4, is_teacher ? 1 : 0);
+            sqlite3_bind_int(insert, 3, is_teacher ? 1 : 0);
             const int rc = sqlite3_step(insert);
             sqlite3_finalize(insert);
             if (rc != SQLITE_DONE) {
@@ -536,17 +537,15 @@ User Store::upsert_google_user(const GoogleProfile& profile, bool is_teacher) {
         } else {
             sqlite3_stmt* update = nullptr;
             sqlite3_prepare_v2(db_,
-                "UPDATE users SET display_name = ?, picture_url = ?, "
+                "UPDATE users SET display_name = ?, "
                 " is_teacher = max(is_teacher, ?), "
                 " last_seen_at = CAST(strftime('%s','now') AS INTEGER) "
                 "WHERE id = ?",
                 -1, &update, nullptr);
             sqlite3_bind_text(update, 1, profile.display_name.c_str(), -1,
                               SQLITE_TRANSIENT);
-            sqlite3_bind_text(update, 2, profile.picture_url.c_str(), -1,
-                              SQLITE_TRANSIENT);
-            sqlite3_bind_int(update, 3, is_teacher ? 1 : 0);
-            sqlite3_bind_int64(update, 4, user_id);
+            sqlite3_bind_int(update, 2, is_teacher ? 1 : 0);
+            sqlite3_bind_int64(update, 3, user_id);
             sqlite3_step(update);
             sqlite3_finalize(update);
             //max() so dropping an address from TEACHER_EMAILS does not quietly
@@ -2089,6 +2088,282 @@ void Store::release_usage(std::int64_t user_id, const std::string& feature) {
         "UPDATE usage_daily SET used = MAX(used - 1, 0) "
         "WHERE user_id = ? AND day = date('now','localtime') AND feature = ?");
     stmt.int64(1, user_id).text(2, feature).run();
+}
+
+// ---- retention, export and erasure -----------------------------------------
+
+namespace {
+
+// Every window is expressed the same way: a cutoff in unix seconds, or nothing
+// when the window is 0 and the records are kept. Computed in C++ rather than in
+// SQL so the four DELETEs below cannot each spell the arithmetic differently.
+std::optional<std::int64_t> cutoff_for(int days) {
+    if (days <= 0) return std::nullopt;
+    const std::int64_t now =
+        static_cast<std::int64_t>(std::time(nullptr));
+    return now - static_cast<std::int64_t>(days) * 86400;
+}
+
+}  // namespace
+
+PurgeCounts Store::purge_expired(const RetentionPolicy& policy) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    PurgeCounts counts;
+
+    // Order matters, and it is narrowest first. Transcripts go before the
+    // attempts that own them, so the common case - an attempt still inside its
+    // own window whose words are past theirs - is a cheap delete that leaves
+    // the summary, the tense features and the set-question verdicts intact.
+    // Those carry no utterance, and they are the half a teacher's report is
+    // actually built from, so there is no reason for them to die with the text.
+    if (const auto cutoff = cutoff_for(policy.transcript_days)) {
+        Statement stmt(db_, "DELETE FROM attempt_turns WHERE created_at < ?");
+        stmt.int64(1, *cutoff).run();
+        counts.transcripts = sqlite3_changes(db_);
+    }
+
+    if (const auto cutoff = cutoff_for(policy.safety_event_days)) {
+        Statement stmt(db_, "DELETE FROM safety_events WHERE created_at < ?");
+        stmt.int64(1, *cutoff).run();
+        counts.safety_events = sqlite3_changes(db_);
+    }
+
+    if (const auto cutoff = cutoff_for(policy.attempt_days)) {
+        Statement stmt(db_, "DELETE FROM exam_attempts WHERE started_at < ?");
+        stmt.int64(1, *cutoff).run();
+        counts.attempts = sqlite3_changes(db_);
+        //PRAGMA foreign_keys=ON is set in the constructor, so this takes
+        //attempt_turns, turn_features, safety_events,
+        //attempt_required_questions and required_question_evidence with it.
+        //started_at rather than ended_at because an attempt that crashed with
+        //no end is exactly the row that must not become immortal
+    }
+
+    {
+        Statement stmt(db_,
+            "DELETE FROM auth_sessions WHERE expires_at < "
+            "CAST(strftime('%s','now') AS INTEGER)");
+        stmt.run();
+        counts.auth_sessions = sqlite3_changes(db_);
+        //no window of its own: a session past its own expiry is already
+        //useless, and a dead token is one more thing a copied database file
+        //should not contain
+    }
+
+    if (const auto cutoff = cutoff_for(policy.attempt_days)) {
+        const std::string day_cutoff = "date('now','localtime','-" +
+                                       std::to_string(policy.attempt_days) +
+                                       " days')";
+        exec("DELETE FROM usage_daily WHERE day < " + day_cutoff);
+        counts.usage_rows = sqlite3_changes(db_);
+        exec("DELETE FROM key_usage_daily WHERE day < " + day_cutoff);
+        counts.usage_rows += sqlite3_changes(db_);
+        //these two store a date string rather than a timestamp, so they get
+        //SQLite's own date arithmetic. The day count is interpolated, never a
+        //parameter: it is an int from config that has already been parsed as
+        //one, and SQLite will not take a bound value inside date()
+    }
+
+    if (const auto cutoff = cutoff_for(policy.inactive_account_days)) {
+        Statement stmt(db_,
+            "DELETE FROM users WHERE COALESCE(last_seen_at, created_at) < ?");
+        stmt.int64(1, *cutoff).run();
+        counts.accounts = sqlite3_changes(db_);
+        //off unless a school asked for it. COALESCE because last_seen_at is
+        //nullable on a row created from a roster that its owner never used
+    }
+
+    return counts;
+}
+
+namespace {
+
+crow::json::wvalue attempt_export(Store& store, const AttemptSummary& attempt) {
+    crow::json::wvalue json;
+    json["attempt_id"] = attempt.id;
+    json["language"] = attempt.language_id;
+    json["started_at"] = attempt.started_at;
+    json["ended_at"] = attempt.ended_at;
+    json["end_reason"] = attempt.end_reason;
+    json["turn_count"] = attempt.turn_count;
+    json["plan_name"] = attempt.plan_name;
+
+    unsigned index = 0;
+    for (const AttemptTurn& turn : store.attempt_turns(attempt.id)) {
+        json["turns"][index]["turn_index"] = turn.turn_index;
+        json["turns"][index]["role"] = turn.role;
+        json["turns"][index]["text"] = turn.text;
+        json["turns"][index]["topic"] = turn.topic;
+        json["turns"][index]["created_at"] = turn.created_at;
+        ++index;
+    }
+    //an attempt whose transcripts are past their window exports with no turns
+    //and the rest of its record intact, which is the honest shape of it: the
+    //exam happened, the words are gone, and the export says both
+
+    index = 0;
+    for (const TurnFeature& feature : store.attempt_features(attempt.id)) {
+        json["features"][index]["turn_index"] = feature.turn_index;
+        json["features"][index]["kind"] = feature.kind;
+        json["features"][index]["value"] = feature.value;
+        json["features"][index]["source"] = feature.source;
+        ++index;
+    }
+
+    index = 0;
+    for (const RequiredQuestionStatus& required :
+         store.attempt_required(attempt.id)) {
+        json["required_questions"][index]["text"] = required.text;
+        json["required_questions"][index]["status"] = required.status;
+        ++index;
+    }
+
+    index = 0;
+    for (const SafetyEvent& event : store.attempt_safety_events(attempt.id)) {
+        json["safety_events"][index]["turn_index"] = event.turn_index;
+        json["safety_events"][index]["stage"] = event.stage;
+        json["safety_events"][index]["action"] = event.action;
+        json["safety_events"][index]["category"] = event.category;
+        json["safety_events"][index]["severity"] = event.severity;
+        json["safety_events"][index]["detector"] = event.detector;
+        json["safety_events"][index]["original_action"] = event.original_action;
+        json["safety_events"][index]["adjudication"] = event.adjudication;
+        json["safety_events"][index]["created_at"] = event.created_at;
+        ++index;
+    }
+    //`matches` is deliberately left out, as it is everywhere else: the
+    //normalised terms are an operator fact, and an export is the last place to
+    //start copying them around
+
+    return json;
+}
+
+}  // namespace
+
+std::string Store::export_user_json(std::int64_t user_id) {
+    const auto user = user_by_id(user_id);
+    if (!user) {
+        throw std::runtime_error("no account with that id");
+    }
+
+    crow::json::wvalue json;
+    json["exported_at"] = static_cast<std::int64_t>(std::time(nullptr));
+    json["user"]["id"] = user->id;
+    json["user"]["email"] = user->email;
+    json["user"]["display_name"] = user->display_name;
+    json["user"]["year_level"] = user->year_level;
+    json["user"]["subject_level"] = user->subject_level;
+    json["user"]["is_teacher"] = user->is_teacher;
+
+    unsigned index = 0;
+    for (const AttemptSummary& attempt : user_attempts(user_id, 100000)) {
+        json["attempts"][index] = attempt_export(*this, attempt);
+        ++index;
+    }
+    return json.dump();
+    //the limit is a number no student will reach rather than no limit at all:
+    //user_attempts takes one, and passing something absurd is clearer than
+    //adding an overload that means "everything"
+}
+
+std::string Store::export_class_json(std::int64_t class_id) {
+    const auto klass = class_by_id(class_id);
+    if (!klass) {
+        throw std::runtime_error("no class with that id");
+    }
+
+    crow::json::wvalue json;
+    json["exported_at"] = static_cast<std::int64_t>(std::time(nullptr));
+    json["class"]["id"] = klass->id;
+    json["class"]["name"] = klass->name;
+    json["class"]["language"] = klass->language_id;
+
+    unsigned index = 0;
+    for (const AttemptSummary& attempt : class_attempts(class_id, 100000)) {
+        json["attempts"][index] = attempt_export(*this, attempt);
+        json["attempts"][index]["student_name"] = attempt.student_name;
+        ++index;
+    }
+    return json.dump();
+}
+
+bool Store::delete_user(std::int64_t user_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_);
+
+    {
+        Statement exists(db_, "SELECT 1 FROM users WHERE id = ?");
+        exists.int64(1, user_id);
+        if (!exists.row()) return false;
+    }
+
+    exec("BEGIN IMMEDIATE");
+    try {
+        // Most of this person's data goes on its own: oauth_identities,
+        // auth_sessions, class_members, room_members, usage_daily,
+        // profile_change_requests.user_id and exam_attempts all declare
+        // ON DELETE CASCADE, and PRAGMA foreign_keys=ON in the constructor is
+        // what makes that true at runtime rather than only on paper. Deleting
+        // the attempts in turn takes their turns, features, set questions and
+        // safety events.
+        //
+        // What does NOT cascade are the columns naming this person as the one
+        // who DID something to somebody else's row. Those are cleared or
+        // removed here, in the same transaction, so a half-erased account is
+        // not a state the database can be left in.
+        Statement decided(db_,
+            "UPDATE profile_change_requests SET decided_by = NULL "
+            "WHERE decided_by = ?");
+        decided.int64(1, user_id).run();
+        //a teacher who approved a year-level change is not part of the record
+        //of that change once they are gone. The request itself belongs to the
+        //student and stays with them
+
+        Statement speaker(db_,
+            "UPDATE attempt_turns SET speaker_user_id = NULL "
+            "WHERE speaker_user_id = ?");
+        speaker.int64(1, user_id).run();
+
+        Statement room_speaker(db_,
+            "UPDATE room_turns SET speaker_user_id = NULL "
+            "WHERE speaker_user_id = ?");
+        room_speaker.int64(1, user_id).run();
+
+        Statement nominated(db_,
+            "UPDATE room_turns SET nominated_user_id = NULL "
+            "WHERE nominated_user_id = ?");
+        nominated.int64(1, user_id).run();
+        //these three are nullable and belong to a shared exam somebody else
+        //may still be entitled to. Blanking the pointer erases the person
+        //without deleting another student's turn
+
+        Statement licences(db_,
+            "DELETE FROM licences WHERE kind = 'user' AND target_id = ?");
+        licences.int64(1, user_id).run();
+        //no foreign key of its own, so nothing would have caught this. A
+        //licence row naming a deleted id is both a dangling record and, once
+        //ids are reused, a licence somebody else inherits
+
+        Statement gone(db_, "DELETE FROM users WHERE id = ?");
+        gone.int64(1, user_id).run();
+
+        exec("COMMIT");
+        return true;
+    } catch (const std::exception& e) {
+        exec("ROLLBACK");
+        throw std::runtime_error(
+            std::string("could not delete the account: ") + e.what() +
+            ". An account that still OWNS things another person depends on - "
+            "classes, class invites or exam plans - is refused rather than "
+            "orphaning them: reassign or archive those first, then delete. "
+            "Nothing was changed.");
+        //classes.owner_id, class_invites.invited_by, rooms.host_id and
+        //exam_plans.created_by are NOT NULL with no cascade, so the delete
+        //fails on a teacher who still has a class standing. That is the right
+        //way round to be wrong - a roster with no owner is worse than a
+        //refusal - but the bare "FOREIGN KEY constraint failed" said nothing
+        //about what to do next, so the message says it here
+    }
 }
 
 }  // namespace sim

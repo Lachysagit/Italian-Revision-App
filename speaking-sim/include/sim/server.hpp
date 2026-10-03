@@ -1,9 +1,11 @@
 #pragma once
 
+#include <condition_variable>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <thread>
 #include <string>
 #include <unordered_map>
 #include <optional>
@@ -43,8 +45,16 @@ public:
         );
 
     void run();
+    ~Server();
+    //declared because of retention_thread_ below: the thread has to be told to
+    //stop and joined before store_ goes, and the implicit destructor would do
+    //neither
 
 private:
+    void retention_loop();
+    //one pass now, then one a day until shutdown. Lives on its own thread
+    //rather than in the pool: a purge must not be able to take a worker away
+    //from a student mid-turn, and it is a few bounded DELETEs once a day
     Config config_;
     using App = crow::App<crow::CookieParser>;
     App app_;
@@ -299,6 +309,13 @@ private:
     //object and Server does the writing
 
     WorkerPool pool_;
+
+    std::thread retention_thread_;
+    std::mutex retention_m_;
+    std::condition_variable retention_wake_;
+    bool retention_stopping_ = false;
+    //a condition_variable rather than a sleep: a server shut down four hours
+    //into the day's wait should exit then, not when the wait was due to end
 };
 
 }  // namespace sim

@@ -33,10 +33,13 @@ struct Message {
     //discipline as the two below: absent rather than empty when nothing was
     //picked, which is how the server tells "run the default" from a client
     //that names a language it does not have
-    std::string student_name;
-    //what the examiner calls the student, sent with Start only. Same discipline
-    //again: absent rather than empty when the settings field was left blank,
-    //which is how the session tells "no name given" from "named nothing"
+    //There is deliberately NO student_name field, and there must not be one
+    //again. The name used to ride on Start and was folded into a System turn,
+    //which put a minor's identity alongside their speech at the model boundary
+    //(A1, A4) and gave a browser an unscreened write into the highest-trust
+    //part of the prompt - SafetyChain screens StudentSpeech and ExaminerReply,
+    //and a name is neither. The page now renders the name itself and nothing
+    //leaves the browser. See docs/compliance/data-retention.md
     int exam_seconds = 0;
     int questions_left = -1;
     //from the server, on each examiner question: how many more today's

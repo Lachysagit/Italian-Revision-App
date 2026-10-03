@@ -154,6 +154,49 @@ Server::Server(Config config,
     //constructor where config_ is initialised
 } // constructor
 
+Server::~Server() {
+    {
+        std::lock_guard<std::mutex> lock(retention_m_);
+        retention_stopping_ = true;
+    }
+    retention_wake_.notify_all();
+    if (retention_thread_.joinable()) {
+        retention_thread_.join();
+    }
+    //joined before anything else is destroyed: the thread holds store_ and a
+    //detached one outliving this object would purge through a dangling pointer
+}
+
+void Server::retention_loop() {
+    for (;;) {
+        try {
+            const PurgeCounts went = store_->purge_expired(config_.retention);
+            if (went.total() > 0) {
+                std::cerr << "retention: removed " << went.transcripts
+                          << " transcript turn(s), " << went.attempts
+                          << " attempt(s), " << went.safety_events
+                          << " safety event(s), " << went.auth_sessions
+                          << " expired session(s), " << went.usage_rows
+                          << " usage row(s), " << went.accounts
+                          << " account(s)\n";
+            }
+            //silent when it found nothing, which is the normal day. A line per
+            //pass would bury the one that matters under a year of "0 0 0 0"
+        } catch (const std::exception& e) {
+            std::cerr << "retention: pass failed, will retry tomorrow: "
+                      << e.what() << '\n';
+            //never throws out of this thread: a purge that cannot run is a
+            //compliance problem to fix, not a reason to take the exam server
+            //down in the middle of a lesson
+        }
+
+        std::unique_lock<std::mutex> lock(retention_m_);
+        retention_wake_.wait_for(lock, std::chrono::hours(24),
+                                 [this] { return retention_stopping_; });
+        if (retention_stopping_) return;
+    }
+}
+
 
 void Server::run() 
 
@@ -194,6 +237,12 @@ void Server::run()
     prewarm_tts();
     prewarm_examiner();
     //before the port is bound, so the first student to connect cannot race them
+
+    retention_thread_ = std::thread([this] { retention_loop(); });
+    //the first pass runs immediately inside the thread rather than here: a
+    //database carrying a year of old transcripts should not hold the port
+    //closed while it deletes them, and the records are no more overdue for
+    //the few seconds it takes the socket to come up
 
     CROW_ROUTE(app_, "/") //HTTP ROUTE -----------------------------------
     ([] {
@@ -407,14 +456,23 @@ void Server::run()
                          void** userdata)
             {
             const std::string origin = req.get_header_value("Origin");
-            if (!origin.empty() &&
-                !origin_allowed(origin, req.get_header_value("Host"),
-                                config_.public_origin)) {
+            if (origin.empty() ? config_.auth_required
+                               : !origin_allowed(origin,
+                                                 req.get_header_value("Host"),
+                                                 config_.public_origin)) {
                 refusal = crow::response(403, "cross-site websocket refused");
                 return;
                 //the session cookie rides on a websocket from any page, so
                 //without this another site could open an exam in a signed-in
                 //student's name and read their transcript back
+                //
+                //an ABSENT Origin is refused too once AUTH_REQUIRED is on.
+                //Every browser sends it on a websocket handshake, so the only
+                //callers it turns away are the ones not using a browser - and
+                //a check that any client can skip by leaving a header off is
+                //not a check. The permissive branch stays for the signed-out
+                //dev build, where there is no cookie to ride on in the first
+                //place and curl is how the socket gets exercised
             }
 
             std::int64_t user_id = 0;
@@ -981,7 +1039,6 @@ crow::response Server::serve_me(const crow::request& req) {
     json["id"] = user->id;
     json["email"] = user->email;
     json["name"] = user->display_name;
-    json["picture"] = user->picture_url;
     json["is_teacher"] = user->is_teacher;
     json["year_level"] = user->year_level;
     json["subject_level"] = user->subject_level;
@@ -1318,12 +1375,11 @@ void Server::handle_control(crow::websocket::connection& conn,
         //an absent name is resolved to the key the examiner would fall back to
         //anyway, so the attempt and the usage counter name the key actually
         //spent rather than recording an empty string against every default turn
-        session->set_student_name(
-            message.student_name.empty() && user ? user->display_name
-                                                 : message.student_name);
-        //the name box wins, and a blank one falls back to the first name the
-        //account was created with, so a signed-in student is greeted either way
-        //all three picked once, before the first job, and reused by every later
+        //no name is set on the session, and none is read from the account
+        //either: display_name used to be the fallback here, which meant a
+        //signed-in student's identity reached the examiner even when they
+        //never typed anything. The page does the greeting now
+        //both picked once, before the first job, and reused by every later
         //turn - Stop messages carry none of these fields of their own. Set
         //before the job is enqueued, so even the opening question knows them
 

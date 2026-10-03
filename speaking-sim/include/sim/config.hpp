@@ -25,6 +25,32 @@ enum class AudioInput {
     Whisper,
 };
 
+// How long each class of record is kept. The windows, and the reasoning behind
+// each one, are written up in docs/compliance/data-retention.md - change them
+// there and here together, because that file is what goes to the school.
+//
+// 0 means "keep forever", which is allowed for a development box and REFUSED
+// once AUTH_REQUIRED is on: A3 requires records be kept no longer than
+// necessary, and "forever" is not a period.
+struct RetentionPolicy {
+    int transcript_days = 90;
+    //attempt_turns rows - the student's own words and the examiner's. The
+    //shortest window of the four, because this is the most sensitive text the
+    //system holds
+    int attempt_days = 455;
+    //exam_attempts and everything that cascades from it. Must be >= both of
+    //the windows above and below, because it is their parent row: deleting an
+    //attempt deletes its turns and its safety events with it
+    int safety_event_days = 365;
+    //safety_events rows. Deliberately longer than the transcripts they refer
+    //to: the flag that an incident happened outlives the practice data, and
+    //the table holds no utterance to begin with
+    int inactive_account_days = 0;
+    //users untouched for this long, with everything that cascades from them.
+    //Off by default: an account is deleted when a school says so, not because
+    //a student had a quiet term
+};
+
 enum class SafetyMode {
     Off,
     //no screening at all. Development only, and refused outright once
@@ -136,6 +162,10 @@ struct Config {
     int exam_duration_seconds = 300;
     //EXAM_DURATION_SECONDS. The server's own clock, started when the opening
     //question goes out; the browser is told the figure and counts down to it
+
+    RetentionPolicy retention;
+    //TRANSCRIPT_RETENTION_DAYS, ATTEMPT_RETENTION_DAYS,
+    //SAFETY_EVENT_RETENTION_DAYS and INACTIVE_ACCOUNT_RETENTION_DAYS
 
     std::uint16_t port = 8080;
 

@@ -40,11 +40,12 @@
 
         <label for="studentName">Your name</label>
         <input id="studentName" type="text" autocomplete="given-name"
-               placeholder="the examiner will use this">
-        <!-- rides on the "start" message the same way the key does, so the
-             examiner knows the name before it asks its opening question
-             and never has to ask "come ti chiami". Blank is allowed: the
-             backend then simply tells the examiner nothing about a name -->
+               placeholder="shown on this page only">
+        <!-- NOT sent anywhere. It is saved in this browser's localStorage and
+             used to head the page and any transcript saved from it. The
+             examiner is never told a name and is instructed never to ask for
+             one, so no student's identity joins their speech at the model
+             boundary -->
 
         <label for="classSelect">Class</label>
         <select id="classSelect">
