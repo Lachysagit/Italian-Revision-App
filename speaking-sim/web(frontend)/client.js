@@ -888,8 +888,9 @@ async function applyPreferredLanguage(id) {
 }
 
 function applyAccountName(fullName) {
-    //the examiner is told "lo studente si chiama {0}", so it wants the name
-    //you are called rather than the one on the enrolment form
+    //the page greets with the name you are called rather than the one on the
+    //enrolment form. It stays in this browser: localStorage and the heading of
+    //a saved transcript are the whole of its reach
     if (studentName.value.trim()) return;
     //something already typed wins: the account name is a starting point, not
     //a correction. Blank-but-saved counts as typed only once it has content,
@@ -1004,15 +1005,15 @@ startButton.onclick = async () => {
             //voice for this whole session. An id the server does not know
             //falls back to its own default rather than failing the start
             gemini_key: geminiKeySelect.value || "",
-            student_name: studentName.value.trim(),
             class_id: selectedClassId() || undefined,
             plan_id: selectedPlanId() || undefined,
             //a named plan the student picked; absent means the class default
             //undefined drops the key, which the server reads as private
             //practice, rather than sending a 0 it would have to interpret
-            //trimmed here so the server sees a real name or nothing at all;
-            //Session treats a whitespace-only name as no name either way
-        }));
+            //
+            //NO student_name. The name is rendered in this page and nowhere
+            //else: it is never posted, never stored server side and never
+            //reaches the examiner. See docs/compliance/data-retention.md
         //ask the examiner for the opening question. Without this nothing is
         //sent until the student ends a turn, so the exam begins in silence.
         //gemini_key carries the settings picker's choice for this whole session

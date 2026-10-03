@@ -18,13 +18,25 @@ Taken from the current behaviour of the branch, not from the plan.
 | No filtering of any kind, either direction | B1, C7 | The Safe AI Ethics Assessment is precisely about this |
 | Nothing recorded when something goes wrong | A6, C7 | Nothing to show a reviewer, nothing to notify DoE from |
 | No collection notice, no consent record | A2, A5, B2 | |
-| SQLite file on the dev box; no retention rule on transcripts | A3, A7, C1 | Transcripts of school assessment practice are State records |
+| SQLite file on the dev box | A3, C1 | Still true of the file itself. The retention half is now built - see `data-retention.md` |
 | Audio never stored | — | Already right. Keep it, and say so first in every conversation with the school |
 
-Two things the current design gets right and should be defended in the
-documentation: audio is discarded after the turn, and the examiner is sent only
-the previous question and answer, never the email, class or account. That is A1
-(collect only what is necessary) already satisfied at the model boundary.
+Three things the current design gets right and should be defended in the
+documentation: audio is discarded after the turn, transcripts and exam records
+now expire on windows the server enforces rather than living forever, and the
+examiner is sent only the previous question and answer — never the email, the
+class, the account **or the student's name**. That is A1 (collect only what is
+necessary) satisfied at the model boundary.
+
+The name is worth spelling out, because it used to be the exception. It rode on
+the Start message and was folded into a System turn, so every request carried a
+minor's first name joined to their speech. It now never leaves the browser: the
+page renders it, `localStorage` holds it, and the examiner is told instead that
+it does not know the name and must never ask — both halves, because an examiner
+that asks "come ti chiami?" puts the name into the transcript by the back door.
+Removing it closed a second hole at the same time: the name was unvalidated
+client text spliced into the highest-trust part of the prompt, and `SafetyChain`
+screens `StudentSpeech` and `ExaminerReply`, neither of which a name is.
 
 ---
 

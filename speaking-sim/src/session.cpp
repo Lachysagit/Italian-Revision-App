@@ -58,17 +58,6 @@ bool asks_opinion(const std::string& reply,
     //an opinion
 }
 
-// The per-language strings carry {0} where a value the program knows goes.
-std::string fill_slot(std::string text, const std::string& value) {
-    const std::size_t at = text.find("{0}");
-    if (at != std::string::npos) {
-        text.replace(at, 3, value);
-    }
-    return text;
-    //first occurrence only, and a string without the marker comes back whole:
-    //a mistyped pack string costs the substitution, not the turn
-}
-
 // The prompt files carry these where their topic list and tag list used to sit.
 constexpr std::string_view kTopicMarker = "{{TOPICS}}";
 constexpr std::string_view kTagMarker = "{{TOPIC_TAGS}}";
@@ -231,10 +220,6 @@ const LanguagePack& Session::language() const {
     return *language_;
     //never null in practice: Server sets the default on open, before the socket
     //can deliver a message that would reach this
-}
-
-void Session::set_student_name(std::string name) {
-    student_name_ = std::move(name);
 }
 
 void Session::set_gemini_key_name(std::string name) {
@@ -675,9 +660,9 @@ std::vector<Turn> Session::build_examiner_input() {
 
     std::vector<Turn> input;
     input.reserve(6);
-    //at most prompt + name + samples + opinion + question + answer, so one
-    //allocation. The opening turn's own user line fits inside the same six:
-    //it only appears when question and answer are both absent
+    //at most prompt + anonymity + samples + opinion + question + answer, so
+    //one allocation. The opening turn's own user line fits inside the same
+    //six: it only appears when question and answer are both absent
 
     input.push_back(
         Turn{Role::System, opening_turn ? first_prompt_ : ongoing_prompt_});
@@ -687,17 +672,15 @@ std::vector<Turn> Session::build_examiner_input() {
     //copies the prompt into the caller's vector, deliberately: the returned
     //Turns own their text and can outlive this Session's next write
 
-    if (has_visible_text(student_name_)) {
-        input.push_back(Turn{Role::System,
-                             fill_slot(language_->student_name_sentence,
-                                       student_name_)});
-        //a second System turn rather than an edit to system_prompt_: the file
-        //on disk is shared by every session and must stay one student short of
-        //complete. GeminiExaminer joins System turns with a blank line, and
-        //this one is rebuilt per snapshot so it cannot stack across turns
-    }
-    //whitespace only counts as no name, the same test the transcript uses:
-    //a stray space in the settings box must not become the student's name
+    input.push_back(Turn{Role::System, language_->anonymity_sentence});
+    //UNCONDITIONAL, and it carries no slot to fill. This turn used to name the
+    //student; it now tells the examiner that it does not know the name and
+    //must never ask. The two halves matter equally: nothing identifying leaves
+    //for the model, and the model is stopped from eliciting what it was not
+    //given - an examiner that asks "come ti chiami?" would put the name into
+    //the transcript by the back door, which is the same disclosure one hop
+    //later. A second System turn rather than an edit to system_prompt_,
+    //because the prompt file on disk is shared by every session
 
     ordered_required_.reset();
     const bool changing_topic =

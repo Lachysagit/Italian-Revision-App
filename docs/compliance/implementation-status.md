@@ -164,6 +164,49 @@ discovered.
 
 ---
 
+## Data minimisation and retention — built
+
+Four changes that are not part of the phased screening work and did not need a
+subscription to build, so they are here rather than waiting on phase 3.
+
+**The student's name no longer reaches the model.** It used to ride on the
+Start message and become a System turn, so every examiner request carried a
+minor's first name alongside their speech (A1, A4) — and the `compliant-flow`
+document claimed the opposite, which is exactly the kind of drift this file
+exists to catch. The field is gone from the protocol entirely, not merely
+unused: a stale client that still sends `student_name` has it fall on the floor
+in `parse_control`. The page renders the name itself out of `localStorage`.
+
+That also closed a prompt-injection hole. The name was unbounded, unvalidated
+client text spliced into a System turn — the highest-trust position in the
+prompt — and `SafetyChain` screens `StudentSpeech` and `ExaminerReply`, so a
+name was screened by nothing. Checkpoint 0b and checkpoint 1 were both
+side-steppable through a text box. The fix is removal rather than validation,
+which is the stronger form: there is no field left to validate.
+
+In its place every snapshot carries `LanguagePack::anonymity_sentence`,
+unconditionally and with no slot to fill, telling the examiner that it does not
+know the name and must never ask. Both halves matter — withholding the name
+while leaving the model free to elicit it would move the disclosure one hop
+later, into the transcript.
+
+**`picture_url` is gone.** A Google profile photo of a minor is not needed to
+practise Italian speaking (A1). The claim is no longer read off the ID token,
+so it never reaches the database or a log line in the first place.
+
+**Retention, export and erasure exist.** Transcripts, exam records and safety
+events each expire on their own window; the server purges at startup and every
+24 hours; `--export-attempts` answers A7 and a subject-access request with the
+same command; `--delete-user` is the entry point the cascading foreign keys
+never had. The windows, the ordering rules the server refuses to start without,
+and what the export deliberately omits are all in `data-retention.md`.
+
+**An absent `Origin` no longer skips the websocket origin check** once
+`AUTH_REQUIRED` is on. Every browser sends the header on a handshake, so a
+check any client could skip by leaving it off was not a check.
+
+---
+
 ## Phase 2 — enforced, not yet implemented
 
 `AUDIO_INPUT=gemini` sends the recording straight to the model, which

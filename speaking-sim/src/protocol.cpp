@@ -57,9 +57,6 @@ crow::json::wvalue to_json(const Message& message) {
     if (!message.gemini_key.empty()) {
         json["gemini_key"] = message.gemini_key;
     }
-    if (!message.student_name.empty()) {
-        json["student_name"] = message.student_name;
-    }
     if (message.exam_seconds > 0) {
         json["exam_seconds"] = message.exam_seconds;
     }
@@ -109,11 +106,9 @@ Message from_json(const crow::json::rvalue& json) {
         message.gemini_key = json["gemini_key"].s();
     }
 
-    if (json.has("student_name") && json["student_name"].t() == crow::json::type::String) {
-        message.student_name = json["student_name"].s();
-        //checked for presence AND type like every other field: a client that
-        //sends a number here must leave the name empty, not throw on .s()
-    }
+    //"student_name" is ignored if a stale client still sends it: there is
+    //nothing to decode it into, so the key falls on the floor here rather
+    //than reaching Session or a prompt
 
     if (json.has("class_id") && json["class_id"].t() == crow::json::type::Number) {
         message.class_id = json["class_id"].i();

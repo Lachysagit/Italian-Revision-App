@@ -72,9 +72,9 @@ std::vector<LanguagePack> built_in_packs() {
     //opinione", "qual'e' la tua opinione" - so nothing is lost by cutting the
     //accent off the front of it
     italian.opinion_opener_label = "Secondo te";
-    italian.student_name_sentence =
-        "Lo studente si chiama {0}. Sai gia come si chiama, quindi non "
-        "chiedere mai il suo nome.";
+    italian.anonymity_sentence =
+        "Non sai come si chiama lo studente e non devi mai chiederglielo. "
+        "Rivolgiti a lui direttamente, senza usare nomi.";
     italian.sample_question_header = "Esempi di domande d'esame su \"{0}\":";
     italian.sample_question_footer =
         "Servono come guida al registro, alla lunghezza e alla difficolta. "
@@ -117,9 +117,9 @@ std::vector<LanguagePack> built_in_packs() {
     german.opinion_opener_label = "Was denkst du";
     //not "Deiner Meinung nach": fronting a dative phrase inverts subject and
     //verb, which is a harder opening than the beginner rules elsewhere allow
-    german.student_name_sentence =
-        "Der Student heisst {0}. Du weisst bereits, wie er heisst, frage also "
-        "niemals nach seinem Namen.";
+    german.anonymity_sentence =
+        "Du weisst nicht, wie der Student heisst, und du darfst niemals danach "
+        "fragen. Sprich ihn direkt an, ohne Namen zu verwenden.";
     german.sample_question_header = "Beispiele fuer Pruefungsfragen zu \"{0}\":";
     german.sample_question_footer =
         "Sie dienen als Richtschnur fuer Register, Laenge und "

@@ -171,6 +171,80 @@ int licence_command(int argc, char** argv) {
     return 0;
 }
 
+// Retention, export and erasure from the command line. Like the licence
+// commands these run against DATABASE_PATH and exit without starting the
+// server, so they are safe to run beside a running one.
+//
+//   --purge-now                     one retention pass, reporting what went
+//   --export-attempts user <email>  everything held about one account, as JSON
+//   --export-attempts class <id>    every attempt sat for one class, as JSON
+//   --delete-user <email>           erase an account and all of its records
+//
+// The two exports are the A7 obligation - assessment records have to be
+// retrievable by DoE rather than merely visible in a dashboard - and they
+// double as the answer to a student or parent asking what is held about them.
+int records_command(int argc, char** argv) {
+    const std::string command = argv[1];
+    sim::Config config = sim::load_config();
+    sim::Store store(config.database_path);
+
+    if (command == "--purge-now") {
+        const sim::PurgeCounts went = store.purge_expired(config.retention);
+        std::cout << "transcript turns   " << went.transcripts << "\n"
+                  << "attempts           " << went.attempts << "\n"
+                  << "safety events      " << went.safety_events << "\n"
+                  << "expired sessions   " << went.auth_sessions << "\n"
+                  << "usage rows         " << went.usage_rows << "\n"
+                  << "accounts           " << went.accounts << "\n";
+        return 0;
+    }
+
+    if (command == "--export-attempts") {
+        if (argc < 4) {
+            std::cerr << "usage: speaking-sim --export-attempts user <email>\n"
+                         "       speaking-sim --export-attempts class <class id>\n";
+            return 2;
+        }
+        const std::string kind = argv[2];
+        const std::string target = argv[3];
+        if (kind == "user") {
+            const auto user = store.user_by_email(target);
+            if (!user) {
+                std::cerr << "no account with the email " << target << "\n";
+                return 1;
+            }
+            std::cout << store.export_user_json(user->id) << "\n";
+            return 0;
+        }
+        if (kind == "class") {
+            std::cout << store.export_class_json(std::atoll(target.c_str()))
+                      << "\n";
+            return 0;
+        }
+        std::cerr << "kind must be user or class\n";
+        return 2;
+    }
+
+    // --delete-user <email>
+    if (argc < 3) {
+        std::cerr << "usage: speaking-sim --delete-user <email>\n";
+        return 2;
+    }
+    const auto user = store.user_by_email(argv[2]);
+    if (!user) {
+        std::cerr << "no account with the email " << argv[2] << "\n";
+        return 1;
+    }
+    const bool gone = store.delete_user(user->id);
+    std::cout << (gone ? "deleted account " : "nothing deleted for ")
+              << user->email << "\n";
+    return gone ? 0 : 1;
+    //no confirmation prompt, deliberately: this is run by an operator who was
+    //asked to erase a record, and a prompt in a command that may be scripted
+    //is a prompt somebody pipes `yes` into. Export first if the records are
+    //wanted - the cascade does not keep a copy
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -182,6 +256,16 @@ int main(int argc, char** argv) {
                      std::strcmp(argv[1], "--list-licences") == 0)) {
         try {
             return licence_command(argc, argv);
+        } catch (const std::exception& error) {
+            std::cerr << "fatal: " << error.what() << std::endl;
+            return 1;
+        }
+    }
+    if (argc > 1 && (std::strcmp(argv[1], "--purge-now") == 0 ||
+                     std::strcmp(argv[1], "--export-attempts") == 0 ||
+                     std::strcmp(argv[1], "--delete-user") == 0)) {
+        try {
+            return records_command(argc, argv);
         } catch (const std::exception& error) {
             std::cerr << "fatal: " << error.what() << std::endl;
             return 1;

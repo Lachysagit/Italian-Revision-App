@@ -272,9 +272,10 @@ SignInResult exchange_code(const Config& config,
 
     result.profile.subject = claims["sub"].s();
     result.profile.email = claims["email"].s();
-    if (has_string(claims, "picture")) {
-        result.profile.picture_url = claims["picture"].s();
-    }
+    //the "picture" claim is deliberately NOT read. It is a photograph of a
+    //minor, it is not needed to practise speaking, and the cheapest way to
+    //keep it out of the database and out of every log is never to copy it off
+    //the token in the first place
 
     //a first name, not a full one: this is what the examiner calls the student
     //out loud, and "Buongiorno, Lachlan Carlton" is not how a person is greeted.
