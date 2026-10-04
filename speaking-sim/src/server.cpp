@@ -261,6 +261,12 @@ void Server::run()
         return serve_static_file("web(frontend)/index.html", "text/html");
     });
 
+    CROW_ROUTE(app_, "/api.js") //HTTP ROUTE -----------------------------------
+    ([] {
+        return serve_static_file("web(frontend)/api.js", "application/javascript");
+    });
+    //the browser's reader for the /api routes below, not one of them
+
     CROW_ROUTE(app_, "/client.js") //HTTP ROUTE -----------------------------------
     ([] {
         return serve_static_file("web(frontend)/client.js", "application/javascript");
@@ -798,7 +804,10 @@ crow::response Server::serve_clip(const crow::request& req,
 
 crow::response Server::serve_gemini_keys()
     {
-    crow::json::wvalue json;
+    crow::json::wvalue json(crow::json::wvalue::list{});
+    //a list from the start, so no keys configured answers [] rather than null.
+    //A default-constructed wvalue only becomes a list when [0] is assigned, and
+    //with GEMINI_API_KEYS unset - which is the default - nothing ever was
     unsigned index = 0;
     //crow wvalue::operator[] takes unsigned, same reasoning as gemini_examiner.cpp
     for (const GeminiKeyOption& option : config_.gemini_api_keys) {
@@ -813,7 +822,10 @@ crow::response Server::serve_gemini_keys()
 
 crow::response Server::serve_languages()
     {
-    crow::json::wvalue json;
+    crow::json::wvalue json(crow::json::wvalue::list{});
+    //same reason as serve_gemini_keys, though the registry never answers empty:
+    //a route that returns a list should say so even when it has nothing to put
+    //in it
     unsigned index = 0;
     for (const LanguagePack* pack : languages_.all()) {
         json[index]["id"] = pack->id;

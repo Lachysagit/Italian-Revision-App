@@ -1,3 +1,5 @@
+import { api } from "/api.js";
+
 //the quick-translate box, shared by the exam page and the listening page. Both
 //carry the same #translateBox markup; this file is the one implementation behind
 //it. initTranslate() is a no-op on a page without the box, so it is safe to load
@@ -93,26 +95,22 @@ export function initTranslate(options) {
         showTranslateResult("translating…", false);
 
         try {
-            const response = await fetch("/api/translate", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text, source, target })
-            });
-            const payload = await response.json();
-
-            if (!response.ok) {
-                showTranslateResult(payload.error || "Translation failed.", true);
-                addLog(`translate failed: HTTP ${response.status} ${payload.error || ""}`);
+            const payload = await api("POST", "/api/translate",
+                { text, source, target }, "Translation failed.");
+            showTranslateResult(payload.translation, false);
+        } catch (error) {
+            if (error.status) {
+                showTranslateResult(error.message, true);
+                addLog(`translate failed: HTTP ${error.status} ${error.message}`);
                 //the server already decided what the student should read, so its
                 //message is shown as-is and the status only goes to the console
             } else {
-                showTranslateResult(payload.translation, false);
+                showTranslateResult("Could not reach the server.", true);
+                addLog(`translate error: ${error.message}`);
+                //no status means the request never arrived: the network, not the
+                //API - a different failure from the one above and worth a
+                //different line in the log
             }
-        } catch (error) {
-            showTranslateResult("Could not reach the server.", true);
-            addLog(`translate error: ${error.message}`);
-            //a thrown fetch is the network, not the API - a different failure from
-            //the one above and worth a different line in the log
         } finally {
             translateBusy = false;
             translateGo.disabled = false;

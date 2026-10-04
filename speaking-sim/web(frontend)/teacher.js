@@ -10,6 +10,7 @@
 // which calls it once it knows who is signed in.
 
 import htmx from "/vendor/htmx.esm.js";
+import { api } from "/api.js";
 
 let teacherLanguages = [];
 let classes = [];
@@ -92,29 +93,6 @@ export function initTeacher(user) {
 // small helpers
 // ---------------------------------------------------------------------------
 
-function api(method, path, body) {
-    const options = {
-        method,
-        credentials: "same-origin",
-        headers: {},
-    };
-    if (body !== undefined) {
-        options.headers["Content-Type"] = "application/json";
-        options.body = JSON.stringify(body);
-    }
-    return fetch(path, options).then((response) =>
-        response
-            .json()
-            .catch(() => ({}))
-            .then((data) => {
-                if (!response.ok) {
-                    throw new Error(data.error || `request failed (${response.status})`);
-                }
-                return data;
-            }));
-    // every route answers JSON, errors included, so one reader serves them all
-}
-
 function element(tag, className, text) {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -143,8 +121,7 @@ function setStatus(id, text, isError) {
 // ---------------------------------------------------------------------------
 
 function loadTeacherLanguages() {
-    return fetch("/api/languages")
-        .then((response) => (response.ok ? response.json() : []))
+    return api("GET", "/api/languages")
         .then((list) => {
             teacherLanguages = Array.isArray(list) ? list : [];
             const select = document.getElementById("newClassLanguage");
@@ -160,6 +137,9 @@ function loadTeacherLanguages() {
         })
         .catch(() => {
             showTeacherNotice("Could not load the language list. Please refresh the page.");
+            //now said for a refusal as well as for a dropped request: the old
+            //code fell back to an empty list on a non-ok response and told
+            //nobody, which left the New class form with no language to pick
         });
 }
 
@@ -270,12 +250,20 @@ function refreshClass() {
     // the list is reloaded too: student counts and the archived flag show there
 }
 
+function fill(path, target) {
+    return htmx.ajax("GET", path, { target, source: document.querySelector(target) });
+    //source as well as target, and not just the target on its own: given a bare
+    //selector htmx passes null for the element the request came from, falls back
+    //to the body, and queues every such request against that one element - so
+    //firing six in a row sent the first and silently dropped five. Naming each
+    //container as its own source gives each request its own queue
+}
+
 function paintClassList() {
     const archived = document.getElementById("showArchived").checked ? "1" : "0";
     const current = currentClass ? currentClass.id : 0;
-    htmx.ajax("GET",
-        `/teacher/classes?archived=${archived}&current=${current}`,
-        "#classListReport");
+    fill(`/teacher/classes?archived=${archived}&current=${current}`,
+         "#classListReport");
     //the filter and the open class go up as parameters. They are the only two
     //things the sidebar needs that the server could not already know, and
     //sending them is cheaper than keeping a copy of the class list here to
@@ -292,7 +280,7 @@ function paintReports(classId) {
         ["invites", "#invitesReport"],
         ["plans", "#plansReport"],
     ]) {
-        htmx.ajax("GET", `/teacher/classes/${classId}/${path}`, target);
+        fill(`/teacher/classes/${classId}/${path}`, target);
     }
     //deliberately outside openClass's promise chain: a card that fails to load
     //leaves the panel one card short rather than blanking a class that loaded
@@ -632,7 +620,7 @@ function openAttempt(attemptId) {
     //one, and so a refused request cannot leave the previous transcript on
     //screen under a new heading
 
-    htmx.ajax("GET", `/teacher/attempts/${attemptId}`, "#attemptBody").then(() => {
+    fill(`/teacher/attempts/${attemptId}`, "#attemptBody").then(() => {
         if (!body.firstElementChild) {
             window.location.hash = `#class-${currentClass ? currentClass.id : ""}`;
             return;

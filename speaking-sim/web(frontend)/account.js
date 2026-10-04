@@ -14,6 +14,7 @@
 // builds is the same on all four, so this is the only place it is written.
 
 import { setTranslateLocked } from "/translate.js";
+import { api, apiOr } from "/api.js";
 
 const SIGNUP_DRAFT = "signupDraft";
 
@@ -38,8 +39,7 @@ export function initAccount(options) {
     // request, it shares the connection with everything else the page is
     // already asking for, and the picker is then never waiting on it
 
-    return fetch("/api/me", { credentials: "same-origin" })
-        .then((response) => (response.ok ? response.json() : null))
+    return apiOr(null, "/api/me")
         .then((user) => {
             currentUser = user;
             paintAccountBox(user);
@@ -454,8 +454,7 @@ function hideGateError() {
 }
 
 function loadGateLanguages() {
-    return fetch("/api/languages", { credentials: "same-origin" })
-        .then((response) => (response.ok ? response.json() : []))
+    return apiOr([], "/api/languages")
         .then((list) => {
             gateLanguages = Array.isArray(list) ? list : [];
             const select = document.getElementById("authLanguage");
@@ -565,21 +564,7 @@ function submitDetails(event) {
 }
 
 function postProfile(draft) {
-    return fetch("/api/me/profile", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(draft),
-    }).then((response) =>
-        response
-            .json()
-            .catch(() => ({}))
-            .then((body) => {
-                if (!response.ok) {
-                    throw new Error(body.error || "could not save that");
-                }
-                return body;
-            }));
+    return api("POST", "/api/me/profile", draft, "could not save that");
 }
 
 // Persist a language change made from the exam page's own picker, so the
@@ -650,22 +635,7 @@ function submitClass(event) {
     const create = document.getElementById("authClassCreate");
     create.disabled = true;
 
-    fetch("/api/classes", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(wanted),
-    })
-        .then((response) =>
-            response
-                .json()
-                .catch(() => ({}))
-                .then((body) => {
-                    if (!response.ok) {
-                        throw new Error(body.error || "could not create that class");
-                    }
-                    return body;
-                }))
+    api("POST", "/api/classes", wanted, "could not create that class")
         .then((body) => {
             currentUser.has_created_class = true;
             // so a second pass through the gate this page load does not offer

@@ -14,6 +14,7 @@
 // which calls it once it knows who is signed in.
 
 import htmx from "/vendor/htmx.esm.js";
+import { api } from "/api.js";
 
 export function initClassesPage() {
     document.getElementById("classesMain").hidden = false;
@@ -29,8 +30,13 @@ export function initClassesPage() {
 }
 
 function paintCards() {
-    htmx.ajax("GET", "/me/classes", "#classCardsReport");
-    htmx.ajax("GET", "/me/attempts", "#historyReport");
+    for (const [path, target] of [["/me/classes", "#classCardsReport"],
+                                  ["/me/attempts", "#historyReport"]]) {
+        htmx.ajax("GET", path, { target, source: document.querySelector(target) });
+    }
+    //source as well as target: given a bare selector htmx queues every request
+    //against the body, so the second of these was being dropped before it was
+    //sent. Each container is its own source and so has its own queue
     // two requests still, but no longer racing each other: the class names and
     // language labels in the history table are resolved by the server from the
     // same query, so neither card has to wait for the other or be filled in
@@ -92,18 +98,7 @@ function joinWithCode(raw) {
     const submit = document.getElementById("joinSubmit");
     submit.disabled = true;
 
-    fetch("/api/join", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-    })
-        .then((response) => response.json().catch(() => ({})).then((body) => {
-            if (!response.ok) {
-                throw new Error(body.error || "that code could not be used");
-            }
-            return body;
-        }))
+    api("POST", "/api/join", { code }, "that code could not be used")
         .then(() => {
             closeJoinBox();
             paintCards();

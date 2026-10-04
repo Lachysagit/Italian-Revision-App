@@ -1,5 +1,6 @@
 import { initTranslate, setTranslateLanguage } from "/translate.js";
 import { savePreferredLanguage } from "/account.js";
+import { api } from "/api.js";
 import {
     classLocksLanguage, classSelect, joinClassButton, planSelect,
     selectedClassId, selectedPlanId,
@@ -785,12 +786,16 @@ function setTurnState(state) {
 async function loadGeminiKeys() {
     let names = [];
     try {
-        const response = await fetch("/api/gemini-keys");
-        if (response.ok) {
-            names = await response.json();
-        }
+        const answer = await api("GET", "/api/gemini-keys");
+        names = Array.isArray(answer) ? answer : [];
+        //the route answers [] now, but it answered a bare null until it did,
+        //and names.length below is reached whether this worked or not - so the
+        //guard stays rather than trusting one route to keep its shape
     } catch (error) {
         addLog(`could not load gemini keys: ${error.message}`);
+        //the empty list is still a working page: the server falls back to its
+        //own key. A refusal is logged now rather than passed over in silence,
+        //which is what checking response.ok and then doing nothing did
     }
 
     geminiKeySelect.innerHTML = "";
@@ -837,10 +842,8 @@ export function updatePageTitle(id) {
 
 async function loadLanguages() {
     try {
-        const response = await fetch("/api/languages");
-        if (response.ok) {
-            languages = await response.json();
-        }
+        const answer = await api("GET", "/api/languages");
+        languages = Array.isArray(answer) ? answer : [];
     } catch (error) {
         addLog(`could not load languages: ${error.message}`);
     }

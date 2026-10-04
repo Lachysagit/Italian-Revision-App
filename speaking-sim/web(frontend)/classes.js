@@ -7,6 +7,7 @@
 // state) runs later, from initClasses and from the handlers.
 
 import { setTranslateLanguage } from "/translate.js";
+import { api, apiOr } from "/api.js";
 import {
     LANGUAGE_STORAGE, languageSelect, languages, languagesReady,
     translateCodeFor, updatePageTitle, turnState,
@@ -100,8 +101,7 @@ export function initClasses() {
 }
 
 function loadStudentClasses() {
-    return fetch("/api/classes", { credentials: "same-origin" })
-        .then((response) => (response.ok ? response.json() : { classes: [] }))
+    return apiOr({ classes: [] }, "/api/classes")
         .then((data) => {
             studentClasses = Array.isArray(data.classes) ? data.classes : [];
             paintClassSelect();
@@ -226,9 +226,7 @@ function loadClassPlans(klass) {
         paintPlanSelect(null);
         return;
     }
-    fetch(`/api/classes/${klass.id}/plans`, { credentials: "same-origin" })
-        .then((response) => (response.ok ? response.json() : { plans: [] }))
-        .catch(() => ({ plans: [] }))
+    apiOr({ plans: [] }, `/api/classes/${klass.id}/plans`)
         .then((data) => {
             if (request !== plansRequest) return;
             classPlans = Array.isArray(data.plans) ? data.plans : [];
@@ -315,22 +313,7 @@ function joinWithCode(code) {
     }
     joinSubmit.disabled = true;
 
-    fetch("/api/join", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: trimmed }),
-    })
-        .then((response) =>
-            response
-                .json()
-                .catch(() => ({}))
-                .then((body) => {
-                    if (!response.ok) {
-                        throw new Error(body.error || "Could not join that class.");
-                    }
-                    return body;
-                }))
+    api("POST", "/api/join", { code: trimmed }, "Could not join that class.")
         .then((body) => {
             closeJoinBox();
             localStorage.setItem(CLASS_STORAGE, String(body.class.id));
