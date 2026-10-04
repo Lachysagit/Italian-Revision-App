@@ -151,6 +151,14 @@ private:
     crow::response members_fragment(std::int64_t class_id,
                                     const ClassInfo& klass);
     crow::response invites_fragment(std::int64_t class_id);
+    crow::response class_header_fragment(const ClassInfo& klass);
+    crow::response join_code_fragment(const ClassInfo& klass);
+    crow::response serve_class_header_fragment(const crow::request& req,
+                                               std::int64_t class_id);
+    crow::response serve_join_code_fragment(const crow::request& req,
+                                            std::int64_t class_id);
+    crow::response serve_archive_fragment(const crow::request& req,
+                                          std::int64_t class_id);
     //shared by the GET and by a successful DELETE, so a removal answers with
     //the table redrawn by the same code rather than a second copy of it
     crow::response serve_my_attempts(const crow::request& req);

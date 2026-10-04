@@ -1,0 +1,22 @@
+{{! One class's heading, and the button that archives or restores it.
+
+    Archiving keeps everything - members, codes, history - and only hides the
+    class from its students and stops new joins, which is what the confirmation
+    says and why there is no second warning about losing anything. }}
+<header id="classHeader">
+    <div>
+        <h2 id="className">{{name}}</h2>
+        <p id="classMeta">{{meta}}</p>
+    </div>
+    <button type="button" id="archiveButton" class="quiet"
+            hx-post="/teacher/classes/{{id}}/archive?archived={{archive_to}}"
+            hx-target="#classHeaderReport"
+            {{#archiving}}hx-confirm="Archive {{name}}? Students will stop seeing it and nobody will be able to join. You can restore it later."{{/archiving}}>{{archive_label}}</button>
+</header>
+
+{{#archived}}
+<p id="archivedBanner">
+    This class is archived. Its students no longer see it and nobody
+    can join it. Restore it to make changes.
+</p>
+{{/archived}}

@@ -46,34 +46,19 @@
         </aside>
 
         <section id="classPanel" hidden>
-            <header id="classHeader">
-                <div>
-                    <h2 id="className"></h2>
-                    <p id="classMeta"></p>
-                </div>
-                <button type="button" id="archiveButton" class="quiet"></button>
-            </header>
-
-            <p id="archivedBanner" hidden>
-                This class is archived. Its students no longer see it and nobody
-                can join it. Restore it to make changes.
-            </p>
+            <div id="classHeaderReport"></div>
+            <!-- filled by /teacher/classes/<id>/header, which answers with the
+                 heading, the archive button and - when it is archived - the
+                 banner. Archiving posts back here -->
 
             <div class="card" id="joinCard">
                 <h3>Join code</h3>
-                <div id="joinCodeRow">
-                    <span id="joinCode" class="joinCode"></span>
-                    <span id="joinCodeOff" hidden>Joining by code is turned off.</span>
-                </div>
-                <p class="help" id="joinHelp">
-                    Students choose <strong>Join a class</strong> on the Speaking
-                    page and type this code, or open the join link.
-                </p>
-                <div class="buttonRow">
-                    <button type="button" id="copyJoinLink">Copy join link</button>
-                    <button type="button" id="rotateCode" class="quiet">New code</button>
-                    <button type="button" id="disableCode" class="quiet">Turn off joining</button>
-                </div>
+                <div id="joinCodeReport"></div>
+                <!-- filled by /teacher/classes/<id>/join-code. New code and
+                     Turn off joining post back to the same place; Copy stays a
+                     button this page handles, because the clipboard is the
+                     browser's and the link is built from the address the
+                     teacher actually has open -->
                 <p class="status" id="joinStatus" role="status"></p>
             </div>
 

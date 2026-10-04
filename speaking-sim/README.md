@@ -312,6 +312,9 @@ tests (`cmake --build build --target views-tests`).
 | `GET /me/attempts` | `GET /api/my-attempts` | the caller's own exam history |
 | `GET /teacher/attempts/<id>` | `GET /api/attempts/<id>` | one exam: heading, plan checks and transcript |
 | `GET /teacher/classes?archived=&current=` | `GET /api/classes` | the dashboard sidebar |
+| `GET /teacher/classes/<id>/header` | inside `GET /api/classes/<id>` | the class's heading and its archive button |
+| `POST /teacher/classes/<id>/archive?archived=` | `POST /api/classes/<id>/archive` | archives or restores, then answers with the heading redrawn |
+| `GET`, `POST /teacher/classes/<id>/join-code?action=` | `POST /api/classes/<id>/join-code` | the join code; POST rotates or disables it and answers with it redrawn |
 | `GET /teacher/classes/<id>/invites` | inside `GET /api/classes/<id>` | addresses waiting to sign in |
 | `DELETE /teacher/classes/<id>/invites/<invite>` | `DELETE /api/classes/<id>/invites/<invite>` | cancels one, then answers with the list redrawn |
 | `GET /teacher/classes/<id>/plans` | `GET /api/classes/<id>/plans` | the class's exam plans |
@@ -334,14 +337,26 @@ htmx fires as an event on the body. The card that asked for the change has
 already been replaced by the answer; that event is for the ones that went stale
 beside it.
 
-**Two parts of the dashboard stay in the browser on purpose.** The exam plan
+**What stays in the browser, on purpose.** The exam plan
 editor reacts to every tick and keystroke - which questions a ticked topic
 allows, whether a tense's count box is live, how many questions still fit in
 the time - against a form that has not been saved, so there is nothing on the
 server to ask. The sign-up wizard holds a draft across the redirect to Google
-and back. Both are local, unsaved state that changes faster than a request, and
-that is the line: the server renders what it owns, the browser handles what has
-not been written down yet.
+and back. Both are local, unsaved state that changes faster than a request.
+
+Three smaller things keep a handler for the same reason. **Add students** posts
+a box of free text and gets back a count of who was added, who will join when
+they sign in, and which addresses were not addresses - and it puts those last
+ones back in the box to be fixed and sent again, which is editing state, not a
+view of anything. The **Copy join link** button needs the clipboard, which is
+the browser's, and builds the link from `window.location.origin` - the address
+the teacher actually has open, and therefore the one that will work when they
+paste it, which a server rendering `PUBLIC_ORIGIN` could not promise. And the
+**sidebar filter** is a checkbox whose state is the page's.
+
+That is the line: the server renders what it owns, and the browser keeps what
+has not been written down yet, what only it can reach, and what is nobody's
+business but this tab's.
 
 ## Usage limits and paid access
 

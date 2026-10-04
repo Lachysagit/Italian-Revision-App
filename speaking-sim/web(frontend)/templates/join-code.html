@@ -1,0 +1,31 @@
+{{! The join code, and the two buttons that change it.
+
+    With joining off there is no code to replace, so the one button offers to
+    turn it back on rather than to make a new one, and Copy and Turn off are
+    not there at all.
+
+    Copy carries the code rather than the finished link: the page builds it from
+    window.location.origin, which is the address the teacher actually has open -
+    and is therefore the one that will work when they paste it. }}
+<div id="joinCodeRow">
+    {{#has_code}}<span id="joinCode" class="joinCode">{{code}}</span>{{/has_code}}
+    {{^has_code}}<span id="joinCodeOff">Joining by code is turned off.</span>{{/has_code}}
+</div>
+<p class="help" id="joinHelp">
+    Students choose <strong>Join a class</strong> on the Speaking
+    page and type this code, or open the join link.
+</p>
+<div class="buttonRow">
+    {{#has_code}}
+    <button type="button" id="copyJoinLink" data-join-code="{{raw_code}}"{{#archived}} disabled{{/archived}}>Copy join link</button>
+    {{/has_code}}
+    <button type="button" id="rotateCode" class="quiet"{{#archived}} disabled{{/archived}}
+            hx-post="/teacher/classes/{{id}}/join-code?action=rotate"
+            hx-target="#joinCodeReport"
+            {{#has_code}}hx-confirm="Make a new code? The current one will stop working straight away."{{/has_code}}>{{rotate_label}}</button>
+    {{#has_code}}
+    <button type="button" id="disableCode" class="quiet"{{#archived}} disabled{{/archived}}
+            hx-post="/teacher/classes/{{id}}/join-code?action=disable"
+            hx-target="#joinCodeReport">Turn off joining</button>
+    {{/has_code}}
+</div>

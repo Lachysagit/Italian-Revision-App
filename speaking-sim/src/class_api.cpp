@@ -210,6 +210,24 @@ void Server::register_class_routes() {
     //the page's state rather than the database's: which filter the box is on,
     //and which class is open
 
+    CROW_ROUTE(app_, "/teacher/classes/<int>/header").methods("GET"_method) //HTTP ROUTE ---
+    ([this](const crow::request& req, std::int64_t class_id) {
+        return serve_class_header_fragment(req, class_id);
+    });
+
+    CROW_ROUTE(app_, "/teacher/classes/<int>/archive").methods("POST"_method) //HTTP ROUTE ---
+    ([this](const crow::request& req, std::int64_t class_id) {
+        return serve_archive_fragment(req, class_id);
+    });
+
+    CROW_ROUTE(app_, "/teacher/classes/<int>/join-code").methods("GET"_method, "POST"_method) //HTTP ROUTE ---
+    ([this](const crow::request& req, std::int64_t class_id) {
+        return serve_join_code_fragment(req, class_id);
+    });
+    //GET draws it, POST changes it and draws it again. The action and the
+    //archived flag ride in the query string for the same reason plan_id does:
+    //htmx posts a form, and these are one word each
+
     CROW_ROUTE(app_, "/teacher/classes/<int>/invites").methods("GET"_method) //HTTP ROUTE ---
     ([this](const crow::request& req, std::int64_t class_id) {
         return serve_invites_fragment(req, class_id);
@@ -699,6 +717,114 @@ crow::response Server::serve_my_attempts(const crow::request& req) {
         return json_response(json);
         //the caller's own id, never one from the request: a student cannot ask
         //for somebody else's history by changing a number in the URL
+    });
+}
+
+crow::response Server::class_header_fragment(const ClassInfo& klass) {
+    const LanguagePack* pack = languages_.find(klass.language_id);
+
+    crow::json::wvalue context;
+    context["id"] = klass.id;
+    context["name"] = klass.name;
+    context["meta"] = (pack ? pack->display_name : klass.language_id) +
+                      " \xc2\xb7 created " + format_local_time(klass.created_at);
+    context["archived"] = klass.archived;
+    context["archiving"] = !klass.archived;
+    //only going in needs confirming: restoring a class puts back what archiving
+    //hid and asks nothing of the students
+    context["archive_to"] = klass.archived ? "false" : "true";
+    context["archive_label"] = klass.archived ? "Restore class" : "Archive class";
+    return html_fragment(
+        crow::mustache::load("class-header.html").render(context).dump());
+}
+
+crow::response Server::join_code_fragment(const ClassInfo& klass) {
+    const bool has_code = !klass.join_code.empty();
+
+    crow::json::wvalue context;
+    context["id"] = klass.id;
+    context["has_code"] = has_code;
+    context["code"] = format_join_code(klass.join_code);
+    context["raw_code"] = klass.join_code;
+    //the hyphenated one is for reading off a board; the stored one is what the
+    //join link carries, and the server ignores the hyphen either way
+    context["archived"] = klass.archived;
+    context["rotate_label"] = has_code ? "New code" : "Turn on joining";
+    return html_fragment(
+        crow::mustache::load("join-code.html").render(context).dump());
+}
+
+crow::response Server::serve_class_header_fragment(const crow::request& req,
+                                                   std::int64_t class_id) {
+    User user;
+    ClassInfo klass;
+    if (auto refusal = refuse_unless_teaches(req, class_id, user, klass)) {
+        return std::move(*refusal);
+    }
+    return guarded("class header",
+                   [&] { return class_header_fragment(klass); });
+}
+
+crow::response Server::serve_archive_fragment(const crow::request& req,
+                                              std::int64_t class_id) {
+    User user;
+    ClassInfo klass;
+    if (auto refusal = refuse_unless_teaches(req, class_id, user, klass)) {
+        return std::move(*refusal);
+    }
+
+    const char* wanted = req.url_params.get("archived");
+    if (wanted == nullptr) {
+        return json_error(400, "archived must be true or false");
+    }
+    const std::string value(wanted);
+    if (value != "true" && value != "false") {
+        return json_error(400, "archived must be true or false");
+    }
+
+    return guarded("archive class", [&] {
+        store_->set_archived(class_id, value == "true");
+        klass.archived = value == "true";
+
+        crow::response response = class_header_fragment(klass);
+        response.set_header("HX-Trigger", "class-changed");
+        //archiving changes what every other card on the page may do, and shows
+        //in the sidebar beside the class's name, so the rest is told to refresh
+        return response;
+    });
+    //archiving keeps everything - members, codes, history - and only hides the
+    //class from its students and stops new joins. Nothing here deletes
+}
+
+crow::response Server::serve_join_code_fragment(const crow::request& req,
+                                                std::int64_t class_id) {
+    User user;
+    ClassInfo klass;
+    if (auto refusal = refuse_unless_teaches(req, class_id, user, klass)) {
+        return std::move(*refusal);
+    }
+
+    if (req.method == crow::HTTPMethod::Get) {
+        return guarded("join code", [&] { return join_code_fragment(klass); });
+    }
+
+    const char* wanted = req.url_params.get("action");
+    const std::string action = wanted == nullptr ? std::string() : wanted;
+    if (action != "rotate" && action != "disable") {
+        return json_error(400, "action must be rotate or disable");
+    }
+    if (klass.archived) {
+        return json_error(409, "restore the class before changing its join code");
+    }
+
+    return guarded("join code", [&] {
+        if (action == "rotate") {
+            klass.join_code = store_->rotate_join_code(class_id);
+        } else {
+            store_->disable_join_code(class_id);
+            klass.join_code.clear();
+        }
+        return join_code_fragment(klass);
     });
 }
 

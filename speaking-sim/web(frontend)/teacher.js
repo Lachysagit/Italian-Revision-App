@@ -122,20 +122,6 @@ function element(tag, className, text) {
     return node;
 }
 
-function formatTime(seconds) {
-    if (!seconds) return "-";
-    return new Date(seconds * 1000).toLocaleString("en-AU", {
-        dateStyle: "medium",
-        timeStyle: "short",
-    });
-}
-
-function formatCode(code) {
-    return code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
-    // shown in two halves because it is read off a board; the server ignores
-    // the hyphen when a student types it back
-}
-
 function capitalise(text) {
     return text ? text.charAt(0).toUpperCase() + text.slice(1) : "";
 }
@@ -301,6 +287,8 @@ function paintReports(classId) {
         ["members", "#membersReport"],
         ["attempts", "#attemptsReport"],
         ["coverage", "#coverageReport"],
+        ["header", "#classHeaderReport"],
+        ["join-code", "#joinCodeReport"],
         ["invites", "#invitesReport"],
         ["plans", "#plansReport"],
     ]) {
@@ -314,20 +302,12 @@ function paintReports(classId) {
 
 function paintClass(detail) {
     const klass = detail.class;
-    document.getElementById("className").textContent = klass.name;
-    document.getElementById("classMeta").textContent =
-        `${klass.language_label} · created ${formatTime(klass.created_at)}`;
 
-    document.getElementById("archiveButton").textContent =
-        klass.archived ? "Restore class" : "Archive class";
-    document.getElementById("archivedBanner").hidden = !klass.archived;
-
-    for (const id of ["copyJoinLink", "rotateCode", "disableCode",
-        "inviteButton", "inviteEmails"]) {
+    for (const id of ["inviteButton", "inviteEmails"]) {
         document.getElementById(id).disabled = klass.archived;
     }
-
-    paintJoinCode(klass.join_code);
+    //the only two controls left on this page that the server does not render.
+    //The buttons inside the fragments carry their own disabled state
 
     document.getElementById("newPlanLink").href = `#class-${klass.id}/plan-new`;
     document.getElementById("newPlanLink").hidden = klass.archived;
@@ -336,23 +316,6 @@ function paintClass(detail) {
 
     setStatus("joinStatus", "");
     setStatus("inviteStatus", "");
-}
-
-function paintJoinCode(code) {
-    const hasCode = Boolean(code);
-    document.getElementById("joinCode").hidden = !hasCode;
-    document.getElementById("joinCode").textContent = hasCode ? formatCode(code) : "";
-    document.getElementById("joinCodeOff").hidden = hasCode;
-    document.getElementById("copyJoinLink").hidden = !hasCode;
-    document.getElementById("disableCode").hidden = !hasCode;
-    document.getElementById("rotateCode").textContent =
-        hasCode ? "New code" : "Turn on joining";
-    // with joining off, a new code is how it comes back on, so the one button
-    // says so rather than offering to replace a code that does not exist
-}
-
-function joinLink(code) {
-    return `${window.location.origin}/join/${code}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -725,20 +688,11 @@ function wireDashboard() {
             });
     };
 
-    document.getElementById("archiveButton").onclick = () => {
-        const archiving = !currentClass.archived;
-        if (archiving && !window.confirm(
-            `Archive ${currentClass.name}? Students will stop seeing it and ` +
-            "nobody will be able to join. You can restore it later.")) {
-            return;
-        }
-        api("POST", `/api/classes/${currentClass.id}/archive`, { archived: archiving })
-            .then(refreshClass)
-            .catch((error) => showTeacherNotice(error.message));
-    };
+    document.getElementById("joinCodeReport").onclick = (event) => {
+        const button = event.target.closest("[data-join-code]");
+        if (!button) return;
 
-    document.getElementById("copyJoinLink").onclick = () => {
-        const link = joinLink(currentClass.join_code);
+        const link = `${window.location.origin}/join/${button.dataset.joinCode}`;
         const done = () => setStatus("joinStatus", `Copied ${link}`);
         if (navigator.clipboard) {
             navigator.clipboard.writeText(link).then(done,
@@ -749,31 +703,10 @@ function wireDashboard() {
             // the link is shown for copying by hand instead
         }
     };
-
-    document.getElementById("rotateCode").onclick = () => {
-        if (currentClass.join_code && !window.confirm(
-            "Make a new code? The current one will stop working straight away.")) {
-            return;
-        }
-        api("POST", `/api/classes/${currentClass.id}/join-code`, { action: "rotate" })
-            .then((data) => {
-                currentClass.join_code = data.join_code;
-                paintJoinCode(data.join_code);
-                setStatus("joinStatus", "New code ready.");
-            })
-            .catch((error) => setStatus("joinStatus", error.message, true));
-    };
-
-    document.getElementById("disableCode").onclick = () => {
-        api("POST", `/api/classes/${currentClass.id}/join-code`, { action: "disable" })
-            .then(() => {
-                currentClass.join_code = "";
-                paintJoinCode("");
-                setStatus("joinStatus",
-                    "Joining is off. Students already in the class stay in it.");
-            })
-            .catch((error) => setStatus("joinStatus", error.message, true));
-    };
+    //one listener on the card rather than on the button, because the button is
+    //replaced every time the code changes. The code comes down in a data
+    //attribute and the link is built here, from the address the teacher
+    //actually has open - which is the one that will work when they paste it
 
     document.getElementById("inviteButton").onclick = () => {
         const box = document.getElementById("inviteEmails");
