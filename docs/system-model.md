@@ -1,84 +1,159 @@
-# speaking-sim — grounded system model
+# speaking-sim — system model
 
-Source of record for a set of hand-drawn NSW HSC Software Engineering diagrams.
-Every element below carries a `file:line` citation into the `speaking-sim/` tree.
-Paths are relative to `speaking-sim/`.
+A technical model of `speaking-sim`: what the classes are, how a turn flows
+through the server, what is stored, and where the decisions are made. Written
+to be read alongside the code rather than instead of it, so elements carry a
+`file:line` citation into the `speaking-sim/` tree. Paths are relative to
+`speaking-sim/`.
 
-**Scope.** `speaking-sim/` only. The separate Italian revision web app is out of scope
-and is not referenced anywhere in this document.
+**Scope.** `speaking-sim/` only. The separate Italian revision web app is out of
+scope and is not referenced anywhere in this document.
 
 **State tags.** Every element is tagged:
 
-- `[IMPLEMENTED]` — code exists and runs on the current prototype path.
+- `[IMPLEMENTED]` — code exists and runs on the current path.
 - `[PLANNED]` — named in the design but with no working code, or a deliberate stub.
 
-**Current prototype path:** browser → `ws://` on localhost → Crow → WhisperSTT →
-GeminiExaminer (HTTPS) → PiperTTS (subprocess) → browser.
+> **How current this is.** Section 0 below was regenerated against the tree and
+> is accurate. **Sections 1 to 6 and the supplementary sections were written
+> against a much earlier version of this project** — one with no accounts, no
+> classes, no database and a single-page browser client — and their line numbers
+> no longer point where they say. Their description of the audio pipeline still
+> holds in outline, because that part has changed least; everything they say
+> about storage, the browser client or the page count does not. Read them as
+> history until they are redone, and trust section 0 and the READMEs for the
+> current shape.
 
 ---
 
 ## 0. Repository inventory
 
-Every tracked source file, with the role it plays. Build artefacts (`build/`,
-`build-piper-rel/`) and vendored submodule sources (`third_party/whisper.cpp`,
-`third_party/piper`) are excluded — they are upstream code, not this system.
+Every tracked file this project wrote, by area, with its current line count.
+Excluded: `build/`, the vendored submodule sources under `third_party/`
+(`whisper.cpp`, `piper`), model weights under `models/`, the binary fonts, and
+`web(frontend)/vendor/htmx.esm.js` — all upstream code or assets rather than
+this system.
+
+**Entry, configuration and build**
 
 | File | Lines | Role |
 | --- | --- | --- |
-| `src/main.cpp` | 52 | Entry point; builds config, backends, `Server`; the only place the examiner backend is chosen (`src/main.cpp:24-28`) |
-| `src/config.cpp` | 81 | Reads and validates env vars into `Config` |
-| `src/protocol.cpp` | 74 | `Message` ↔ JSON serialise/parse |
-| `src/server.cpp` | 675 | Crow routes, WebSocket handlers, audio framing, pipeline job |
-| `src/session.cpp` | 97 | Per-connection audio buffer and conversation state |
-| `src/worker.cpp` | 107 | Thread pool: queue, condition variable, exception backstop |
-| `src/stt/whisper_stt.cpp` | 123 | whisper.cpp inference |
-| `src/examiner/gemini_examiner.cpp` | 287 | Gemini `generateContent` HTTPS client |
-| `src/examiner/hailo_examiner.cpp` | 19 | Stub — returns a placeholder string |
-| `src/tts/piper_tts.cpp` | 261 | piper subprocess (POSIX `fork`/`exec` and Win32 `CreateProcess`) |
-| `include/sim/protocol.hpp` | 30 | `MessageType`, `Message` |
-| `include/sim/session.hpp` | 57 | `Session` |
-| `include/sim/server.hpp` | 94 | `ConnHandle`, `Server` |
-| `include/sim/config.hpp` | 28 | `ExaminerBackend`, `Config` |
-| `include/sim/worker.hpp` | 31 | `WorkerPool` |
-| `include/sim/stt.hpp` | 18 | `InterfaceSTT` abstract base |
-| `include/sim/tts.hpp` | 20 | `InterfaceTTS` abstract base |
-| `include/sim/examiner.hpp` | 25 | `Role`, `Turn`, `InterfaceExaminer` abstract base |
-| `include/sim/stt/whisper_stt.hpp` | 54 | `WhisperSTT` |
-| `include/sim/tts/piper_tts.hpp` | 32 | `PiperTTS` |
-| `include/sim/examiner/gemini_examiner.hpp` | 20 | `GeminiExaminer` |
-| `include/sim/examiner/hailo_examiner.hpp` | 21 | `HailoExaminer` |
-| `web/client.js` | 528 | Browser client: capture, resample, WebSocket, playback, DOM |
-| `web/index.html` | 29 | Single page: `#controls`, `#transcript` |
-| `web/styles.css` | 116 | Turn cards, sticky controls |
-| `CMakeLists.txt` | 256 | Build; `SIM_HAVE_WHISPER` / `SIM_HAVE_PIPER` feature gates |
-| `CMakePresets.json` | 20 | Ninja Debug preset |
-| `.env.example` | 33 | Documented defaults for all six env vars |
-| `prompts/examiner_system.txt` | 17 | Examiner system prompt (HSC topic list) |
-| `run.ps1` | 65 | Loads `.env` into the environment and starts the binary |
-| `README.md` | 162 | Build and run instructions |
+| `src/main.cpp` | 372 | Entry point; builds config, backends and `Server`, and carries the command-line tools (licences, retention, exports, the tense and audio self-checks) |
+| `src/config.cpp` | 522 | Reads and validates every env var into `Config` |
+| `include/sim/config.hpp` | 178 | `Config` and the enums it holds |
+| `CMakeLists.txt` | 399 | Build; FetchContent for Crow, Asio, cpp-httplib and SQLite; feature gates for whisper and piper; the two test targets |
+| `.env.example` | 298 | Documented defaults for every setting |
+| `run.ps1` | 102 | Loads `.env` and starts the binary on Windows |
 
-### Three stale claims in the repo, corrected here
+**The server and one exam**
 
-Recorded because they would otherwise mislead a diagram drawn from the prose:
+| File | Lines | Role |
+| --- | --- | --- |
+| `src/server.cpp` | 2267 | Crow routes, the WebSocket, audio framing, the turn pipeline, auth and retention |
+| `include/sim/server.hpp` | 372 | `ConnHandle`, `Server` and its handler declarations |
+| `src/session.cpp` | 847 | Per-connection audio buffer, conversation state, and how a plan is followed |
+| `include/sim/session.hpp` | 297 | `Session` |
+| `src/protocol.cpp` | 132 | `Message` ↔ JSON |
+| `src/worker.cpp` | 93 | Thread pool: queue, condition variable, exception backstop |
+| `src/audio_encode.cpp` | 184 | PCM to FLAC or WAV for the examiner call |
+| `src/http_util.cpp` | 107 | `json_response`, `html_fragment`, `guarded`, cookie and origin checks |
 
-1. **`README.md:20-28`** states all four pluggable pieces are stubs returning
-   placeholders. That is now false for three of them: `WhisperSTT::transcribe`
-   runs real inference (`src/stt/whisper_stt.cpp:88`), `GeminiExaminer::respond`
-   makes a real HTTPS call (`src/examiner/gemini_examiner.cpp:190-191`), and
-   `PiperTTS::synthesize` really spawns piper (`src/tts/piper_tts.cpp:249`).
-   Only `HailoExaminer` is still a stub (`src/examiner/hailo_examiner.cpp:11-17`).
-2. **The `transcript` branch is live, and the comment that said otherwise is
-   gone.** The committed version of `web/client.js` carried a comment claiming
-   `MessageType::Transcript` "is declared in the protocol but never
-   constructed", making the branch dormant. That was already false —
-   `Server::send_transcript` exists (`src/server.cpp:603-618`) and is called on
-   every non-empty transcript (`src/server.cpp:441`) — and the misleading
-   comment has since been deleted from the working tree. The branch itself is
-   unchanged and live (`web/client.js:320-323`).
-3. **There is no `#log` DOM element.** `web/index.html:12-25` contains only
-   `#controls` and `#transcript`. `addLog()` writes to `console.log` and cannot
-   reach the DOM at all (`web/client.js:44-46`). Any storyboard showing an
-   on-page log region would be wrong; see section 6.
+**JSON API and rendered fragments**
+
+| File | Lines | Role |
+| --- | --- | --- |
+| `src/class_api.cpp` | 1442 | Classes, members, invites, exam history; the JSON routes and their `/teacher` and `/me` fragment twins |
+| `src/plan_api.cpp` | 549 | Exam plans, exam options, the class coverage report |
+| `src/plan_json.cpp` | 236 | Plan ↔ JSON, with validation |
+| `src/views.cpp` | 121 | The labels a page shows: dates, end reasons, lengths, join codes |
+| `src/static_files.cpp` | 192 | Whole-file and Range reads, and the name allowlists the URL-fed routes use |
+
+**Storage**
+
+| File | Lines | Role |
+| --- | --- | --- |
+| `src/store.cpp` | 2369 | SQLite: schema, accounts, classes, plans, attempts, turns, features, licences, usage, retention |
+| `include/sim/store.hpp` | 521 | The row structs and the `Store` interface |
+
+**Safety**
+
+| File | Lines | Role |
+| --- | --- | --- |
+| `src/safety/wordlist_safety.cpp` | 349 | Offline word-list screening in both directions |
+| `src/safety/safety_chain.cpp` | 225 | Orders the detectors and decides what a verdict means |
+| `src/safety/semantic_adjudicator.cpp` | 201 | A reasoning pass over the filters' own triggers |
+| `src/safety/azure_safety.cpp` | 201 | Content-safety HTTP client |
+| `src/safety/examiner_adjudicator.cpp` | 165 | The examiner model as a second opinion |
+
+**Language, exams and text**
+
+| File | Lines | Role |
+| --- | --- | --- |
+| `src/language.cpp` | 251 | The language packs and the registry that holds them |
+| `src/tense_rules.cpp` | 357 | Deterministic tense detection for Italian and German |
+| `src/question_bank.cpp` | 156 | Reads and groups each language's question bank |
+| `src/topics.cpp` | 136 | The syllabus topic groups and the tags that fold into them |
+| `src/text_clean.cpp` | 150 | Trimming and normalising what the model and the student send |
+| `src/translate.cpp` | 139 | The translate box's backend |
+| `src/rate_limit.cpp` | 50 | Per-caller token buckets |
+
+**Pluggable backends**
+
+| File | Lines | Role |
+| --- | --- | --- |
+| `src/examiner/gemini_examiner.cpp` | 556 | Gemini `generateContent` over HTTPS, with the structured reply schema |
+| `src/tts/piper_tts.cpp` | 270 | piper as a subprocess (POSIX `fork`/`exec`, Win32 `CreateProcess`) |
+| `src/stt/whisper_stt.cpp` | 118 | whisper.cpp inference |
+| `src/examiner/hailo_examiner.cpp` | 22 | Stub: returns a placeholder string |
+| `src/auth/google_oauth.cpp` | 306 | The Google sign-in exchange |
+
+**Browser client**
+
+| File | Lines | Role |
+| --- | --- | --- |
+| `web(frontend)/client.js` | 1572 | The exam page: mic capture, resampling, the WebSocket, playback, the transcript and the .docx export |
+| `web(frontend)/account.js` | 999 | The sign-in gate, the sign-up steps and the settings modal |
+| `web(frontend)/teacher.js` | 728 | The dashboard: its hash router, the exam plan editor, and the requests that fill the rendered cards |
+| `web(frontend)/listening.js` | 506 | The listening papers |
+| `web(frontend)/classes.js` | 344 | The exam page's class and plan pickers |
+| `web(frontend)/translate.js` | 175 | The quick-translate box, shared by two pages |
+| `web(frontend)/classes-page.js` | 124 | The student's own classes page |
+| `web(frontend)/api.js` | 51 | One reader for every `/api` route |
+
+**Pages, templates and styles**
+
+| File | Lines | Role |
+| --- | --- | --- |
+| `web(frontend)/index.html` | 184 | The exam page |
+| `web(frontend)/teacher.html` | 215 | The dashboard |
+| `web(frontend)/listening.html` | 74 | The listening page |
+| `web(frontend)/classes-page.html` | 76 | The student's classes page |
+| `web(frontend)/templates/*.html` | 11 files, 16–60 each | The server-rendered cards: `attempt`, `attempts`, `class-header`, `class-list`, `coverage`, `invites`, `join-code`, `members`, `my-classes`, `my-history`, `plans` |
+| `web(frontend)/styles.css` | 1255 | Shared tokens, nav, gate, turn cards |
+| `web(frontend)/teacher.css` | 614 | The dashboard's own layout |
+| `web(frontend)/listening.css` | 410 | The listening page's own layout |
+| `web(frontend)/classes-page.css` | 145 | The classes page's own layout |
+| `web(frontend)/fonts.css` | 68 | The `@font-face` block |
+
+**Tests**
+
+| File | Lines | Role |
+| --- | --- | --- |
+| `tests/safety_tests.cpp` | 834 | The safety layer, offline: no network, no database, no Crow |
+| `tests/views_tests.cpp` | 146 | The label helpers, including the date format |
+
+Both are `EXCLUDE_FROM_ALL`: `cmake --build build --target safety-tests` and
+`--target views-tests`, then run the binary.
+
+**Content**
+
+| File | Lines | Role |
+| --- | --- | --- |
+| `prompts/<language>/examiner_first.txt` | 74–87 | The opening-question prompt |
+| `prompts/<language>/examiner_ongoing.txt` | 82–98 | The ongoing-question prompt |
+| `prompts/<language>/question_bank.txt` | 207–229 | Questions grouped by syllabus topic |
+| `listening/<language>/manifest.json` | 754–1067 | The listening papers, their clips and their questions |
+| `config/wordlists/<language>/*.txt.example` | 71–122 | Starting word lists for the offline safety filter |
 
 ---
 
@@ -547,8 +622,8 @@ method name marks it pure virtual. Add the two virtual destructors and the
   diagram showing `Session "1" --> "*" Turn` as *stored* state would be wrong;
   the 1..3 `Turn` vector is built on demand (`src/session.cpp:39-60`) and owned
   by the caller.
-- The browser client is not object-oriented — `web/client.js` is module-level
-  functions over module-level `let` state (`web/client.js:7-41`). It has no
+- The browser client is not object-oriented — `web(frontend)/client.js` is module-level
+  functions over module-level `let` state (`web(frontend)/client.js:7-41`). It has no
   classes to put on this diagram. Model it in sections 2, 3 and 6 instead.
 
 ---
@@ -561,7 +636,7 @@ Classified strictly: a **process** transforms data, a **data store** holds data
 at rest, an **external entity** is a source or sink outside the system boundary.
 
 The system boundary encloses the C++ server **and** the browser client, because
-`web/client.js` is this project's own code, served by this project's own route
+`web(frontend)/client.js` is this project's own code, served by this project's own route
 (`src/server.cpp:49-52`, `src/server.cpp:187-204`). The **student** — their
 voice and their ears — is what sits outside it.
 
@@ -569,7 +644,7 @@ voice and their ears — is what sits outside it.
 
 | ID | Entity | Why external | Citation |
 | --- | --- | --- | --- |
-| E1 | **Student** (microphone and speakers) | Human source of speech and sink of audio; outside any code | `web/client.js:97` (`getUserMedia`), `web/client.js:391` (`connect(destination)`) |
+| E1 | **Student** (microphone and speakers) | Human source of speech and sink of audio; outside any code | `web(frontend)/client.js:97` (`getUserMedia`), `web(frontend)/client.js:391` (`connect(destination)`) |
 | E2 | **Gemini API** (`generativelanguage.googleapis.com`) | Third-party service reached over HTTPS | `src/examiner/gemini_examiner.cpp:27`, `:186-191` `[IMPLEMENTED]` |
 | E3 | **piper process** | Separate OS process, spawned and communicated with over pipes | `src/tts/piper_tts.cpp:100-102` (POSIX `execl`), `:177` (Win32 `CreateProcessA`) `[IMPLEMENTED]` |
 | E4 | **Ollama-compatible server** (Hailo path) | Would be a local HTTP service | `include/sim/config.hpp:17`, `src/config.cpp:25`, `src/examiner/hailo_examiner.cpp:8` `[PLANNED]` |
@@ -584,9 +659,9 @@ the two ML backends are classified differently.
 
 | ID | Process | Location | State |
 | --- | --- | --- | --- |
-| P1 | **Capture mic block and trim to the turn** | `web/client.js:145-187` | `[IMPLEMENTED]` |
-| P2 | **Downsample to 16 kHz** | `web/client.js:402-426` | `[IMPLEMENTED]` |
-| P3 | **Convert float32 → int16 and send** | `web/client.js:428-448`, `:190-199` | `[IMPLEMENTED]` |
+| P1 | **Capture mic block and trim to the turn** | `web(frontend)/client.js:145-187` | `[IMPLEMENTED]` |
+| P2 | **Downsample to 16 kHz** | `web(frontend)/client.js:402-426` | `[IMPLEMENTED]` |
+| P3 | **Convert float32 → int16 and send** | `web(frontend)/client.js:428-448`, `:190-199` | `[IMPLEMENTED]` |
 | P4 | **Reassemble PCM frames** (odd-byte carry, `memcpy`, cap check) | `src/server.cpp:274-317` | `[IMPLEMENTED]` |
 | P5 | **Parse control JSON → `Message`** | `src/protocol.cpp:51-72`, called `src/server.cpp:324-332` | `[IMPLEMENTED]` |
 | P6 | **Route control message / claim the session** | `src/server.cpp:335-380` | `[IMPLEMENTED]` |
@@ -597,8 +672,8 @@ the two ML backends are classified differently.
 | P10 | **Synthesise speech (piper subprocess + raw→PCM)** | `src/tts/piper_tts.cpp:243-259`, `:71-142`, `:217-227` | `[IMPLEMENTED]` |
 | P11 | **Serialise `Message` → JSON and send frames** | `src/protocol.cpp:35-49`, `src/server.cpp:620-673`, `:564-576` | `[IMPLEMENTED]` |
 | P12 | **Dispatch job to worker thread** | `src/worker.cpp:16-70`, `src/worker.cpp:72-85` | `[IMPLEMENTED]` |
-| P13 | **Decode message and render turn card** | `web/client.js:308-348`, `:55-78` | `[IMPLEMENTED]` |
-| P14 | **Play back PCM (int16 → float32, `AudioBuffer`)** | `web/client.js:350-400` | `[IMPLEMENTED]` |
+| P13 | **Decode message and render turn card** | `web(frontend)/client.js:308-348`, `:55-78` | `[IMPLEMENTED]` |
+| P14 | **Play back PCM (int16 → float32, `AudioBuffer`)** | `web(frontend)/client.js:350-400` | `[IMPLEMENTED]` |
 | P15 | **Load configuration from environment** | `src/config.cpp:21-79` | `[IMPLEMENTED]` |
 
 #### Data stores
@@ -612,7 +687,7 @@ the two ML backends are classified differently.
 | D5 | `WorkerPool::jobs_` | Queued pipeline jobs | `include/sim/worker.hpp:25`, `src/worker.cpp:80` | `[IMPLEMENTED]` |
 | D6 | Whisper GGML model file on disk | Model weights | `.env.example:21`, read `src/stt/whisper_stt.cpp:32` | `[IMPLEMENTED]` |
 | D7 | piper ONNX voice + `<model>.onnx.json` | Voice weights and `audio.sample_rate` | `.env.example:24`, read `src/tts/piper_tts.cpp:39-67` | `[IMPLEMENTED]` |
-| D8 | `prompts/examiner_system.txt` | Examiner system prompt, read once at startup | `src/server.cpp:191`, `src/server.cpp:41` | `[IMPLEMENTED]` |
+| D8 | `prompts/<language>/examiner_ongoing.txt` | Examiner system prompt, read once at startup | `src/server.cpp:191`, `src/server.cpp:41` | `[IMPLEMENTED]` |
 | D9 | `.env` file | Configuration at rest | `.env.example:1-33`, loaded by `run.ps1:25-45` | `[IMPLEMENTED]` |
 | D10 | `Session::fact_store_` | Long-term facts about the student | `include/sim/session.hpp:53` | `[PLANNED]` — declared, never read or written |
 
@@ -629,10 +704,10 @@ Traced through the actual code path of one complete turn.
 
 | # | From → To | Payload (real type) | Citation |
 | --- | --- | --- | --- |
-| F1 | E1 → P1 | Analogue speech → `Float32Array`, 4096 samples/block, mono, `[-1.0, 1.0]` | `web/client.js:135`, `:152` |
-| F2 | P1 → P2 | `Float32Array` slice (`subarray(headCut)` or `subarray(headCut, tailCut)`) — only the samples belonging to the student's turn | `web/client.js:156-170` |
-| F3 | P2 → P3 | `Float32Array` at 16 000 Hz (linear interpolation when the context ignored the rate hint) | `web/client.js:409-425` |
-| F4 | P3 → P4 | `ArrayBuffer` of little-endian `Int16Array` — a **WebSocket binary frame** | `web/client.js:429-447`, sent `:197` |
+| F1 | E1 → P1 | Analogue speech → `Float32Array`, 4096 samples/block, mono, `[-1.0, 1.0]` | `web(frontend)/client.js:135`, `:152` |
+| F2 | P1 → P2 | `Float32Array` slice (`subarray(headCut)` or `subarray(headCut, tailCut)`) — only the samples belonging to the student's turn | `web(frontend)/client.js:156-170` |
+| F3 | P2 → P3 | `Float32Array` at 16 000 Hz (linear interpolation when the context ignored the rate hint) | `web(frontend)/client.js:409-425` |
+| F4 | P3 → P4 | `ArrayBuffer` of little-endian `Int16Array` — a **WebSocket binary frame** | `web(frontend)/client.js:429-447`, sent `:197` |
 | F5 | P4 → D2 | `std::string` of 0 or 1 trailing bytes | `src/server.cpp:301-304` |
 | F6 | D2 → P4 | Same odd byte, prepended to the next frame | `src/server.cpp:279-280` |
 | F7 | P4 → D1 | `std::vector<std::int16_t>` chunk, appended under the 640 000-sample cap | `src/server.cpp:307`, `src/session.cpp:62-71` |
@@ -641,8 +716,8 @@ Traced through the actual code path of one complete turn.
 
 | # | From → To | Payload | Citation |
 | --- | --- | --- | --- |
-| F8 | E1 → P13 | Button click (`Start` / `Finished Response` / `End session`) | `web/client.js:87`, `:244`, `:254` |
-| F9 | P13 → P5 | `{"type":"start","payload":""}` or `{"type":"stop","payload":""}` — **WebSocket text frame**, UTF-8 JSON | `web/client.js:118`, `:178` |
+| F8 | E1 → P13 | Button click (`Start` / `Finished Response` / `End session`) | `web(frontend)/client.js:87`, `:244`, `:254` |
+| F9 | P13 → P5 | `{"type":"start","payload":""}` or `{"type":"stop","payload":""}` — **WebSocket text frame**, UTF-8 JSON | `web(frontend)/client.js:118`, `:178` |
 | F10 | P5 → P6 | `sim::Message` (type + payload; `sample_rate` is **never parsed inbound**) | `src/protocol.cpp:51-72` |
 | F11 | P6 → D1 | `take_audio()` — moves the whole buffer out and clears it | `src/server.cpp:372`, `src/session.cpp:77-84` |
 | F12 | D1 → P6 | `std::vector<std::int16_t>` utterance (the moved-out buffer) | `src/session.cpp:78` |
@@ -684,9 +759,9 @@ Traced through the actual code path of one complete turn.
 | F38 | P11 → P13 | `{"type":"transcript","payload":"…"}`, no `sample_rate` | `src/server.cpp:603-618` |
 | F39 | P11 → P13 | `{"type":"error","payload":"didn't catch that, please try again"}` / `"something went wrong on that turn"` | `src/server.cpp:457`, `:515`, `:591-601` |
 | F40 | P11 → P13 | `{"type":"status","payload":"busy"}` | `src/server.cpp:578-589` |
-| F41 | P13 → E1 | Rendered turn card in `#transcript` (`.turn.examiner` / `.turn.student`) | `web/client.js:64-77`, `web/index.html:21` |
-| F42 | P14 → E1 | Audible speech through `audioContext.destination` | `web/client.js:371-399` |
-| F43 | P14 → P1 | `source.onended` → `armMic()` — the re-arm, a **control** flow | `web/client.js:393-397`, `:209-225` |
+| F41 | P13 → E1 | Rendered turn card in `#transcript` (`.turn.examiner` / `.turn.student`) | `web(frontend)/client.js:64-77`, `web(frontend)/index.html:21` |
+| F42 | P14 → E1 | Audible speech through `audioContext.destination` | `web(frontend)/client.js:371-399` |
+| F43 | P14 → P1 | `source.onended` → `armMic()` — the re-arm, a **control** flow | `web(frontend)/client.js:393-397`, `:209-225` |
 
 **Startup flows:**
 
@@ -705,7 +780,7 @@ flowchart TB
     E3["E3 piper subprocess<br/>ENTITY"]
     E4["E4 Ollama server<br/>ENTITY (PLANNED)"]
 
-    subgraph BROWSER["Browser client (web/client.js)"]
+    subgraph BROWSER["Browser client (web(frontend)/client.js)"]
         P1(["P1 Capture + trim<br/>PROCESS"])
         P2(["P2 Downsample 16k<br/>PROCESS"])
         P3(["P3 float32 to int16<br/>PROCESS"])
@@ -848,10 +923,10 @@ single `main`-down tree, because it is event-driven:
 
 ### 3.2 Couple classification
 
-Per HSC symbol semantics: **data couple** = empty circle on the arrow (a
-parameter or return value carrying data); **control couple** = filled circle (a
-flag or control variable that changes what the callee does or reports what
-happened).
+Structure-chart notation, as used below: **data couple** = empty circle on the
+arrow (a parameter or return value carrying data); **control couple** = filled
+circle (a flag or control variable that changes what the callee does, or reports
+what happened).
 
 **Data couples in this system:**
 
@@ -870,9 +945,9 @@ happened).
 | `raw` | `std::string` (return) | `run_piper` → `pcm_from_raw` | `src/tts/piper_tts.cpp:141`, `:249` |
 | `json` | `const std::string&` | senders → `send_text_on_handle` | `src/server.cpp:565` |
 | `text` | `const std::string&` | `send_error` / `send_transcript` | `src/server.cpp:592`, `:604` |
-| `input` (`Float32Array`) | JS typed array | `onaudioprocess` → `sendPcm` | `web/client.js:173` |
-| `resampled` | `Float32Array` (return) | `downsampleTo16k` → `sendPcm` | `web/client.js:195`, `:425` |
-| `int16arrtoserver` | `Int16Array` (return) | `floatToInt16` → `sendPcm` | `web/client.js:197`, `:447` |
+| `input` (`Float32Array`) | JS typed array | `onaudioprocess` → `sendPcm` | `web(frontend)/client.js:173` |
+| `resampled` | `Float32Array` (return) | `downsampleTo16k` → `sendPcm` | `web(frontend)/client.js:195`, `:425` |
+| `int16arrtoserver` | `Int16Array` (return) | `floatToInt16` → `sendPcm` | `web(frontend)/client.js:197`, `:447` |
 
 **Control couples in this system:**
 
@@ -889,10 +964,10 @@ happened).
 | `ctx_ == nullptr` | pointer null-check | STT disabled vs enabled | `src/stt/whisper_stt.cpp:59` |
 | `res` (httplib truthiness) | `bool` | Transport succeeded or not | `src/examiner/gemini_examiner.cpp:204` |
 | `res->status != 200` | `int` used as a flag | HTTP-level failure classification | `src/examiner/gemini_examiner.cpp:211` |
-| `captureState` | JS string enum | Which slice of the block belongs to the student | `web/client.js:17`, `:156-170` |
-| `pendingStop` | `bool` | Hold the stop message until the trimmed block is sent | `web/client.js:27`, `:176` |
-| `pendingAudio` | `bool` | A binary frame is promised, stay muted | `web/client.js:30`, `:332` |
-| `turnState` | JS string enum | Enables/disables the three buttons | `web/client.js:33`, `:80-85` |
+| `captureState` | JS string enum | Which slice of the block belongs to the student | `web(frontend)/client.js:17`, `:156-170` |
+| `pendingStop` | `bool` | Hold the stop message until the trimmed block is sent | `web(frontend)/client.js:27`, `:176` |
+| `pendingAudio` | `bool` | A binary frame is promised, stay muted | `web(frontend)/client.js:30`, `:332` |
+| `turnState` | JS string enum | Enables/disables the three buttons | `web(frontend)/client.js:33`, `:80-85` |
 
 ### 3.3 Draft — annotated call tree
 
@@ -1038,36 +1113,36 @@ enqueue_pipeline_job(...)                                 src/server.cpp:382
 ├── erase conn_handles_ / sessions_ under mutex           [decision: entry found] src/server.cpp:127-136
 └── lock handle->m; handle->conn = nullptr                [control: kill the send path] [decision: handle] src/server.cpp:151-161
 
---- Browser client (web/client.js) ---
-startButton.onclick                                       web/client.js:87
-├── guard                                                 [control: turnState !== "idle"] [decision] web/client.js:88
-├── setTurnState("thinking")                              [control: state] web/client.js:92
-├── new AudioContext({sampleRate:16000})                  [data: rate] web/client.js:95
-├── getUserMedia({audio:true})                            -> [data: MediaStream] [decision: catch] web/client.js:97-105
-├── buildCaptureGraph()                                   web/client.js:107
-│   └── processor.onaudioprocess = handler                [loop: every 4096 samples] web/client.js:145
-│       ├── slice = input / subarray(...)                 [control: captureState] [decision x3] web/client.js:156-170
-│       ├── sendPcm(slice)                                [data: Float32Array] [decision: non-empty] web/client.js:172-174
-│       │   ├── downsampleTo16k(samples, rate)            [data + control: inputRate] -> [data] web/client.js:195
-│       │   │   └── linear interpolation                  [loop: per output sample] web/client.js:414-424
-│       │   └── floatToInt16(resampled)                   [data] -> [data: Int16Array] web/client.js:197
-│       │       └── clamp + scale                         [loop: per sample] web/client.js:431-446
-│       └── socket.send(stop JSON)                        [control: pendingStop && idle] [decision] web/client.js:176-183
-└── socket.onmessage = handleMessage                      web/client.js:129
+--- Browser client (web(frontend)/client.js) ---
+startButton.onclick                                       web(frontend)/client.js:87
+├── guard                                                 [control: turnState !== "idle"] [decision] web(frontend)/client.js:88
+├── setTurnState("thinking")                              [control: state] web(frontend)/client.js:92
+├── new AudioContext({sampleRate:16000})                  [data: rate] web(frontend)/client.js:95
+├── getUserMedia({audio:true})                            -> [data: MediaStream] [decision: catch] web(frontend)/client.js:97-105
+├── buildCaptureGraph()                                   web(frontend)/client.js:107
+│   └── processor.onaudioprocess = handler                [loop: every 4096 samples] web(frontend)/client.js:145
+│       ├── slice = input / subarray(...)                 [control: captureState] [decision x3] web(frontend)/client.js:156-170
+│       ├── sendPcm(slice)                                [data: Float32Array] [decision: non-empty] web(frontend)/client.js:172-174
+│       │   ├── downsampleTo16k(samples, rate)            [data + control: inputRate] -> [data] web(frontend)/client.js:195
+│       │   │   └── linear interpolation                  [loop: per output sample] web(frontend)/client.js:414-424
+│       │   └── floatToInt16(resampled)                   [data] -> [data: Int16Array] web(frontend)/client.js:197
+│       │       └── clamp + scale                         [loop: per sample] web(frontend)/client.js:431-446
+│       └── socket.send(stop JSON)                        [control: pendingStop && idle] [decision] web(frontend)/client.js:176-183
+└── socket.onmessage = handleMessage                      web(frontend)/client.js:129
 
-handleMessage(event)                                      web/client.js:308
-├── IF typeof data === "string"                           [control: frame kind] [decision] web/client.js:309
-│   ├── JSON.parse(event.data)                            -> [data: message object] web/client.js:310
-│   ├── addTurn("student", payload)                       [decision: type==="transcript"] web/client.js:320
-│   ├── addTurn("examiner", payload)                      [decision: type==="examiner_text" && payload] web/client.js:325-327
-│   ├── pendingAudio = true                               [control: sample_rate present] [decision] web/client.js:331
-│   ├── armMic()                                          [decision: no sample_rate] web/client.js:336
-│   └── armMic()                                          [decision: status==="busy"] web/client.js:341
-└── ELSE playAudio(event.data)                            [data: ArrayBuffer] web/client.js:346
-    ├── armMic() + return                                 [decision: zero-length] web/client.js:353-359
-    ├── int16 -> float32                                  [loop: per sample] web/client.js:373-376
-    ├── createBuffer(1, len, playbackSampleRate)          [data: rate] web/client.js:378-381
-    └── source.onended = armMic                           [control: re-arm] web/client.js:393-397
+handleMessage(event)                                      web(frontend)/client.js:308
+├── IF typeof data === "string"                           [control: frame kind] [decision] web(frontend)/client.js:309
+│   ├── JSON.parse(event.data)                            -> [data: message object] web(frontend)/client.js:310
+│   ├── addTurn("student", payload)                       [decision: type==="transcript"] web(frontend)/client.js:320
+│   ├── addTurn("examiner", payload)                      [decision: type==="examiner_text" && payload] web(frontend)/client.js:325-327
+│   ├── pendingAudio = true                               [control: sample_rate present] [decision] web(frontend)/client.js:331
+│   ├── armMic()                                          [decision: no sample_rate] web(frontend)/client.js:336
+│   └── armMic()                                          [decision: status==="busy"] web(frontend)/client.js:341
+└── ELSE playAudio(event.data)                            [data: ArrayBuffer] web(frontend)/client.js:346
+    ├── armMic() + return                                 [decision: zero-length] web(frontend)/client.js:353-359
+    ├── int16 -> float32                                  [loop: per sample] web(frontend)/client.js:373-376
+    ├── createBuffer(1, len, playbackSampleRate)          [data: rate] web(frontend)/client.js:378-381
+    └── source.onended = armMic                           [control: re-arm] web(frontend)/client.js:393-397
 ```
 
 ### 3.4 Repetition (loops) — the complete list
@@ -1082,11 +1157,11 @@ handleMessage(event)                                      web/client.js:308
 | Leading/trailing whitespace trim | two `while` loops | `src/stt/whisper_stt.cpp:107`, `:112` |
 | History → Gemini `contents[]` | range-`for` over `history` | `src/examiner/gemini_examiner.cpp:149` |
 | piper stdout drain | `while (read(...) > 0)` | `src/tts/piper_tts.cpp:129`, `:196` |
-| **Per-frame accumulation** | `onaudioprocess`, once per 4096 samples | `web/client.js:145` |
-| Resampling | `for` over output samples | `web/client.js:414` |
-| float32 → int16 | `for` over samples | `web/client.js:431` |
-| int16 → float32 on playback | `for` over samples | `web/client.js:373` |
-| MediaStream track stop | `for…of` over tracks | `web/client.js:278` |
+| **Per-frame accumulation** | `onaudioprocess`, once per 4096 samples | `web(frontend)/client.js:145` |
+| Resampling | `for` over output samples | `web(frontend)/client.js:414` |
+| float32 → int16 | `for` over samples | `web(frontend)/client.js:431` |
+| int16 → float32 on playback | `for` over samples | `web(frontend)/client.js:373` |
+| MediaStream track stop | `for…of` over tracks | `web(frontend)/client.js:278` |
 | Env var reads | six sequential `get_env` calls (unrolled, not a loop) | `src/config.cpp:24-33` |
 
 ### Gaps / assumptions — section 3
@@ -1124,7 +1199,7 @@ than guessed at.
 | Variable | Data type | Format for display | Size in bytes | Size for display | Description | Example | Validation |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `Message.type` | `MessageType` (`enum class`, underlying `int`) | Lower-case string in JSON: `start`, `stop`, `status`, `transcript`, `examiner_text`, `error` | 4 | 13 chars (longest: `examiner_text`) | Which of the six frame kinds this is. Three are browser→server, three are server→browser (`include/sim/protocol.hpp:10-15`) | `examiner_text` | Inbound: key must exist **and** be a JSON string (`src/protocol.cpp:60`); any unrecognised string maps to `Error` (`src/protocol.cpp:27`). A well-formed JSON object with no `type` defaults to `Error` (`src/protocol.cpp:54`) |
-| `Message.payload` | `std::string` | UTF-8 text | Dynamically sized (header + heap). Empty on `start`/`stop`; examiner replies observed at 30–35 tokens ≈ 120–250 bytes | Wraps in a `.turn-text` card, no fixed width (`web/styles.css:92`) | The human-readable body: examiner question, transcript, error text, or `"busy"` | `Come si chiama la tua città?` | Inbound: key must exist and be a JSON string, else left empty (`src/protocol.cpp:66`). Outbound `transcript` frames with an empty payload are **not sent at all** (`src/server.cpp:605-608`); an empty `examiner_text` payload is sent but paints nothing (`web/client.js:326`) |
+| `Message.payload` | `std::string` | UTF-8 text | Dynamically sized (header + heap). Empty on `start`/`stop`; examiner replies observed at 30–35 tokens ≈ 120–250 bytes | Wraps in a `.turn-text` card, no fixed width (`web(frontend)/styles.css:92`) | The human-readable body: examiner question, transcript, error text, or `"busy"` | `Come si chiama la tua città?` | Inbound: key must exist and be a JSON string, else left empty (`src/protocol.cpp:66`). Outbound `transcript` frames with an empty payload are **not sent at all** (`src/server.cpp:605-608`); an empty `examiner_text` payload is sent but paints nothing (`web(frontend)/client.js:326`) |
 | `Message.sample_rate` | `int` | Integer Hz | 4 | 5 chars (`22050`) | The rate the PCM in the **following binary frame** was synthesised at. Its *presence* is the client's signal that a binary frame follows | `22050` | Written to JSON only when `> 0` (`src/protocol.cpp:43`); set only when `speech` is non-empty (`src/server.cpp:626-630`). **Never parsed inbound** — `from_json` reads only `type` and `payload` (`src/protocol.cpp:60-69`) |
 
 ### 4.2 `Turn` — the examiner's conversation unit
@@ -1132,20 +1207,20 @@ than guessed at.
 | Variable | Data type | Format for display | Size in bytes | Size for display | Description | Example | Validation |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `Turn.role` | `Role` (`enum class`, underlying `int`) | Mapped to Gemini's `"user"` / `"model"`; `System` is lifted out to `system_instruction` | 4 | 8 chars (`Examiner`) | Who spoke: `System`, `Examiner` or `Student` (`include/sim/examiner.hpp:9-11`) | `Student` | `gemini_role()` maps `Examiner`→`model` and everything else→`user` (`src/examiner/gemini_examiner.cpp:130-134`); `System` is intercepted before it reaches there (`src/examiner/gemini_examiner.cpp:150-153`) |
-| `Turn.text` | `std::string` | UTF-8 Italian | Dynamically sized. System prompt is ~700 bytes (`prompts/examiner_system.txt`, 17 lines); a student turn is typically 20–200 bytes | Not displayed directly — becomes a `.turn-text` card | The utterance itself | `Mi chiamo Luca e abito a Sydney.` | Empty question/answer strings are **skipped**, not sent as blank turns (`src/session.cpp:49-54`). An empty transcript never becomes a `Turn` at all (`src/server.cpp:451-459`) |
+| `Turn.text` | `std::string` | UTF-8 Italian | Dynamically sized. System prompt is ~700 bytes (`prompts/<language>/examiner_ongoing.txt`, 17 lines); a student turn is typically 20–200 bytes | Not displayed directly — becomes a `.turn-text` card | The utterance itself | `Mi chiamo Luca e abito a Sydney.` | Empty question/answer strings are **skipped**, not sent as blank turns (`src/session.cpp:49-54`). An empty transcript never becomes a `Turn` at all (`src/server.cpp:451-459`) |
 
 ### 4.3 `Session` — per-connection state
 
 | Variable | Data type | Format for display | Size in bytes | Size for display | Description | Example | Validation |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `job_in_flight_` | `std::atomic<bool>` | `true` / `false` | 1 (`sizeof(std::atomic<bool>) == 1`; lock-free on all target platforms) | 5 chars | The turn lock. One pipeline job per session at a time | `false` | Claimed only via `compare_exchange_strong` against a **fresh local** `expected` (`src/session.cpp:29-31`); a failed claim sends `busy` and returns (`src/server.cpp:341-344`, `:364-367`) |
-| `system_prompt_` | `std::string` | UTF-8 text block | Dynamically sized; ~700 bytes from `prompts/examiner_system.txt` | Not displayed to the student | The examiner's standing instructions, copied into every new `Session` | `You are conducting an oral examination…` | Falls back to a built-in one-liner if the file is missing (`src/server.cpp:229-230`). Rebuilt from scratch each snapshot, so setting it twice cannot stack prompts (`src/session.cpp:15-16`) |
+| `system_prompt_` | `std::string` | UTF-8 text block | Dynamically sized; ~700 bytes from `prompts/<language>/examiner_ongoing.txt` | Not displayed to the student | The examiner's standing instructions, copied into every new `Session` | `You are conducting an oral examination…` | Falls back to a built-in one-liner if the file is missing (`src/server.cpp:229-230`). Rebuilt from scratch each snapshot, so setting it twice cannot stack prompts (`src/session.cpp:15-16`) |
 | `last_question_` | `std::string` | UTF-8 Italian | Dynamically sized, typically 40–200 bytes | One `.turn.examiner` card | The most recent examiner question — **only one is kept**, not a history | `Cosa hai fatto lo scorso fine settimana?` | Committed *before* TTS runs (`src/server.cpp:500`), so a TTS failure still sends the text (`src/server.cpp:522-530`). Skipped from the snapshot when empty (`src/session.cpp:49`) |
 | `last_answer_` | `std::string` | UTF-8 Italian | Dynamically sized, typically 20–300 bytes | One `.turn.student` card | The most recent student answer as STT heard it | `Sono andato al mare con la mia famiglia.` | Written only when the transcript is non-empty (`src/server.cpp:440-449`). Skipped from the snapshot when empty (`src/session.cpp:52`) |
 | `audio_buffer_` | `std::vector<std::int16_t>` | Not displayed (raw PCM) | 2 bytes/sample. Cap = 640 000 samples = **1 280 000 bytes (1.22 MiB)**, plus a ~24-byte vector header | Not displayed | The utterance accumulating between arm and stop, 16 kHz mono | 96 000 samples ≈ 6 s of speech | Hard cap `kMaxBufferedSamples` (`include/sim/session.hpp:29`); `append_audio` inserts only `min(room, chunk.size())` and silently drops the rest (`src/session.cpp:63-70`). The overflow is detected by the caller through the `audio_full()` transition, warned once (`src/server.cpp:306-316`) |
 | `partial_byte_` | `std::string` | Not displayed (raw byte) | Dynamically sized, but **always 0 or 1 bytes** of content | Not displayed | The odd trailing byte when a WebSocket frame splits a 16-bit sample across two frames | `"\x3f"` (one byte) | Stashed only when `bytes.size() % 2 != 0` (`src/server.cpp:301`); prepended to the next frame (`src/server.cpp:279-280`); **cleared by `take_audio()`** so a half sample cannot be glued onto the next utterance (`src/session.cpp:80`) |
 | `fact_store_` | `std::vector<std::string>` | — | Vector header only; always empty | — | `[PLANNED]` Long-term facts about the student, for cross-turn memory and the planned pruning pass | *(none — never populated)* | **None.** Declared at `include/sim/session.hpp:53` and never read or written anywhere in the codebase |
-| `kCaptureSampleRate` | `static constexpr std::size_t` | Integer Hz | 8 (compile-time constant; no storage unless odr-used) | 5 chars | The capture rate whisper requires. Fixed on both sides — the client hard-codes the same 16 000 (`web/client.js:38`) | `16000` | Compile-time constant (`include/sim/session.hpp:28`) |
+| `kCaptureSampleRate` | `static constexpr std::size_t` | Integer Hz | 8 (compile-time constant; no storage unless odr-used) | 5 chars | The capture rate whisper requires. Fixed on both sides — the client hard-codes the same 16 000 (`web(frontend)/client.js:38`) | `16000` | Compile-time constant (`include/sim/session.hpp:28`) |
 | `kMaxBufferedSamples` | `static constexpr std::size_t` | Integer samples | 8 | 6 chars | `40 * 16000` = 40 seconds of capture — the guard against a client that streams and never sends `Stop` | `640000` | Compile-time constant (`include/sim/session.hpp:29`) |
 
 ### 4.4 `Config` / `.env` values
@@ -1160,18 +1235,18 @@ than guessed at.
 | `PORT` → `port` | `std::uint16_t` | Integer | 2 | 5 chars | TCP port for HTTP and WebSocket | `8080` | Parsed with `std::stoi` inside a `try` (`src/config.cpp:36`); **range-checked 1–65535** with a message and fallback to 8080 (`src/config.cpp:39-45`); non-numeric text caught and defaulted (`src/config.cpp:46-48`). The explicit check exists because a bare `static_cast` would silently wrap 70000 to 4464 |
 | `WORKER_THREADS` → `worker_threads` | `std::size_t` | Integer | 8 | 2 chars | Pool size = how many students can be mid-turn at once | `8` | Parsed in a `try` (`src/config.cpp:53`); `0` and negatives both mean *"decide for me"* and fall through to `hardware_concurrency()`, which itself falls back to `2` when it returns 0 (`src/config.cpp:54-70`) |
 
-### 4.5 Client-side state variables (`web/client.js`)
+### 4.5 Client-side state variables (`web(frontend)/client.js`)
 
 | Variable | Data type | Format for display | Size in bytes | Size for display | Description | Example | Validation |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `captureState` | JS string (4-state enum) | `idle` / `armed` / `capturing` / `stopping` | JS strings are UTF-16 internally; not a fixed-width type | 9 chars | Which part of the block now filling belongs to the student | `capturing` | Not validated — set only at four sites (`web/client.js:164`, `:169`, `:222`, `:238`, `:260`, `:365`). Guarded transitions in `armMic` (`:215`) and `stopMic` (`:228`) |
-| `turnState` | JS string (3-state enum) | `idle` / `thinking` / `armed` | Not a fixed-width type | 8 chars | Drives the three buttons' `disabled` attributes | `armed` | `setTurnState` is the single writer (`web/client.js:80-85`); the buttons are the guard as well as the display |
-| `playbackSampleRate` | JS `number` (or `null`) | Integer Hz | 8 (IEEE-754 double) | 5 chars | The rate read off the last text frame, used to build the playback `AudioBuffer` | `22050` | Set only when `message.sample_rate` is truthy (`web/client.js:314-318`); falls back to `audioContext.sampleRate` if null (`web/client.js:378`); reset to `null` on teardown (`web/client.js:302`) |
-| `pendingStop` | JS `boolean` | `true` / `false` | 4–8 depending on engine | 5 chars | Holds the `stop` message until the trimmed final block has been sent | `true` | Set in `stopMic` (`web/client.js:239`), consumed once in `onaudioprocess` when `captureState` reaches `idle` (`web/client.js:176-183`) |
-| `pendingAudio` | JS `boolean` | `true` / `false` | 4–8 | 5 chars | The server promised a binary frame, so stay muted until it finishes playing | `true` | Set when `sample_rate` is present (`web/client.js:332`), cleared on the no-audio path (`web/client.js:335`) and on a zero-length frame (`web/client.js:354`) |
-| `headCut` / `tailCut` | JS `number` (integer sample index) | Integer 0…4096 | 8 each | 4 chars | The sample offsets that trim the examiner's tail off the front and the post-button audio off the back | `1837` | `cutPoint()` clamps to `[0, BLOCK_SIZE]` (`web/client.js:206`); both reset to 0 after use (`web/client.js:163`, `:168`) and on teardown (`web/client.js:261-262`) |
-| `CAPTURE_SAMPLE_RATE` | JS `const number` | Integer Hz | 8 | 5 chars | 16 000 — must match `Session::kCaptureSampleRate` | `16000` | Compile-time constant in effect (`web/client.js:38`); requested from the `AudioContext` (`web/client.js:95`) and re-checked at every send (`web/client.js:195`) |
-| `BLOCK_SIZE` | JS `const number` | Integer samples | 8 | 4 chars | 4096 — the `ScriptProcessor` block length | `4096` | Constant (`web/client.js:41`), passed to `createScriptProcessor` (`web/client.js:135`) |
+| `captureState` | JS string (4-state enum) | `idle` / `armed` / `capturing` / `stopping` | JS strings are UTF-16 internally; not a fixed-width type | 9 chars | Which part of the block now filling belongs to the student | `capturing` | Not validated — set only at four sites (`web(frontend)/client.js:164`, `:169`, `:222`, `:238`, `:260`, `:365`). Guarded transitions in `armMic` (`:215`) and `stopMic` (`:228`) |
+| `turnState` | JS string (3-state enum) | `idle` / `thinking` / `armed` | Not a fixed-width type | 8 chars | Drives the three buttons' `disabled` attributes | `armed` | `setTurnState` is the single writer (`web(frontend)/client.js:80-85`); the buttons are the guard as well as the display |
+| `playbackSampleRate` | JS `number` (or `null`) | Integer Hz | 8 (IEEE-754 double) | 5 chars | The rate read off the last text frame, used to build the playback `AudioBuffer` | `22050` | Set only when `message.sample_rate` is truthy (`web(frontend)/client.js:314-318`); falls back to `audioContext.sampleRate` if null (`web(frontend)/client.js:378`); reset to `null` on teardown (`web(frontend)/client.js:302`) |
+| `pendingStop` | JS `boolean` | `true` / `false` | 4–8 depending on engine | 5 chars | Holds the `stop` message until the trimmed final block has been sent | `true` | Set in `stopMic` (`web(frontend)/client.js:239`), consumed once in `onaudioprocess` when `captureState` reaches `idle` (`web(frontend)/client.js:176-183`) |
+| `pendingAudio` | JS `boolean` | `true` / `false` | 4–8 | 5 chars | The server promised a binary frame, so stay muted until it finishes playing | `true` | Set when `sample_rate` is present (`web(frontend)/client.js:332`), cleared on the no-audio path (`web(frontend)/client.js:335`) and on a zero-length frame (`web(frontend)/client.js:354`) |
+| `headCut` / `tailCut` | JS `number` (integer sample index) | Integer 0…4096 | 8 each | 4 chars | The sample offsets that trim the examiner's tail off the front and the post-button audio off the back | `1837` | `cutPoint()` clamps to `[0, BLOCK_SIZE]` (`web(frontend)/client.js:206`); both reset to 0 after use (`web(frontend)/client.js:163`, `:168`) and on teardown (`web(frontend)/client.js:261-262`) |
+| `CAPTURE_SAMPLE_RATE` | JS `const number` | Integer Hz | 8 | 5 chars | 16 000 — must match `Session::kCaptureSampleRate` | `16000` | Compile-time constant in effect (`web(frontend)/client.js:38`); requested from the `AudioContext` (`web(frontend)/client.js:95`) and re-checked at every send (`web(frontend)/client.js:195`) |
+| `BLOCK_SIZE` | JS `const number` | Integer samples | 8 | 4 chars | 4096 — the `ScriptProcessor` block length | `4096` | Constant (`web(frontend)/client.js:41`), passed to `createScriptProcessor` (`web(frontend)/client.js:135`) |
 
 ### 4.6 Derived / in-flight values worth dictionary entries
 
@@ -1209,7 +1284,7 @@ All genuinely tree-shaped decision points, ranked by richness:
 | A | **Inbound frame routing** — `is_binary`, then message type, then claim, then buffer state | 7 leaves | `src/server.cpp:106-111`, `:274-317`, `:319-380` |
 | B | **Pipeline job outcome** — transcribe? → transcript empty? → examiner throws? → speech empty? | 6 leaves | `src/server.cpp:434-557` |
 | C | **Gemini response classification** — transport fail / non-200 (five status classes) / unreadable JSON / no candidates / no parts / ok | 10 leaves | `src/examiner/gemini_examiner.cpp:204-281` |
-| D | **Client re-arm decision** — text vs binary, then which type, then `sample_rate` present | 6 leaves | `web/client.js:308-348`, `:350-359` |
+| D | **Client re-arm decision** — text vs binary, then which type, then `sample_rate` present | 6 leaves | `web(frontend)/client.js:308-348`, `:350-359` |
 | E | Whisper enabled? — `pcm` empty / `ctx_` null / transcribe | 3 leaves | `src/stt/whisper_stt.cpp:53-60` |
 | F | Odd-byte frame — stash remainder vs `memcpy` only | 4 leaves | `src/server.cpp:285-304` |
 | G | Config parse — port numeric? in range? | 3 leaves | `src/config.cpp:35-48` |
@@ -1364,16 +1439,16 @@ SEND — send_examiner_result(handle, reply, speech)               src/server.cp
 │
 └─ speech non-empty ?                                            src/server.cpp:658
    ├─ YES → send_binary(raw int16 bytes)                         src/server.cpp:667
-   │        ⇒ client waits for source.onended to re-arm          web/client.js:393-397
+   │        ⇒ client waits for source.onended to re-arm          web(frontend)/client.js:393-397
    └─ NO  → no binary frame
-            ⇒ client sees no sample_rate and arms immediately    web/client.js:334-338
+            ⇒ client sees no sample_rate and arms immediately    web(frontend)/client.js:334-338
 ```
 
 The invariant this tree encodes, and the one worth annotating on the hand-drawn
 version: **`sample_rate` present ⟺ a binary frame follows**. Every leaf either
 sets both or neither (`src/server.cpp:626-630`, `:658`), which is exactly what
 lets the client decide immediately rather than guessing: no `sample_rate` means
-`armMic()` is called on the spot (`web/client.js:334-338`), which replaced an
+`armMic()` is called on the spot (`web(frontend)/client.js:334-338`), which replaced an
 earlier 400 ms timer that only estimated the same thing.
 
 ### 5.4 Gemini result classification (table, not a tree)
@@ -1403,7 +1478,7 @@ retries, and that is stated policy, not an omission (`:193-202`).
   Gemini failover (`src/examiner/gemini_examiner.cpp:193-202` policy note and
   `src/server.cpp:546-549`) is **not** drawn — it does not exist yet.
 - The `busy` branch appears in tree A but its client-side consequence lives in
-  tree D (`web/client.js:341-344`). If you draw only A and B, note on A that
+  tree D (`web(frontend)/client.js:341-344`). If you draw only A and B, note on A that
   `busy` causes the client to re-arm immediately.
 - Whisper's own internal decoding decisions (greedy sampling, segment
   boundaries) are inside `whisper_full` (`src/stt/whisper_stt.cpp:88`) and are
@@ -1414,7 +1489,7 @@ retries, and that is stated policy, not an omission (`:193-202`).
 ## 6. Storyboard
 
 **Flag this honestly: `speaking-sim` is a single-page application with no
-navigation.** There is exactly one HTML document (`web/index.html`, 29 lines),
+navigation.** There is exactly one HTML document (`web(frontend)/index.html`, 29 lines),
 no router, no second page, no links out. A conventional multi-screen storyboard
 with page-to-page links would be an invention.
 
@@ -1426,18 +1501,18 @@ turn states, with the transitions as the "links".
 
 | Region | Element | Content | Citation |
 | --- | --- | --- | --- |
-| Page title | `<h1>` | "Speaking Exam Simulator" | `web/index.html:10`, styled `web/styles.css:25` |
-| Control bar | `#controls` | Three buttons, **sticky** so they stay reachable as the transcript grows | `web/index.html:12-16`, `web/styles.css:34` |
-| — Start | `#start` | Opens the mic, socket and session | `web/index.html:13`, handler `web/client.js:87` |
-| — Finished Response | `#done` | Ends the student's turn; `disabled` by default | `web/index.html:14`, handler `web/client.js:244` |
-| — End session | `#end` | Tears everything down; `disabled` by default | `web/index.html:15`, handler `web/client.js:254` |
-| Conversation | `#transcript` | Appended `.turn` cards, examiner and student styled differently | `web/index.html:21`, `web/styles.css:67-111` |
-| — a turn card | `.turn` > `.turn-role` + `.turn-text` | Role label ("Examiner" / "You") plus the utterance | `web/client.js:64-77`, `web/styles.css:77-94` |
-| Diagnostics | **browser console only** | `addLog()` output — protocol traces, errors, prompts | `web/client.js:44-46` |
+| Page title | `<h1>` | "Speaking Exam Simulator" | `web(frontend)/index.html:10`, styled `web(frontend)/styles.css:25` |
+| Control bar | `#controls` | Three buttons, **sticky** so they stay reachable as the transcript grows | `web(frontend)/index.html:12-16`, `web(frontend)/styles.css:34` |
+| — Start | `#start` | Opens the mic, socket and session | `web(frontend)/index.html:13`, handler `web(frontend)/client.js:87` |
+| — Finished Response | `#done` | Ends the student's turn; `disabled` by default | `web(frontend)/index.html:14`, handler `web(frontend)/client.js:244` |
+| — End session | `#end` | Tears everything down; `disabled` by default | `web(frontend)/index.html:15`, handler `web(frontend)/client.js:254` |
+| Conversation | `#transcript` | Appended `.turn` cards, examiner and student styled differently | `web(frontend)/index.html:21`, `web(frontend)/styles.css:67-111` |
+| — a turn card | `.turn` > `.turn-role` + `.turn-text` | Role label ("Examiner" / "You") plus the utterance | `web(frontend)/client.js:64-77`, `web(frontend)/styles.css:77-94` |
+| Diagnostics | **browser console only** | `addLog()` output — protocol traces, errors, prompts | `web(frontend)/client.js:44-46` |
 
-**There is no `#log` element.** `web/index.html:12-25` declares only
+**There is no `#log` element.** `web(frontend)/index.html:12-25` declares only
 `#controls` and `#transcript`, and `addLog()` is a one-line wrapper over
-`console.log` with no DOM access at all (`web/client.js:44-46`). The committed
+`console.log` with no DOM access at all (`web(frontend)/client.js:44-46`). The committed
 history records why: a `#log` div used to sit under the transcript and painted
 every turn a second time as a raw protocol trace, so a student saw each exchange
 twice. Diagnostics were moved to the console and the element deleted.
@@ -1445,7 +1520,7 @@ twice. Diagnostics were moved to the console and the element deleted.
 
 ### 6.2 Button enablement matrix
 
-Driven entirely by `setTurnState` (`web/client.js:80-85`) — the buttons are
+Driven entirely by `setTurnState` (`web(frontend)/client.js:80-85`) — the buttons are
 the turn guard as well as the display:
 
 | `turnState` | `#start` | `#done` | `#end` | Meaning |
@@ -1456,7 +1531,7 @@ the turn guard as well as the display:
 
 ### 6.3 The four-state capture machine
 
-`captureState` (`web/client.js:17`) exists because a plain boolean was read
+`captureState` (`web(frontend)/client.js:17`) exists because a plain boolean was read
 once per 4096-sample block, so a transition mid-block only took effect at the
 next boundary — losing up to 256 ms of the student's first words on arm, and
 leaking up to 256 ms of examiner audio in ahead of them.
@@ -1530,28 +1605,28 @@ For a walkthrough panel beside the state view:
 1. Page loads: title, three buttons (only **Start** live), empty conversation area.
 2. Click **Start** → browser's microphone permission prompt (native, not ours).
 3. Examiner's opening question appears as a card and is spoken aloud. Buttons: **End session** only.
-4. Audio finishes → **Finished Response** lights up. This is the only signal that it is the student's turn (plus a console line, `web/client.js:224`).
+4. Audio finishes → **Finished Response** lights up. This is the only signal that it is the student's turn (plus a console line, `web(frontend)/client.js:224`).
 5. Student speaks; nothing visible changes while capturing.
-6. Click **Finished Response** → buttons dim, a console line reads "thinking…" (`web/client.js:251`).
-7. The student's own words appear as a `.turn.student` card, as STT heard them (`src/server.cpp:441` → `web/client.js:320-321`).
-8. The examiner's reply appears as a `.turn.examiner` card and is spoken (`web/client.js:325-327`).
+6. Click **Finished Response** → buttons dim, a console line reads "thinking…" (`web(frontend)/client.js:251`).
+7. The student's own words appear as a `.turn.student` card, as STT heard them (`src/server.cpp:441` → `web(frontend)/client.js:320-321`).
+8. The examiner's reply appears as a `.turn.examiner` card and is spoken (`web(frontend)/client.js:325-327`).
 9. Loop back to step 4.
-10. **End session** at any point → everything is released and the page returns to state 1 (`web/client.js:259-306`).
+10. **End session** at any point → everything is released and the page returns to state 1 (`web(frontend)/client.js:259-306`).
 
 ### Gaps / assumptions — section 6
 
 - **This is a state view, not a page-flow storyboard.** Say so on the sheet.
   There is one document, one URL, no navigation.
-- **Step 7 is newly live.** Older comments in `web/client.js` claimed the
+- **Step 7 is newly live.** Older comments in `web(frontend)/client.js` claimed the
   student card never appears. It does — `send_transcript` is called at
-  `src/server.cpp:441` and the client paints it at `web/client.js:320-321`.
+  `src/server.cpp:441` and the client paints it at `web(frontend)/client.js:320-321`.
   Draw the card.
 - There is **no visible error surface**. A failed turn writes to the console and
-  paints nothing (`web/client.js:44-46`, `:326`). The student's only cue is that
+  paints nothing (`web(frontend)/client.js:44-46`, `:326`). The student's only cue is that
   the mic re-arms without a new question. If a visible error banner is planned,
   it does not exist yet — mark any such panel `[PLANNED]`.
 - There is no visual "recording" indicator of our own; the student relies on the
-  browser's native recording light (`web/client.js:279` stops the track,
+  browser's native recording light (`web(frontend)/client.js:279` stops the track,
   which turns it off).
 - No loading spinner, no progress bar, and turn latency is real: the examiner
   call dominates (`src/server.cpp:506-509` logs the split). The `thinking` state
@@ -1559,12 +1634,12 @@ For a walkthrough panel beside the state view:
 
 ---
 
-## Supplementary — for the written documentation
+## Supplementary — paradigms, structures and components
 
 ### S1. Programming paradigms in use
 
-**Object-oriented — the dominant paradigm.** All three syllabus pillars have
-concrete evidence:
+**Object-oriented — the dominant paradigm.** All three pillars have concrete
+evidence:
 
 | Concept | Evidence | Citation |
 | --- | --- | --- |
@@ -1576,8 +1651,8 @@ concrete evidence:
 | **RAII / deterministic destruction** | `lock_guard` scopes (`src/server.cpp:82`), `~WhisperSTT` freeing `ctx_` (`src/stt/whisper_stt.cpp:41-50`), `~WorkerPool` joining threads (`src/worker.cpp:87-105`) |
 | **Rule-of-five discipline** | `WhisperSTT` deletes all four copy/move operations because `ctx_` is a raw owning pointer and `mutex_` is immovable | `include/sim/stt/whisper_stt.hpp:27-35` |
 
-A precise point worth making in the writeup: **`Server` is closed to
-modification and open to extension.** Adding a fourth backend requires a new
+A precise point: **`Server` is closed to modification and open to
+extension.** Adding a fourth backend requires a new
 class and one line in `main.cpp` — no change to `Server` at all, because
 `Server` only ever sees `InterfaceExaminer` (`include/sim/server.hpp:88`).
 
@@ -1585,14 +1660,14 @@ class and one line in `main.cpp` — no change to `Server` at all, because
 sequence of statements with explicit state: `transcribe → record → respond →
 record → synthesize → send` (`src/server.cpp:434-509`). The audio framing math
 (`src/server.cpp:279-307`) and both sample-format conversions
-(`src/stt/whisper_stt.cpp:65-68`, `web/client.js:428-448`) are purely
+(`src/stt/whisper_stt.cpp:65-68`, `web(frontend)/client.js:428-448`) are purely
 procedural loops over arrays.
 
 **Event-driven.** Both halves of the system are callback-based, not
 main-loop-based. Server: Crow lambdas registered on `.onopen` / `.onmessage` /
-`.onclose` (`src/server.cpp:63-163`). Client: `onclick` (`web/client.js:87`,
-`:299`, `:313`), `onaudioprocess` (`web/client.js:145`), `onmessage`
-(`web/client.js:129`), `onended` (`web/client.js:393`).
+`.onclose` (`src/server.cpp:63-163`). Client: `onclick` (`web(frontend)/client.js:87`,
+`:299`, `:313`), `onaudioprocess` (`web(frontend)/client.js:145`), `onmessage`
+(`web(frontend)/client.js:129`), `onended` (`web(frontend)/client.js:393`).
 
 **Concurrent / message-passing.** Work crosses a thread boundary as a message,
 not as a shared mutable structure:
@@ -1615,16 +1690,18 @@ custom `shared_ptr` deleter that releases the session claim
 (`src/examiner/gemini_examiner.cpp:178-185`).
 
 **Not present:** no logic programming, no reactive/stream framework, no ECS. The
-client is **not** object-oriented — `web/client.js` is module-level functions
-over module-level `let` variables (`web/client.js:7-41`), which is worth naming
-as a deliberate contrast in the writeup.
+client is **not** object-oriented either: it is functions over module-level
+`let` state, with no classes of its own. It is now a set of ES modules that
+declare what they take from each other with `import`, where it used to be
+classic scripts sharing one global namespace - so the paradigm is unchanged and
+the coupling is no longer implicit.
 
 ### S2. Control structures
 
 | Structure | Example | Citation |
 | --- | --- | --- |
 | **Sequence** | The five pipeline stages run strictly in order, each consuming the previous one's output: `respond` → `record_question` → `synthesize` → log → send | `src/server.cpp:496-509` |
-| **Sequence** (client) | `downsampleTo16k` → `floatToInt16` → `socket.send` | `web/client.js:195-197` |
+| **Sequence** (client) | `downsampleTo16k` → `floatToInt16` → `socket.send` | `web(frontend)/client.js:195-197` |
 | **Selection — binary `if/else`** | `if (is_binary) handle_audio(...) else handle_control(...)` | `src/server.cpp:106-111` |
 | **Selection — guard clause** | `if (!session) return;` | `src/server.cpp:101-103` |
 | **Selection — multiway `switch`** | `type_to_string` over all six `MessageType` values | `src/protocol.cpp:10-17` |
@@ -1634,18 +1711,18 @@ as a deliberate contrast in the writeup.
 | **Repetition — pre-test `while`** | `while (true)` worker loop with an internal exit | `src/worker.cpp:17`, exit `:35-38` |
 | **Repetition — pre-test `while`** | `while ((n = read(...)) > 0)` draining piper's stdout | `src/tts/piper_tts.cpp:129-131` |
 | **Repetition — counted `for`** | `for (int i = 0; i < segments; ++i)` concatenating whisper segments | `src/stt/whisper_stt.cpp:94-99` |
-| **Repetition — counted `for`** | `for (let i = 0; i < outputLength; i++)` linear-interpolation resampler | `web/client.js:414-424` |
+| **Repetition — counted `for`** | `for (let i = 0; i < outputLength; i++)` linear-interpolation resampler | `web(frontend)/client.js:414-424` |
 | **Repetition — range-based `for`** | `for (const Turn& turn : history)` building the Gemini request | `src/examiner/gemini_examiner.cpp:149-158` |
-| **Repetition — `for…of`** | `for (const track of tracks) track.stop();` | `web/client.js:278-281` |
-| **Repetition — event-driven** | `onaudioprocess` fires once per 4096 samples for the life of the graph — a loop in effect, driven by the audio clock | `web/client.js:145-187` |
+| **Repetition — `for…of`** | `for (const track of tracks) track.stop();` | `web(frontend)/client.js:278-281` |
+| **Repetition — event-driven** | `onaudioprocess` fires once per 4096 samples for the life of the graph — a loop in effect, driven by the audio clock | `web(frontend)/client.js:145-187` |
 
-For the syllabus's three-way requirement, the cleanest single-file
-demonstration is `WhisperSTT::transcribe` (`src/stt/whisper_stt.cpp:52-121`):
+Sequence, selection and repetition together in one place: the cleanest example
+is `WhisperSTT::transcribe` (`src/stt/whisper_stt.cpp:52-121`):
 **sequence** (`:65-81` parameter setup), **selection** (`:53`, `:59`, `:89`
 guards), and **repetition** (`:66` scaling loop, `:94` segment loop, `:107` and
 `:112` trim loops) all inside one 70-line function.
 
-### S3. Subroutines matching the syllabus's three cases
+### S3. Subroutines, by what they take and return
 
 **One parameter:**
 
@@ -1658,7 +1735,7 @@ Takes exactly one parameter, returns nothing, mutates object state. Also
 `Session::set_system_prompt(std::string)` (`src/session.cpp:11`),
 `Session::record_question(std::string)` (`src/session.cpp:24`),
 `WorkerPool::enqueue(Job)` (`src/worker.cpp:72`), and
-`addLog(text)` in JS (`web/client.js:44`).
+`addLog(text)` in JS (`web(frontend)/client.js:44`).
 
 **Multiple parameters:**
 
@@ -1672,8 +1749,8 @@ Three parameters, `src/server.cpp:620-673`. Larger still:
 — **five** parameters, mixing three data couples with one control couple and one
 RAII claim (`src/server.cpp:382-386`). Also `handle_control(conn, session, data)`
 — three (`src/server.cpp:319-321`), `get_env(name, fallback)` — two
-(`src/config.cpp:14`), `addTurn(role, text)` in JS — two (`web/client.js:55`),
-and `downsampleTo16k(floatSamples, inputRate)` — two (`web/client.js:402`).
+(`src/config.cpp:14`), `addTurn(role, text)` in JS — two (`web(frontend)/client.js:55`),
+and `downsampleTo16k(floatSamples, inputRate)` — two (`web(frontend)/client.js:402`).
 
 **A function that returns a value:**
 
@@ -1694,7 +1771,7 @@ examples: `bool Session::audio_full()` (`src/session.cpp:73`),
 `std::string WhisperSTT::transcribe(pcm)` (`src/stt/whisper_stt.cpp:52`),
 `int read_voice_sample_rate(model_path)` (`src/tts/piper_tts.cpp:33`),
 `Config load_config()` (`src/config.cpp:21`),
-`int cutPoint()` in JS (`web/client.js:201`).
+`int cutPoint()` in JS (`web(frontend)/client.js:201`).
 
 A nice trio to present together, since they show all three cases within the same
 class: `set_system_prompt` (one param, no return) → `build_examiner_input` (no
@@ -1711,7 +1788,7 @@ internal cap decision).
 | **Local LLM via Ollama** (e.g. Qwen2.5-1.5B on Hailo) | Small local LLM | Would be a local HTTP service | **Inference** | `[PLANNED]` — `src/examiner/hailo_examiner.cpp:11-17` is a stub; the model name appears **nowhere** in the repo |
 | **LoRA fine-tuning cycle** | Parameter-efficient fine-tuning | — | **Training** | `[PLANNED]` — **no code, config, dataset or reference exists anywhere in `speaking-sim/`.** Verified by search: the only `TRAINING.md` in the tree belongs to the vendored piper submodule and is upstream documentation for training *voices*, not this project's plan |
 
-Points for the writeup:
+Points worth noting:
 
 - **Every ML component currently in the system is at the inference/execution
   stage.** Nothing in this repo trains, fine-tunes or updates weights.
@@ -1726,21 +1803,21 @@ Points for the writeup:
 - Prompt engineering is a real design surface here, not an afterthought: the
   17-line system prompt constrains topic, tense range and examiner behaviour
   ("do not correct them", "do not mark or assess", "one question at a time") —
-  `prompts/examiner_system.txt:1-17`.
+  `prompts/<language>/examiner_ongoing.txt:1-17`.
 
 ### S5. Character representation and Italian text
 
 | Point | Evidence | Citation |
 | --- | --- | --- |
-| The page declares UTF-8 | `<meta charset="UTF-8">` — the **only** explicit encoding declaration in the project | `web/index.html:4` |
-| WebSocket text frames are UTF-8 by protocol | RFC 6455 mandates it; the browser encodes on `socket.send(string)` and decodes before `JSON.parse` | `web/client.js:118`, `:310` |
+| The page declares UTF-8 | `<meta charset="UTF-8">` — the **only** explicit encoding declaration in the project | `web(frontend)/index.html:4` |
+| WebSocket text frames are UTF-8 by protocol | RFC 6455 mandates it; the browser encodes on `socket.send(string)` and decodes before `JSON.parse` | `web(frontend)/client.js:118`, `:310` |
 | C++ treats text as opaque UTF-8 bytes | `std::string` throughout — no `wstring`, no `codecvt`, no locale conversion anywhere in the project | `include/sim/protocol.hpp:20`, `include/sim/examiner.hpp:16` |
 | Accented characters survive the round trip byte-for-byte | Nothing re-encodes: whisper's segment text is appended raw (`src/stt/whisper_stt.cpp:96`), Gemini's `.s()` is copied into a `std::string` (`src/examiner/gemini_examiner.cpp:281`), and both go into `crow::json` and out again |
 | Whisper is told the language explicitly | `wparams.language = "it"` — this is what makes it emit Italian orthography (`perché`, `più`, `città`) rather than transliterating | `src/stt/whisper_stt.cpp:72` |
-| The prompt itself is UTF-8 Italian-aware | Names the tenses the examiner should use; `kOpeningTurnText = "Inizia l'esame."` is UTF-8 source text | `prompts/examiner_system.txt:13-14`, `src/examiner/gemini_examiner.cpp:40` |
-| Rendering is XSS-safe and encoding-safe | `body.textContent = text` — the browser decodes UTF-8 and renders the accented glyphs; no `innerHTML` anywhere | `web/client.js:73` |
+| The prompt itself is UTF-8 Italian-aware | Names the tenses the examiner should use; `kOpeningTurnText = "Inizia l'esame."` is UTF-8 source text | `prompts/<language>/examiner_ongoing.txt:13-14`, `src/examiner/gemini_examiner.cpp:40` |
+| Rendering is XSS-safe and encoding-safe | `body.textContent = text` — the browser decodes UTF-8 and renders the accented glyphs; no `innerHTML` anywhere | `web(frontend)/client.js:73` |
 
-**Two honest caveats worth naming in the writeup:**
+**Two honest caveats:**
 
 1. **The whitespace trim is byte-wise, not character-wise.** It walks
    `transcript[i]` one `char` at a time and calls `std::isspace` on it
@@ -1761,62 +1838,78 @@ is the mistake that would corrupt accented characters.
 
 ### S6. Testing methods that realistically apply
 
-**First, the honest baseline: there are no tests in this repository.** No test
-files are tracked, no test framework is configured, and `CMakeLists.txt` has no
-`enable_testing()` or test target (`CMakeLists.txt:182-193` lists ten source
-files and nothing else). Everything below is *applicable*, not *present*.
+**The baseline, which has moved.** This section was written when nothing was
+tested. There are two test targets now, both `EXCLUDE_FROM_ALL` and both
+asserts rather than a framework, which keeps them free of a dependency:
+
+- `tests/safety_tests.cpp` — the safety layer offline: the normaliser, the word
+  lists, the adjudicator gates and the chain's consensus rules. No network, no
+  database, no Crow, which is the same reason the offline filter exists at all.
+- `tests/views_tests.cpp` — the labels a page shows, the date format above all:
+  matching the browser's `toLocaleString("en-AU", ...)` in `strftime` means
+  tidying `%e`, `%l` and `%p` by hand, and the obvious way to lower-case the
+  meridiem also lower-cases May, Mar, Apr, Aug and Sep.
+
+Everything else below is still *applicable* rather than *present*. The gaps
+worth naming: the JSON API has routes nothing in the browser calls any more, so
+nothing notices if one breaks, and `client.js` has no tests at all despite
+holding the pure functions easiest to test in the project.
 
 | Method | How it applies here | Concrete target |
 | --- | --- | --- |
-| **Unit testing** | The pure functions are genuinely unit-testable with no server running | `to_json`/`from_json` round-trip (`src/protocol.cpp:35-72`); `type_from_string` for all six names plus an unknown (`src/protocol.cpp:21-28`); `pcm_from_raw` including the odd-byte case (`src/tts/piper_tts.cpp:217-227`); `read_voice_sample_rate` against malformed JSON (`src/tts/piper_tts.cpp:33-68`); `downsampleTo16k` and `floatToInt16` in JS (`web/client.js:402-448`) |
-| **Boundary / limit testing** | Several hard limits are stated in code and directly checkable | The 640 000-sample cap and the `audio_full()` transition (`src/session.cpp:63-75`); `PORT` at 0, 1, 65535, 65536, 70000 (`src/config.cpp:39-45`); `WORKER_THREADS` at 0 and negative (`src/config.cpp:54-59`); `cutPoint()` clamping to `[0, 4096]` (`web/client.js:206`) |
-| **Faulty / abnormal data testing** | The parsers are written defensively and the defences are testable | Malformed control JSON (`src/server.cpp:327`); JSON with no `type` (`src/protocol.cpp:54`); a binary frame carrying a single odd byte (`src/server.cpp:297-304`); a zero-length binary frame at the client (`web/client.js:353-359`); non-numeric `PORT` (`src/config.cpp:46`) |
+| **Unit testing** | The pure functions are genuinely unit-testable with no server running | `to_json`/`from_json` round-trip (`src/protocol.cpp:35-72`); `type_from_string` for all six names plus an unknown (`src/protocol.cpp:21-28`); `pcm_from_raw` including the odd-byte case (`src/tts/piper_tts.cpp:217-227`); `read_voice_sample_rate` against malformed JSON (`src/tts/piper_tts.cpp:33-68`); `downsampleTo16k` and `floatToInt16` in JS (`web(frontend)/client.js:402-448`) |
+| **Boundary / limit testing** | Several hard limits are stated in code and directly checkable | The 640 000-sample cap and the `audio_full()` transition (`src/session.cpp:63-75`); `PORT` at 0, 1, 65535, 65536, 70000 (`src/config.cpp:39-45`); `WORKER_THREADS` at 0 and negative (`src/config.cpp:54-59`); `cutPoint()` clamping to `[0, 4096]` (`web(frontend)/client.js:206`) |
+| **Faulty / abnormal data testing** | The parsers are written defensively and the defences are testable | Malformed control JSON (`src/server.cpp:327`); JSON with no `type` (`src/protocol.cpp:54`); a binary frame carrying a single odd byte (`src/server.cpp:297-304`); a zero-length binary frame at the client (`web(frontend)/client.js:353-359`); non-numeric `PORT` (`src/config.cpp:46`) |
 | **Path / white-box testing** | Decision trees A and B in section 5 are the coverage map — six and seven leaves respectively | The empty-transcript early return (`src/server.cpp:451-459`) and both `catch` blocks (`src/server.cpp:512`, `:550`) are the paths most likely to be missed |
 | **Black-box testing** | Drive the WebSocket directly with scripted frames and assert on the reply frames, without touching internals | The `sample_rate` ⟺ binary-frame invariant (`src/server.cpp:626-630`, `:658`) |
 | **Integration testing** | Each backend can be substituted, since `Server` takes interfaces — a fake `InterfaceSTT` returning a fixed string tests the pipeline without a 74 MB model | `src/main.cpp:19-35`; the interfaces at `include/sim/server.hpp:87-89` are precisely the seams |
 | **Concurrency / stress testing** | The claim protocol is the correctness-critical piece | Two `Stop` frames racing on one session must yield exactly one job and one `busy` (`src/session.cpp:28-32`, `src/server.cpp:364-367`); a client disconnecting mid-turn must not crash the worker (`src/server.cpp:151-161`, `:647-652`) |
 | **Performance testing** | Instrumentation already exists — no new code needed to measure | Per-stage turn timings (`src/server.cpp:506-509`) and per-call token usage (`src/examiner/gemini_examiner.cpp:264-268`) |
 | **Live data testing** | Real recorded Italian speech through the whole pipeline is the only way to judge STT accuracy on accented vocabulary | `src/stt/whisper_stt.cpp:72` (`language = "it"`) |
-| **Beta / acceptance testing** | Actual beginner Italian students using it, judging whether the examiner's questions are on-topic and appropriately levelled | `prompts/examiner_system.txt:1-17` states the acceptance criteria in prose |
+| **Beta / acceptance testing** | Actual beginner Italian students using it, judging whether the examiner's questions are on-topic and appropriately levelled | `prompts/<language>/examiner_ongoing.txt:1-17` states the acceptance criteria in prose |
 | **Peer review / desk checking** | Practical here because the code is unusually heavily commented — the rationale for each decision is written next to it | e.g. `src/server.cpp:460-491`, `src/worker.cpp:55-68` |
-| **Quality assurance / usability** | The mic must never record the examiner's own speech; the turn must always return to the student | The four-state machine (`web/client.js:17`) and every `armMic()` path (`web/client.js:336`, `:342`, `:355`, `:394`) |
+| **Quality assurance / usability** | The mic must never record the examiner's own speech; the turn must always return to the student | The four-state machine (`web(frontend)/client.js:17`) and every `armMic()` path (`web(frontend)/client.js:336`, `:342`, `:355`, `:394`) |
 
 Methods that **do not** apply: database transaction/rollback testing (no
 database), migration testing (no schema), and load testing at scale — the
 `WORKER_THREADS` design is explicitly "how many students can be mid-turn at
 once" for a single-user-class deployment (`.env.example:29-33`).
 
-### S7. Diagram types that do NOT apply to speaking-sim
+### S7. Diagram types that do not apply to speaking-sim
 
-**Relational database / SQL / normalisation / ORM — does not apply.**
+> **Corrected.** This section used to argue that a database diagram did not
+> apply because there was no database, and that nothing about accounts applied
+> because there were no accounts. Both were true when it was written and
+> neither is true now, so both claims are replaced below. The hardware and
+> transport parts of the section still hold.
 
-There is no database of any kind. No SQL, no ORM, no schema, no migration, no
-persistence layer, and no file the running server writes. Verified across the
-whole tracked source tree. Every piece of state is either:
+**Relational database — applies, and is the largest single part of the system.**
 
-- **In memory, per-connection**, dying with the WebSocket: `Session` and its
-  fields (`include/sim/session.hpp:40-54`), erased in `.onclose`
-  (`src/server.cpp:135`);
-- **In memory, per-process**: the two maps (`include/sim/server.hpp:82-83`), the
-  job queue (`include/sim/worker.hpp:25`), `system_prompt_` (`include/sim/server.hpp:45`);
-- **Read-only on disk**: the two model files, `prompts/examiner_system.txt`, the
-  three `web/` assets, `.env`.
+`src/store.cpp` is SQLite over 23 tables: accounts and their OAuth identities,
+classes with their members and invites, exam plans with their topics, set
+questions and tense targets, exam attempts with every turn and the tense and
+topic features drawn from them, licences, daily usage counters and safety
+events. The schema is created on first start (`src/store.cpp`), the file it
+writes is named by `DATABASE_PATH`, and `Store` is the only thing that touches
+it — every route reaches the database through it rather than holding a
+statement of its own.
 
-The system does not even keep a full conversation history — only the **last**
-question and answer (`include/sim/session.hpp:45-46`). An ERD or normalised
-schema for this system would be pure invention. If you must address the syllabus
-item, the honest framing is: *"the current design is stateless between sessions
-by choice; `fact_store_` (`include/sim/session.hpp:53`) is the declared but
-unimplemented hook where persistent per-student state would attach, and that is
-the point at which a schema would first become necessary."* Mark any such
-diagram `[PLANNED]`.
+So an ERD is one of the diagrams that *does* apply here, and it is not drawn in
+this document. The foreign keys are declared in the schema and are the place to
+start: most of them cascade from `users` and `classes`, which is what makes
+deleting an account remove its exams with it.
+
+Per-connection state still exists alongside it and is still in memory: a
+`Session` holds the audio buffer and the conversation for one exam
+(`include/sim/session.hpp`) and is erased when the socket closes. What changed
+is that a finished turn is now also written down.
 
 **Wiring / mechatronic / circuit diagram — does not apply to the current code.**
 
 There is no GPIO, no sensor, no actuator, no serial port, no I²C/SPI, and no
 hardware-facing code anywhere in the tracked source. The only "hardware"
 touched is the microphone and speakers, and both are reached through standard
-browser Web Audio APIs (`web/client.js:97`, `:391`) — an operating-system
+browser Web Audio APIs (`web(frontend)/client.js:97`, `:391`) — an operating-system
 abstraction, not a wiring interface.
 
 The intended hardware target, described for completeness and marked `[PLANNED]`:
@@ -1833,21 +1926,30 @@ connection. A wiring diagram would have exactly one meaningful edge — the HAT'
 PCIe/GPIO seating — which is a hardware assembly note, not a system design
 diagram. Say so rather than drawing a circuit.
 
-**Also not applicable:** UML deployment diagrams beyond a trivial two-node
-sketch (everything runs on one machine — `ws://${location.host}` is
-same-origin, `web/client.js:111`); and any diagram implying multi-user accounts,
-authentication or authorisation, none of which exist (there is no login, no user
-identity, and a `Session` is anonymous and connection-scoped).
+**Still of limited use:** a UML deployment diagram beyond a two-node sketch,
+since everything but the examiner call runs on one machine.
 
-**Security note for the writeup, marked `[PLANNED]`:** transport is plain
-`ws://` (`web/client.js:111`) and the server has no TLS configuration
-(`src/server.cpp:165` — `app_.port(...).multithreaded().run()`, no SSL
-variant). WSS, nginx termination and Tailscale are named in the project plan but
-appear **nowhere** in the repository — verified by search. The `GEMINI_API_KEY`
-does reach a third party over HTTPS (`src/examiner/gemini_examiner.cpp:27`), but
-the student's audio and transcript travel unencrypted between browser and
-server. That is acceptable on `localhost` and is the exact thing that must
-change before any networked deployment.
+**Accounts and authorisation now apply.** Sign-in is Google OAuth
+(`src/auth/google_oauth.cpp`), a session is a cookie whose SHA-256 is the row
+that identifies it, a teacher is an address listed in `TEACHER_EMAILS`, and
+every class route decides what the caller may see from their own id rather than
+from anything in the URL. A class that is not the caller's answers 404 rather
+than 403 so that ids cannot be probed. That is worth a diagram; the sentence
+that used to sit here said none of it existed.
+
+**Security note, marked `[PLANNED]`:** the server has no TLS configuration of
+its own — `app_.port(...).multithreaded().run()` with no SSL variant. The page
+derives `wss://` from its own protocol, so TLS terminated by a proxy in front
+would be used, but nothing in the repository sets one up. The `GEMINI_API_KEY`
+reaches a third party over HTTPS, while the student's audio and transcript
+travel unencrypted between browser and server.
+
+This matters more than it did when the note was first written. The system now
+stores transcripts, names and email addresses rather than forgetting everything
+when a socket closes, so what was a private conversation on `localhost` is now
+a database of student speech. Encrypting the hop and the retention windows in
+`docs/compliance/data-retention.md` are the two things that have to be real
+before this is served to anybody over a network.
 
 ### Gaps / assumptions — Supplementary
 
@@ -1862,7 +1964,7 @@ change before any networked deployment.
   do.
 - A marking / error-correction pass is `[PLANNED]` and, notably, the current
   system prompt explicitly **forbids** it: "do not correct them. Do not mark or
-  assess the student" (`prompts/examiner_system.txt:15-16`). Adding marking
+  assess the student" (`prompts/<language>/examiner_ongoing.txt:15-16`). Adding marking
   means changing that prompt, which is worth calling out as a design decision
   rather than a code change.
 - The Gemini model pin is explicitly temporary. `kModel` is
@@ -1873,16 +1975,16 @@ change before any networked deployment.
   documentation names the model, name both the current and the ship target.
 - **Seven** source files had uncommitted working-tree modifications when this
   document was written (`config.hpp`, `protocol.hpp`, `server.hpp`,
-  `session.hpp`, `server.cpp`, `whisper_stt.cpp`, `web/client.js`). **All
+  `session.hpp`, `server.cpp`, `whisper_stt.cpp`, `web(frontend)/client.js`). **All
   citations above are to the working tree as it stands, not to the last
   commit.** Line numbers will shift if those changes are amended before you
   draw.
-- `web/client.js` was edited **while this document was being written**: 98 lines
+- `web(frontend)/client.js` was edited **while this document was being written**: 98 lines
   of explanatory comment were stripped and the file went from 528 to 448 lines.
   No logic changed — the diff is comments and blank lines only — and every
-  `web/client.js` citation in this document has been re-derived against the
+  `web(frontend)/client.js` citation in this document has been re-derived against the
   448-line version.
-- **Defect introduced by that edit, not part of the design:** `web/client.js:112`
+- **Defect introduced by that edit, not part of the design:** `web(frontend)/client.js:112`
   is a bare `n` on its own line, left inside the `startButton.onclick` handler
   where the `socket.binaryType` comment used to begin. It parses, but throws
   `ReferenceError: n is not defined` the moment Start is clicked, so the socket

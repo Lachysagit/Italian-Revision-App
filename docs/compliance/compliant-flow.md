@@ -77,8 +77,8 @@ mic ──► 16 kHz PCM ──► Azure Speech STT ──► transcript
 
 `AudioInput::Gemini` does not disappear; it becomes the development-only mode,
 gated so it cannot be selected when `AUTH_REQUIRED` is on. The `InterfaceExaminer`
-abstraction already makes this a backend swap rather than a rewrite — that is the
-argument to make in the HSC evaluation.
+abstraction already makes this a backend swap rather than a rewrite, which is
+the point worth making when the change is proposed.
 
 Cost consequence, for the running-cost model: two calls per turn instead of one,
 plus two Content Safety calls. Content Safety is billed per 1,000 text records
@@ -336,9 +336,9 @@ record, and a documented deletion path for a withdrawn consent.
 
 Unsatisfied by any code change, and worth stating plainly in the request rather
 than leaving for a reviewer to find: **C8** — a legal entity able to sign DoE
-contract terms and carry insurance. A Year 12 student is not one. The route
-around it is a free pilot owned by the school under principal-accepted risk,
-with you named as the developer, not a vendor contract.
+contract terms and carry insurance. An individual developer is not one. The
+route around it is a free pilot owned by the school under principal-accepted
+risk, with you named as the developer, not a vendor contract.
 
 ---
 
@@ -346,10 +346,10 @@ with you named as the developer, not a vendor contract.
 
 Nothing here starts with DoE. It starts with your Italian teacher.
 
-1. **Now, for the HSC project.** No approval needed while you are the only user
-   and the voices are yours or synthetic. Document the compliance design anyway
-   — a designed-for-approval system with a written PIA is stronger Software
-   Engineering evidence than a working one without.
+1. **Now.** No approval needed while you are the only user and the voices are
+   yours or synthetic. Document the compliance design anyway: the PIA and the
+   retention windows are much cheaper to write while the system is small than
+   to retrofit once somebody else's voice is in the database.
 2. **Switch the inference path.** Azure Speech + Azure OpenAI Australia East, as
    in your VNet plan, or Vertex AI `australia-southeast1` if you would rather
    stay close to the current Gemini code. Do this before any student other than
@@ -390,7 +390,7 @@ first DCS-2026-02 attestations 31 Oct 2027.
 
 Phase 1 is a day's work and is independently useful: it is the part that still
 runs on the Pi with the network cable out, and it is the part you can
-demonstrate in the HSC submission without any cloud account at all.
+demonstrate without any cloud account at all.
 
 ---
 

@@ -1,8 +1,8 @@
 # Safety screening — what is built
 
-Companion to `compliant-flow.md`, which is the design. This file is the
-honest ledger of how much of it exists in the code, so that neither an HSC
-marker nor a DoE reviewer has to diff a plan against a branch to find out.
+Companion to `compliant-flow.md`, which is the design. This file is the honest
+ledger of how much of it exists in the code, so that nobody reviewing it has to
+diff a plan against a branch to find out.
 
 Phase numbering follows section 11 of the design.
 
