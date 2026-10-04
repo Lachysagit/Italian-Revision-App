@@ -9,6 +9,8 @@
 // An ES module. The page imports initTeacher and hands it to initAccount,
 // which calls it once it knows who is signed in.
 
+import htmx from "/vendor/htmx.esm.js";
+
 const END_REASONS = {
     student_end: "Ended by student",
     timer: "Time ran out",
@@ -272,16 +274,19 @@ function openClass(classId) {
         api("GET", `/api/classes/${classId}`),
         api("GET", `/api/classes/${classId}/attempts`),
         api("GET", `/api/classes/${classId}/plans`),
-        api("GET", `/api/classes/${classId}/coverage`),
     ])
-        .then(([detail, history, plans, coverage]) =>
+        .then(([detail, history, plans]) =>
             examOptions(detail.class.language).then((options) => {
                 currentClass = detail.class;
                 currentPlans = plans.plans;
                 currentOptions = options;
                 paintClass(detail, history.attempts);
                 paintPlans(currentPlans);
-                paintCoverage(coverage.students, options);
+                htmx.ajax("GET", `/teacher/classes/${classId}/coverage`,
+                          "#coverageReport");
+                //deliberately outside the chain above: a coverage report that
+                //fails is one card short, not a reason to blank the panel and
+                //show an error over a class that loaded fine
                 paintClassList();
             }))
         // the options come after the class, because which tense names to
@@ -477,46 +482,6 @@ function paintPlans(plans) {
         list.appendChild(item);
     });
     document.getElementById("plansEmpty").hidden = live.length > 0;
-}
-
-function paintCoverage(students, options) {
-    const head = document.querySelector("#coverageTable thead tr");
-    const body = document.querySelector("#coverageTable tbody");
-    head.textContent = "";
-    body.textContent = "";
-
-    head.appendChild(element("th", null, "Student"));
-    head.appendChild(element("th", null, "Exams"));
-    options.tenses.forEach((tense) => head.appendChild(element("th", null, tense.label)));
-    head.appendChild(element("th", null, "Topics covered"));
-
-    const withExams = students.filter((student) => student.attempt_count > 0);
-    withExams.forEach((student) => {
-        const row = element("tr");
-        row.appendChild(element("td", null, student.name || student.email));
-        row.appendChild(element("td", "number", String(student.attempt_count)));
-        options.tenses.forEach((tense) => {
-            const produced = student.tenses_produced[tense.key] || 0;
-            const asked = student.tenses_asked[tense.key] || 0;
-            const cell = element("td", produced === 0 ? "number gap" : "number");
-            cell.appendChild(element("strong", null, String(produced)));
-            cell.appendChild(element("span", "muted", ` · ${asked}`));
-            cell.title = `${student.name || "This student"} used the ${tense.label} ` +
-                `in ${produced} answers; the examiner asked in it ${asked} times`;
-            row.appendChild(cell);
-            // a zero is shaded, because the gap is what a teacher reads this
-            // table for: a tense the student has never produced
-        });
-        const topics = Object.keys(student.topics);
-        const cell = element("td", "muted", topics.length
-            ? topics.map(capitaliseTopic).join("; ")
-            : "-");
-        row.appendChild(cell);
-        body.appendChild(row);
-    });
-
-    document.getElementById("coverageEmpty").hidden = withExams.length > 0;
-    document.getElementById("coverageTable").hidden = withExams.length === 0;
 }
 
 // ---------------------------------------------------------------------------

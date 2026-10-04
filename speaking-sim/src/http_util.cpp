@@ -23,6 +23,13 @@ crow::response json_response(const crow::json::wvalue& body, int status) {
     return response;
 }
 
+crow::response html_fragment(std::string body) {
+    crow::response response(std::move(body));
+    response.set_header("Content-Type", "text/html; charset=utf-8");
+    response.set_header("Cache-Control", "no-store");
+    return response;
+}
+
 crow::response json_error(int status, const std::string& message) {
     crow::json::wvalue json;
     json["error"] = message;

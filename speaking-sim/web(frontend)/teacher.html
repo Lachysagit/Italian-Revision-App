@@ -140,13 +140,11 @@
                     number of answers in which the student used it, with the
                     number of questions the examiner asked in it after the dot.
                 </p>
-                <div class="tableWrap">
-                    <table id="coverageTable">
-                        <thead><tr></tr></thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-                <p class="empty" id="coverageEmpty" hidden>No exams yet.</p>
+                <div id="coverageReport"></div>
+                <!-- filled by /teacher/classes/<id>/coverage, which answers
+                     with the whole table or the empty line. The columns depend
+                     on how many tenses the class's language names, so there is
+                     no fixed shape worth writing here -->
             </div>
 
             <div class="card">

@@ -1,0 +1,40 @@
+{{! What students have practised, for one class. Server::serve_coverage fills
+    the context; htmx swaps the result into #coverageReport.
+
+    Every escaped tag here is run through crow's mustache escape, which covers
+    ampersand, angle brackets, both quotes, slash, backtick and equals - so a
+    name typed by a student is safe in the title attribute as well as in the
+    cell. paintCoverage used to keep that rule by hand with textContent; here
+    it is the default and cannot be forgotten.
+
+    Careful: a mustache comment ends at the first closing brace pair, so one
+    cannot quote a tag inside it. }}
+{{#any}}
+<div class="tableWrap">
+    <table id="coverageTable">
+        <thead>
+            <tr>
+                <th>Student</th>
+                <th>Exams</th>
+                {{#tenses}}<th>{{label}}</th>{{/tenses}}
+                <th>Topics covered</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{#students}}
+            <tr>
+                <td>{{who}}</td>
+                <td class="number">{{attempt_count}}</td>
+                {{#cells}}
+                <td class="{{cls}}" title="{{title}}"><strong>{{produced}}</strong><span class="muted"> &middot; {{asked}}</span></td>
+                {{/cells}}
+                <td class="muted">{{topics}}</td>
+            </tr>
+            {{/students}}
+        </tbody>
+    </table>
+</div>
+{{/any}}
+{{^any}}
+<p class="empty">No exams yet.</p>
+{{/any}}

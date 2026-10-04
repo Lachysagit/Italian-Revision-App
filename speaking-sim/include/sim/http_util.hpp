@@ -18,6 +18,12 @@ crow::response json_response(const crow::json::wvalue& body, int status = 200);
 //Content-Type and no-store set once here: every one of these answers is about
 //a signed-in person, and a shared cache holding one would hand it to the next
 
+crow::response html_fragment(std::string body);
+//a piece of a page rather than a whole one, for the routes htmx swaps in. Same
+//no-store reasoning as json_response - a fragment is about a signed-in person -
+//and the charset is explicit so a middle dot or an accented name survives the
+//trip into a document this response does not carry the <meta> for
+
 crow::response json_error(int status, const std::string& message);
 //an error is JSON too, so the client can read .error the same way on every
 //path instead of guessing whether a body is text or JSON by status code

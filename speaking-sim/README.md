@@ -277,7 +277,7 @@ the answers in which they used each tense and the questions asked in it.
 | `POST /api/plans/<id>/archive` | its class's teacher | archive, and stop it being the default |
 | `POST /api/classes/<id>/default-plan` | its teacher | `{plan_id}`, or 0 for none |
 | `GET /api/exam-options?language=` | anyone signed in | syllabus topics and tense names for the editor |
-| `GET /api/classes/<id>/coverage` | its teacher | tenses and topics per student |
+| `GET /teacher/classes/<id>/coverage` | its teacher | tenses and topics per student, as an HTML fragment |
 
 A plan is checked when it is saved: known topics and tenses, set questions only
 on ticked topics, one opening question at most, and no more set questions than

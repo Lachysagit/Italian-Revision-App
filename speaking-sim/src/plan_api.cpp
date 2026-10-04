@@ -1,8 +1,10 @@
 #include "sim/server.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <map>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -12,6 +14,34 @@
 #include "sim/topics.hpp"
 
 namespace sim {
+
+namespace {
+
+std::string tense_label(const LanguagePack& pack, std::string_view key) {
+    for (const auto& [id, name] : pack.tense_labels) {
+        if (id == key) return name;
+    }
+    return std::string(key);
+    //the canonical key is the fallback, so a pack that names only some of them
+    //still reports the rest rather than blanking the column
+}
+
+std::string capitalise(std::string text) {
+    if (!text.empty()) {
+        text[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(text[0])));
+    }
+    return text;
+    //the syllabus group names are English and ASCII - see topics.cpp - so the
+    //first byte is the first letter. Not safe on a name typed by a student,
+    //which is why nothing here is passed through it
+}
+
+int count_for(const std::map<std::string, int>& counts, const std::string& key) {
+    const auto at = counts.find(key);
+    return at == counts.end() ? 0 : at->second;
+}
+
+}  // namespace
 
 // Exam plans: the teacher's side of what an exam covers, and the student's
 // view of which exams a class offers. The same shape as class_api.cpp - check
@@ -48,10 +78,13 @@ void Server::register_plan_routes() {
     //what the plan editor offers: the syllabus topics, and the tenses in the
     //class language's own names
 
-    CROW_ROUTE(app_, "/api/classes/<int>/coverage") //HTTP ROUTE ---
+    CROW_ROUTE(app_, "/teacher/classes/<int>/coverage") //HTTP ROUTE ---
     ([this](const crow::request& req, std::int64_t class_id) {
         return serve_coverage(req, class_id);
     });
+    //an HTML fragment, not JSON: the table is the only thing that ever read
+    //this and htmx swaps it in whole. Under /teacher rather than /api for the
+    //same reason - /api is what the exam page's own JavaScript still speaks
 }
 
 crow::response Server::serve_class_plans(const crow::request& req,
@@ -238,11 +271,7 @@ crow::response Server::serve_exam_options(const crow::request& req) {
     for (const std::string_view key : kTenseKeys) {
         crow::json::wvalue item;
         item["key"] = std::string(key);
-        std::string label(key);
-        for (const auto& [id, name] : pack->tense_labels) {
-            if (id == key) label = name;
-        }
-        item["label"] = label;
+        item["label"] = tense_label(*pack, key);
         tenses.push_back(std::move(item));
     }
     json["tenses"] = std::move(tenses);
@@ -285,29 +314,76 @@ crow::response Server::serve_coverage(const crow::request& req,
             }
         }
 
-        const auto map_json = [](const std::map<std::string, int>& counts) {
-            crow::json::wvalue json = crow::json::wvalue::object();
-            for (const auto& [key, count] : counts) json[key] = count;
-            return json;
-        };
+        const LanguagePack* pack = languages_.find(klass.language_id);
+        if (pack == nullptr) {
+            pack = &languages_.default_pack();
+        }
+        //the tense names are the class language's own, so an Italian class
+        //reads "passato prossimo" where a German one reads "Perfekt"
+
+        std::vector<crow::json::wvalue> columns;
+        std::vector<std::pair<std::string, std::string>> ordered;
+        for (const std::string_view key : kTenseKeys) {
+            std::string label = tense_label(*pack, key);
+            crow::json::wvalue column;
+            column["label"] = label;
+            columns.push_back(std::move(column));
+            ordered.emplace_back(std::string(key), std::move(label));
+        }
+        //one pass, so the header and every row's cells walk kTenseKeys in the
+        //same order. The template cannot line them up itself: mustache has no
+        //way to look a key up in a map
 
         std::vector<crow::json::wvalue> students;
         for (const ClassMember& member : store_->class_members(class_id)) {
             if (member.role != ClassRole::Student) continue;
+            if (member.attempt_count == 0) continue;
+            //a student who has sat nothing is a row of zeroes. The gap this
+            //table is read for is a tense missing from exams that happened
+
             const Student& counts = by_user[member.user_id];
+            const std::string who =
+                member.display_name.empty() ? member.email : member.display_name;
+            const std::string whose =
+                member.display_name.empty() ? "This student" : member.display_name;
+
+            std::vector<crow::json::wvalue> cells;
+            for (const auto& [key, label] : ordered) {
+                const int produced = count_for(counts.produced, key);
+                const int asked = count_for(counts.asked, key);
+                crow::json::wvalue cell;
+                cell["produced"] = produced;
+                cell["asked"] = asked;
+                cell["cls"] = produced == 0 ? "number gap" : "number";
+                //a zero is shaded, because the gap is what a teacher reads
+                //this table for: a tense the student has never produced
+                cell["title"] = whose + " used the " + label + " in " +
+                                std::to_string(produced) +
+                                " answers; the examiner asked in it " +
+                                std::to_string(asked) + " times";
+                cells.push_back(std::move(cell));
+            }
+
+            std::string topics;
+            for (const auto& [group, count] : counts.topics) {
+                if (!topics.empty()) topics += "; ";
+                topics += capitalise(group);
+            }
+
             crow::json::wvalue item;
-            item["user_id"] = member.user_id;
-            item["name"] = member.display_name;
-            item["email"] = member.email;
+            item["who"] = who;
             item["attempt_count"] = member.attempt_count;
-            item["tenses_produced"] = map_json(counts.produced);
-            item["tenses_asked"] = map_json(counts.asked);
-            item["topics"] = map_json(counts.topics);
+            item["cells"] = std::move(cells);
+            item["topics"] = topics.empty() ? "-" : topics;
             students.push_back(std::move(item));
         }
-        crow::json::wvalue json;
-        json["students"] = std::move(students);
-        return json_response(json);
+
+        crow::json::wvalue context;
+        context["any"] = !students.empty();
+        context["tenses"] = std::move(columns);
+        context["students"] = std::move(students);
+        return html_fragment(
+            crow::mustache::load("coverage.html").render(context).dump());
     });
 }
 
