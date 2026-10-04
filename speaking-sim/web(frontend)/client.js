@@ -68,8 +68,6 @@ let blockStartTime = 0;
 let pendingStop = false;
 
 
-let pendingAudio = false;
-
 
 let micReady = false;
 //the capture graph now finishes building after the opening request is sent, so
@@ -80,6 +78,7 @@ let pendingArm = false;
 let turnState = "idle";
 //"idle" no session; "thinking" examiner is working and the mic is muted;
 //"armed" student's turn, mic live and frames streaming
+//"paused" the clock and the mic are both stopped until Resume
 
 let examDurationMs = 5 * 60 * 1000;
 //the length the server last announced on an opening question. Five minutes
@@ -150,8 +149,10 @@ function downloadBlob(filename, blob) { //hand one file to the browser
     link.click();
     //detached on purpose: an anchor in the page would litter the transcript
 
-    URL.revokeObjectURL(url);
-    //the browser has the blob by now, and this frees our copy of it
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+    //not in the same task as click(): the download reads the blob URL on a
+    //later one, and revoking here cancels the save in Firefox and Safari.
+    //A tick is enough for the read to have started, and then our copy can go
 }
 
 const CRC_TABLE = (() => { //one table, built once, for the zip checksums below
@@ -613,9 +614,10 @@ micDismiss.onclick = () => {
 
 micRetry.onclick = () => {
     micOverlay.hidden = true;
-    startButton.onclick();
+    startButton.click();
     //the whole start path again rather than getUserMedia alone: the failed
-    //attempt already tore the socket and the context down
+    //attempt already tore the socket and the context down. click() rather than
+    //onclick(), so a Start that is latched off stays off
 };
 
 micOverlay.onclick = (event) => {
@@ -1014,6 +1016,7 @@ startButton.onclick = async () => {
             //NO student_name. The name is rendered in this page and nowhere
             //else: it is never posted, never stored server side and never
             //reaches the examiner. See docs/compliance/data-retention.md
+        }));
         //ask the examiner for the opening question. Without this nothing is
         //sent until the student ends a turn, so the exam begins in silence.
         //gemini_key carries the settings picker's choice for this whole session
@@ -1308,13 +1311,20 @@ function teardown() { //release everything this session allocated
     examRemaining = null;
     examTimer.classList.remove("paused");
     //a session that died while paused - a dropped socket, a denied mic - must
-    //not leave a Resume button over an exam there is nothing left to resume.
-    //The clock is not restarted here: teardown's own setTurnState("idle")
-    //latches the button off, and End and expiry each reset the timer outright
+    //not leave a Resume button over an exam there is nothing left to resume
+    if (!examExpired) {
+        resetExamTimer();
+        //a session that died with time still on it takes the clock with it.
+        //Without this a mid-exam disconnect left examDeadline set and its
+        //ticker running against an exam that was already gone, so the next
+        //Start met startExamTimer's "already running" guard and ran with no
+        //clock at all. An exam that ran out is left exactly as expireExam
+        //latched it, so its minutes cannot be re-rolled by pulling the plug;
+        //End and the server's own "ended" are still what clear that latch
+    }
     headCut = 0;
     tailCut = 0;
     pendingStop = false;
-    pendingAudio = false;
 
     if (processor) {
         processor.onaudioprocess = null;
@@ -1364,8 +1374,16 @@ function teardown() { //release everything this session allocated
 
 function handleMessage(event) { //message from server
     if (typeof event.data === "string") {
-        const message = JSON.parse(event.data);
-        //parse JSON string into object
+        let message;
+        try {
+            message = JSON.parse(event.data);
+        } catch (error) {
+            addLog(`ignored an unreadable frame: ${error.message}`);
+            return;
+            //a text frame that is not JSON is the server's mistake, not the
+            //student's. Logged and dropped, because an uncaught throw here takes
+            //out the handler and every later message on this socket with it
+        }
         addLog(`${message.type}: ${message.payload}`);
         //add to log element the message object
         if (message.sample_rate) {
@@ -1390,13 +1408,11 @@ function handleMessage(event) { //message from server
             }
     
 
-            if (message.sample_rate) {
-                pendingAudio = true;
-    
-            } else {
-                pendingAudio = false;
+            if (!message.sample_rate) {
                 armMic();
-    
+                //no audio frame follows this reply, so the turn passes to the
+                //student now rather than waiting on a playback that never starts.
+                //When one does follow, playAudio's source.onended re-arms instead
             }
         }
 
@@ -1450,7 +1466,6 @@ function playAudio(arrayBuffer) { //handling audio from server
     const int16arrfromserver = new Int16Array(arrayBuffer);
     //create a new int16 array holding audio buffer sent by server
     if (int16arrfromserver.length === 0) {
-        pendingAudio = false;
         armMic();
         return;
         //the TTS stub returns no samples, and createBuffer rejects a length of
