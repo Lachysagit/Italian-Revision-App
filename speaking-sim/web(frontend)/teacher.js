@@ -11,13 +11,6 @@
 
 import htmx from "/vendor/htmx.esm.js";
 
-const END_REASONS = {
-    student_end: "Ended by student",
-    timer: "Time ran out",
-    disconnect: "Left before the end",
-    crash: "Server restarted",
-};
-
 let teacherLanguages = [];
 let classes = [];
 let currentClass = null;
@@ -392,11 +385,6 @@ function paintPending(invites) {
     document.getElementById("pendingBlock").hidden = invites.length === 0;
 }
 
-function endLabel(attempt) {
-    if (!attempt.ended_at) return "In progress";
-    return END_REASONS[attempt.end_reason] || attempt.end_reason || "Ended";
-}
-
 // ---------------------------------------------------------------------------
 // exam plans and coverage
 // ---------------------------------------------------------------------------
@@ -751,149 +739,28 @@ function archivePlan() {
 // ---------------------------------------------------------------------------
 
 function openAttempt(attemptId) {
-    api("GET", `/api/attempts/${attemptId}`)
-        .then((data) => {
-            const attempt = data.attempt;
-            document.getElementById("attemptTitle").textContent =
-                attempt.student_name || attempt.student_email;
-            document.getElementById("attemptMeta").textContent =
-                `${formatTime(attempt.started_at)} · ${attempt.turn_count} turns · ` +
-                endLabel(attempt) +
-                (attempt.plan_name ? ` · plan: ${attempt.plan_name}` : "");
+    const body = document.getElementById("attemptBody");
+    body.textContent = "";
+    //cleared first, so the check below is about this exam rather than the last
+    //one, and so a refused request cannot leave the previous transcript on
+    //screen under a new heading
 
-            paintRequired(data.required, data.opinion);
-
-            const container = document.getElementById("attemptTurns");
-            container.textContent = "";
-            data.turns.forEach((turn) => container.appendChild(turnCard(turn)));
-            document.getElementById("attemptEmpty").hidden = data.turns.length > 0;
-
-            showPanel("attempt");
-            window.scrollTo(0, 0);
-        })
-        .catch((error) => {
-            showTeacherNotice(error.message);
+    htmx.ajax("GET", `/teacher/attempts/${attemptId}`, "#attemptBody").then(() => {
+        if (!body.firstElementChild) {
             window.location.hash = `#class-${currentClass ? currentClass.id : ""}`;
-        });
-}
-
-function turnCard(turn) {
-    const role = turn.role === "examiner" ? "examiner" : "student";
-    const card = element("div", `turn ${role}`);
-    // the same classes the exam page paints with, so a transcript reads the
-    // same here as it did to the student
-
-    const heading = element("div", "turn-role", role === "examiner" ? "Examiner" : "Student");
-    if (turn.topic) {
-        heading.appendChild(element("span", "topicTag", turn.topic));
-    }
-    card.appendChild(heading);
-    card.appendChild(element("div", "turn-text", turn.text));
-
-    const tenses = turn.tenses || { model: [], rules: [] };
-    const keys = Array.from(new Set([...tenses.model, ...tenses.rules]));
-    if (keys.length) {
-        const row = element("div", "tenseTags");
-        keys.forEach((key) => {
-            const both = tenses.model.includes(key) && tenses.rules.includes(key);
-            const tag = element("span", both ? "tenseTag" : "tenseTag single",
-                tenseLabel(key));
-            tag.title = both ? "found by the examiner and the grammar check"
-                : tenses.model.includes(key) ? "found by the examiner only"
-                    : "found by the grammar check only";
-            row.appendChild(tag);
-        });
-        card.appendChild(row);
-        // one tag per tense, marked by how sure it is: agreement is solid,
-        // one source alone is dashed, so a disputed tense is visible as one
-    }
-    return card;
-}
-
-function paintRequired(required, opinion) {
-    const card = document.getElementById("attemptRequiredCard");
-    const list = document.getElementById("attemptRequired");
-    list.textContent = "";
-
-    const mark = (status) => status === "asked" ? "Asked"
-        : status === "missed" ? "Not asked" : "Still to ask";
-
-    // One row: the verdict, what was wanted, why the verdict was reached, and
-    // what the student said back.
-    function requiredRow(status, what, note, answer) {
-        const item = element("li", `required ${status}`);
-        item.appendChild(element("span", "requiredStatus", mark(status)));
-
-        const body = element("div", "requiredBody");
-        body.appendChild(what);
-        if (note) body.appendChild(element("div", "requiredNote", note));
-        if (answer) {
-            const said = element("p", "requiredAnswer");
-            said.appendChild(element("span", "answerLabel", "Answered"));
-            said.appendChild(document.createTextNode(` ${answer.text}`));
-            said.title = `Turn ${answer.turn_index}`;
-            body.appendChild(said);
+            return;
+            //nothing was swapped in, so the request was refused: htmx leaves a
+            //4xx alone and the responseError listener has already said why
         }
-        item.appendChild(body);
-        list.appendChild(item);
-    }
-
-    (required || []).forEach((question) => {
-        requiredRow(question.status,
-                    element("span", "requiredText", question.text),
-                    evidenceNote(question),
-                    question.answer);
+        showPanel("attempt");
+        window.scrollTo(0, 0);
     });
-
-    const wanted = opinion && opinion.status !== "not_required";
-    if (wanted) {
-        const what = element("span", "requiredKind",
-            "A question asking for the student's opinion");
-        requiredRow(opinion.status, what,
-                    opinion.status === "asked" && opinion.source === "openers"
-                        ? "Recognised by its opening phrase; the examiner did not label it as an opinion question."
-                        : "",
-                    opinion.answer);
-    }
-    //in the same list as the set questions, because a teacher checking whether
-    //the exam did what the plan asked wants one place to look. It carries no
-    //text of its own - the plan only ever asked for "an opinion question" -
-    //so the kind is named where a set question's words would be
-
-    card.hidden = (!required || required.length === 0) && !wanted;
 }
 
 // Why a set question got the verdict it did, in a teacher's terms. The scores
 // behind it are for tuning the thresholds and stay out of the sentence; what a
 // teacher needs to know is whether their words were used, and how close the
 // exam came when they were not.
-function evidenceNote(question) {
-    const scores = question.evidence || [];
-    const pct = (value) => `${Math.round(value * 100)}%`;
-
-    if (question.status === "asked") {
-        const decided = scores.find((score) => score.decided);
-        if (!decided || decided.verbatim) return "";
-        //asked in your words: the ordinary case needs no explaining. Whether it
-        //counts as verbatim is the server's call, so the threshold is not
-        //written down twice
-        return `Reworded - ${pct(decided.overlap)} of your wording, ` +
-            (decided.model_named
-                ? "credited because the examiner confirmed which question it was."
-                : "credited on the wording alone.");
-    }
-
-    if (question.status === "missed" && scores.length) {
-        const closest = scores.reduce(
-            (best, score) => (score.overlap > best.overlap ? score : best));
-        return `Closest the exam came: ${pct(closest.overlap)} of your wording, ` +
-            `on turn ${closest.turn_index}.`;
-        //a near miss and no attempt at all are very different failures, and the
-        //verdict alone reads the same for both
-    }
-    return "";
-}
-
 // ---------------------------------------------------------------------------
 // the buttons
 // ---------------------------------------------------------------------------

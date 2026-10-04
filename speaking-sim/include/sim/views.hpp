@@ -2,6 +2,9 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
+
+#include "sim/language.hpp"
 
 namespace sim {
 
@@ -32,6 +35,12 @@ std::string end_reason_label(std::int64_t ended_at, const std::string& reason);
 //the END_REASONS table teacher.js carried. An exam with no ended_at is still
 //running; an unrecognised reason is shown as it was stored rather than hidden,
 //so a reason added to the server does not need this edited to appear
+
+std::string tense_label(const LanguagePack& pack, std::string_view key);
+//a tense's name in one language's own terms - passato prossimo, Perfekt - from
+//the canonical key the database stores. The key itself is the fallback, so a
+//pack that names only some of them still reports the rest rather than blanking
+//the column
 
 std::string format_join_code(const std::string& code);
 //in two halves, because it is read off a board. Stored and matched without the

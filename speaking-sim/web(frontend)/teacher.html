@@ -146,27 +146,11 @@
 
         <section id="attemptPanel" hidden>
             <button type="button" id="attemptBack" class="quiet">&larr; Back to class</button>
-            <h2 id="attemptTitle"></h2>
-            <p id="attemptMeta"></p>
-
-            <div class="card" id="attemptRequiredCard" hidden>
-                <h3>What the plan asked for</h3>
-                <p class="help">
-                    Each question the plan set, whether this exam asked it, and
-                    what the student said back. Where the examiner reworded a
-                    question, or came close without asking it, the line under it
-                    says so. A plan's opinion question has no fixed wording, so
-                    it is listed by what it is rather than by its words.
-                </p>
-                <ul id="attemptRequired"></ul>
-            </div>
-
-            <p class="help" id="tenseLegend">
-                Tense tags on each turn: a solid tag was found by both the
-                examiner and the grammar check, a dashed one by only one of them.
-            </p>
-            <div id="attemptTurns"></div>
-            <p class="empty" id="attemptEmpty" hidden>Nothing was said in this exam.</p>
+            <div id="attemptBody"></div>
+            <!-- filled by /teacher/attempts/<id>: the heading, the plan checks
+                 and the transcript all come from the one request that was
+                 already being made for them. The Back button above stays put,
+                 so it is there whether or not the exam loaded -->
         </section>
 
         <section id="planPanel" hidden>

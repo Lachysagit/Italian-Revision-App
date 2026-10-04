@@ -1,0 +1,60 @@
+{{! One exam, read back: its heading, what the plan asked for, and the whole
+    transcript. Server::serve_attempt_fragment fills it.
+
+    Who may see this is decided per exam by refuse_unless_may_read_attempt -
+    the student who sat it, or the teacher of the class it was sat for - so
+    there is nothing in here that depends on which of the two is reading,
+    except the plan checks, which are withheld from a student while their own
+    exam is still running. }}
+<h2 id="attemptTitle">{{title}}</h2>
+<p id="attemptMeta">{{meta}}</p>
+
+{{#any_checks}}
+<div class="card" id="attemptRequiredCard">
+    <h3>What the plan asked for</h3>
+    <p class="help">
+        Each question the plan set, whether this exam asked it, and what the
+        student said back. Where the examiner reworded a question, or came close
+        without asking it, the line under it says so. A plan's opinion question
+        has no fixed wording, so it is listed by what it is rather than by its
+        words.
+    </p>
+    <ul id="attemptRequired">
+        {{#checks}}
+        <li class="required {{status}}">
+            <span class="requiredStatus">{{status_label}}</span>
+            <div class="requiredBody">
+                {{#kind}}<span class="requiredKind">{{text}}</span>{{/kind}}
+                {{^kind}}<span class="requiredText">{{text}}</span>{{/kind}}
+                {{#has_note}}<div class="requiredNote">{{note}}</div>{{/has_note}}
+                {{#has_answer}}
+                <p class="requiredAnswer" title="Turn {{answer_turn}}"><span class="answerLabel">Answered</span> {{answer_text}}</p>
+                {{/has_answer}}
+            </div>
+        </li>
+        {{/checks}}
+    </ul>
+</div>
+{{/any_checks}}
+
+<p class="help" id="tenseLegend">
+    Tense tags on each turn: a solid tag was found by both the examiner and the
+    grammar check, a dashed one by only one of them.
+</p>
+
+{{#any_turns}}
+<div id="attemptTurns">
+    {{#turns}}
+    <div class="turn {{role}}">
+        <div class="turn-role">{{role_label}}{{#has_topic}}<span class="topicTag">{{topic}}</span>{{/has_topic}}</div>
+        <div class="turn-text">{{text}}</div>
+        {{#has_tags}}
+        <div class="tenseTags">{{#tags}}<span class="{{cls}}" title="{{title}}">{{label}}</span>{{/tags}}</div>
+        {{/has_tags}}
+    </div>
+    {{/turns}}
+</div>
+{{/any_turns}}
+{{^any_turns}}
+<p class="empty" id="attemptEmpty">Nothing was said in this exam.</p>
+{{/any_turns}}

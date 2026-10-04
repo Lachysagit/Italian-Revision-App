@@ -310,6 +310,7 @@ tests (`cmake --build build --target views-tests`).
 | `GET /teacher/classes/<id>/coverage` | `GET /api/classes/<id>/coverage` | tenses and topics per student |
 | `GET /me/classes` | `GET /api/classes` | the caller's own classes, as cards |
 | `GET /me/attempts` | `GET /api/my-attempts` | the caller's own exam history |
+| `GET /teacher/attempts/<id>` | `GET /api/attempts/<id>` | one exam: heading, plan checks and transcript |
 
 `/teacher/...` is a fragment only a teacher of that class may read; `/me/...` is
 one about the caller, which reads their own id and never one from the URL.

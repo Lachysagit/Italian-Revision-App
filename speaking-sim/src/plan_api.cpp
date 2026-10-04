@@ -18,15 +18,6 @@ namespace sim {
 
 namespace {
 
-std::string tense_label(const LanguagePack& pack, std::string_view key) {
-    for (const auto& [id, name] : pack.tense_labels) {
-        if (id == key) return name;
-    }
-    return std::string(key);
-    //the canonical key is the fallback, so a pack that names only some of them
-    //still reports the rest rather than blanking the column
-}
-
 int count_for(const std::map<std::string, int>& counts, const std::string& key) {
     const auto at = counts.find(key);
     return at == counts.end() ? 0 : at->second;

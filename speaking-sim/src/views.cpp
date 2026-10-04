@@ -61,6 +61,13 @@ std::string format_short_time(std::int64_t seconds) {
     return format_with(seconds, "%e %b, %l:%M %p");
 }
 
+std::string tense_label(const LanguagePack& pack, std::string_view key) {
+    for (const auto& [id, name] : pack.tense_labels) {
+        if (id == key) return name;
+    }
+    return std::string(key);
+}
+
 std::string capitalise(std::string text) {
     if (!text.empty()) {
         text[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(text[0])));

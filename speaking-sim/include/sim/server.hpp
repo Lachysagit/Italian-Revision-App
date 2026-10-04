@@ -158,6 +158,16 @@ private:
     //the student's own two cards on /classes. Both read the caller's id and
     //never one from the request, the same rule serve_my_attempts states
     crow::response serve_attempt(const crow::request& req, std::int64_t attempt_id);
+    crow::response serve_attempt_fragment(const crow::request& req,
+                                          std::int64_t attempt_id);
+    std::optional<crow::response> refuse_unless_may_read_attempt(
+        const crow::request& req, std::int64_t attempt_id,
+        User& user, AttemptSummary& attempt);
+    //who may read one exam: the student who sat it, or the teacher of the class
+    //it was sat for and only while that student is still in the class. One copy
+    //of that rule, because the two routes that answer with an exam must not be
+    //able to disagree about it. A refusal is 404, never 403, so an id cannot be
+    //probed for existence
     crow::response serve_join(const crow::request& req);
 
     // ---- exam plans: src/plan_api.cpp ------------------------------------

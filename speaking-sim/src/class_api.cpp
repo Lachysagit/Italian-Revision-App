@@ -8,11 +8,14 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "sim/http_util.hpp"
 #include "sim/views.hpp"
+#include "sim/tenses.hpp"
+#include "sim/session.hpp"
 #include "sim/topics.hpp"
 
 namespace sim {
@@ -179,6 +182,14 @@ void Server::register_class_routes() {
     ([this](const crow::request& req, std::int64_t class_id) {
         return serve_class_attempts_fragment(req, class_id);
     });
+
+    CROW_ROUTE(app_, "/teacher/attempts/<int>") //HTTP ROUTE ---
+    ([this](const crow::request& req, std::int64_t attempt_id) {
+        return serve_attempt_fragment(req, attempt_id);
+    });
+    //the rendered twin of /api/attempts/<int> below. Not under /me even though
+    //a student may read their own: who is allowed is decided per exam by
+    //refuse_unless_may_read_attempt, not by the shape of the path
 
     CROW_ROUTE(app_, "/api/attempts/<int>") //HTTP ROUTE ---
     ([this](const crow::request& req, std::int64_t attempt_id) {
@@ -766,26 +777,103 @@ crow::response Server::serve_my_history_fragment(const crow::request& req) {
     });
 }
 
+namespace {
+
+// The student turn that answered the examiner turn at `asked_at`, or nothing if
+// the exam ended before one arrived. A join over the turn list rather than
+// anything stored: the answer to a question is the next thing the student said.
+const AttemptTurn* answer_after(const std::vector<AttemptTurn>& turns, int asked_at) {
+    if (asked_at < 0) return nullptr;
+    for (const AttemptTurn& turn : turns) {
+        if (turn.turn_index > asked_at && turn.role == "student") {
+            return &turn;
+        }
+    }
+    return nullptr;
+}
+
+std::string required_status_label(const std::string& status) {
+    if (status == "asked") return "Asked";
+    if (status == "missed") return "Not asked";
+    return "Still to ask";
+}
+
+std::string percent(double value) {
+    return std::to_string(static_cast<int>(value * 100.0 + 0.5)) + "%";
+}
+
+// Why a verdict reads the way it does, when it is not self-evident. An asked
+// question in the teacher's own words needs no note; a reworded one says how
+// much of the wording survived, and a missed one says how close the exam came,
+// because a near miss and no attempt at all are very different failures and
+// the verdict alone reads the same for both.
+std::string evidence_note(const RequiredQuestionStatus& row,
+                          const std::vector<QuestionEvidence>& evidence) {
+    if (row.status == "asked") {
+        for (const QuestionEvidence& found : evidence) {
+            if (found.question_id != row.question_id) continue;
+            if (found.turn_index != row.turn_index) continue;
+            if (found.overlap >= kVerbatimMatch) return "";
+            return "Reworded - " + percent(found.overlap) + " of your wording, " +
+                   (found.model_named
+                        ? "credited because the examiner confirmed which question it was."
+                        : "credited on the wording alone.");
+        }
+        return "";
+    }
+
+    if (row.status == "missed") {
+        const QuestionEvidence* closest = nullptr;
+        for (const QuestionEvidence& found : evidence) {
+            if (found.question_id != row.question_id) continue;
+            if (closest == nullptr || found.overlap > closest->overlap) {
+                closest = &found;
+            }
+        }
+        if (closest != nullptr) {
+            return "Closest the exam came: " + percent(closest->overlap) +
+                   " of your wording, on turn " +
+                   std::to_string(closest->turn_index) + ".";
+        }
+    }
+    return "";
+}
+
+}  // namespace
+
+std::optional<crow::response> Server::refuse_unless_may_read_attempt(
+    const crow::request& req, std::int64_t attempt_id,
+    User& user, AttemptSummary& attempt) {
+    if (auto refusal = refuse_unless_signed_in(req, user)) {
+        return refusal;
+    }
+
+    const auto found = store_->attempt_by_id(attempt_id);
+    bool allowed = found && found->user_id == user.id;
+    if (found && !allowed && found->class_id > 0) {
+        allowed =
+            store_->class_role(found->class_id, user.id) == ClassRole::Teacher &&
+            store_->class_role(found->class_id, found->user_id).has_value();
+        //the class's teacher, and only while the student is still in the class -
+        //the same rule class_attempts lists by
+    }
+    if (!allowed) {
+        return json_error(404, "no such exam");
+    }
+    attempt = *found;
+    return std::nullopt;
+}
+
 crow::response Server::serve_attempt(const crow::request& req,
                                      std::int64_t attempt_id) {
     User user;
-    if (auto refusal = refuse_unless_signed_in(req, user)) {
+    AttemptSummary found;
+    if (auto refusal = refuse_unless_may_read_attempt(req, attempt_id, user, found)) {
         return std::move(*refusal);
     }
 
     return guarded("attempt detail", [&] {
-        const auto attempt = store_->attempt_by_id(attempt_id);
-        bool allowed = attempt && attempt->user_id == user.id;
-        if (attempt && !allowed && attempt->class_id > 0) {
-            allowed =
-                store_->class_role(attempt->class_id, user.id) == ClassRole::Teacher &&
-                store_->class_role(attempt->class_id, attempt->user_id).has_value();
-            //the class's teacher, and only while the student is still in the
-            //class - the same rule class_attempts lists by
-        }
-        if (!allowed) {
-            return json_error(404, "no such exam");
-        }
+        const AttemptSummary* attempt = &found;
         const bool is_owner = attempt->user_id == user.id;
 
         const std::vector<TurnFeature> features = store_->attempt_features(attempt_id);
@@ -908,6 +996,162 @@ crow::response Server::serve_attempt(const crow::request& req,
         //student watching their own exam would otherwise be told an opinion
         //question is still coming
         return json_response(json);
+    });
+}
+
+crow::response Server::serve_attempt_fragment(const crow::request& req,
+                                              std::int64_t attempt_id) {
+    User user;
+    AttemptSummary attempt;
+    if (auto refusal = refuse_unless_may_read_attempt(req, attempt_id, user, attempt)) {
+        return std::move(*refusal);
+    }
+
+    return guarded("attempt fragment", [&] {
+        const bool is_owner = attempt.user_id == user.id;
+        const bool show_checks = !is_owner || attempt.ended_at > 0;
+        //a student watching their own exam would otherwise be told an opinion
+        //question is still coming. Same guard the JSON route applies, and for
+        //the same reason
+
+        const LanguagePack* pack = languages_.find(attempt.language_id);
+
+        std::string meta = format_local_time(attempt.started_at) + " \xc2\xb7 " +
+                           std::to_string(attempt.turn_count) + " turns \xc2\xb7 " +
+                           end_reason_label(attempt.ended_at, attempt.end_reason);
+        if (!attempt.plan_name.empty()) {
+            meta += " \xc2\xb7 plan: " + attempt.plan_name;
+        }
+
+        const std::vector<AttemptTurn> all_turns = store_->attempt_turns(attempt_id);
+        const std::vector<TurnFeature> features = store_->attempt_features(attempt_id);
+
+        std::vector<crow::json::wvalue> turns;
+        for (const AttemptTurn& turn : all_turns) {
+            const bool examiner = turn.role == "examiner";
+
+            std::vector<std::string> model;
+            std::vector<std::string> rules;
+            for (const TurnFeature& feature : features) {
+                if (feature.turn_index != turn.turn_index || feature.kind != "tense") {
+                    continue;
+                }
+                (feature.source == "rules" ? rules : model).push_back(feature.value);
+            }
+
+            const auto holds = [](const std::vector<std::string>& list,
+                                  std::string_view key) {
+                return std::find(list.begin(), list.end(), key) != list.end();
+            };
+
+            std::vector<crow::json::wvalue> tags;
+            for (const std::string_view key : kTenseKeys) {
+                const bool by_model = holds(model, key);
+                const bool by_rules = holds(rules, key);
+                if (!by_model && !by_rules) continue;
+                const bool both = by_model && by_rules;
+
+                crow::json::wvalue tag;
+                tag["label"] = pack ? tense_label(*pack, key) : std::string(key);
+                tag["cls"] = both ? "tenseTag" : "tenseTag single";
+                tag["title"] = both ? "found by the examiner and the grammar check"
+                             : by_model ? "found by the examiner only"
+                                        : "found by the grammar check only";
+                tags.push_back(std::move(tag));
+            }
+            //walked in kTenseKeys order rather than the order the two sources
+            //happened to report, so a turn's tags read the same way every time.
+            //One tag per tense, marked by how sure it is: agreement is solid,
+            //one source alone is dashed, so a disputed tense is visible as one
+
+            crow::json::wvalue item;
+            item["role"] = examiner ? "examiner" : "student";
+            item["role_label"] = examiner ? "Examiner" : "Student";
+            item["text"] = turn.text;
+            item["topic"] = turn.topic;
+            item["has_topic"] = !turn.topic.empty();
+            item["has_tags"] = !tags.empty();
+            item["tags"] = std::move(tags);
+            turns.push_back(std::move(item));
+        }
+
+        std::vector<crow::json::wvalue> checks;
+        if (show_checks) {
+            const std::vector<QuestionEvidence> evidence =
+                store_->question_evidence(attempt_id);
+
+            for (const RequiredQuestionStatus& row :
+                 store_->attempt_required(attempt_id)) {
+                const std::string note = evidence_note(row, evidence);
+                const AttemptTurn* answer =
+                    row.status == "asked" ? answer_after(all_turns, row.turn_index)
+                                          : nullptr;
+                //only for a question that was asked: on a missed one turn_index
+                //is the turn the examiner was given up on, and the student's
+                //next words answered something else entirely
+
+                crow::json::wvalue item;
+                item["status"] = row.status;
+                item["status_label"] = required_status_label(row.status);
+                item["text"] = row.text;
+                item["kind"] = false;
+                item["has_note"] = !note.empty();
+                item["note"] = note;
+                item["has_answer"] = answer != nullptr;
+                if (answer != nullptr) {
+                    item["answer_text"] = answer->text;
+                    item["answer_turn"] = answer->turn_index;
+                }
+                checks.push_back(std::move(item));
+            }
+
+            if (attempt.opinion_required) {
+                const std::string status =
+                    attempt.opinion_turn_index >= 0 ? "asked"
+                  : attempt.ended_at > 0            ? "missed"
+                                                    : "pending";
+                //an exam the server crashed out of is ended by
+                //reconcile_crashed_attempts, so its unasked opinion question
+                //reads as missed here without needing a sweep of its own
+                const AttemptTurn* answer =
+                    answer_after(all_turns, attempt.opinion_turn_index);
+                const bool by_opener =
+                    status == "asked" && attempt.opinion_source == "openers";
+
+                crow::json::wvalue item;
+                item["status"] = status;
+                item["status_label"] = required_status_label(status);
+                item["text"] = "A question asking for the student's opinion";
+                item["kind"] = true;
+                //listed in the same list as the set questions, because a teacher
+                //checking whether the exam did what the plan asked wants one
+                //place to look. It carries no text of its own - the plan only
+                //ever asked for "an opinion question" - so the kind is named
+                //where a set question's words would be
+                item["has_note"] = by_opener;
+                item["note"] = by_opener
+                    ? "Recognised by its opening phrase; the examiner did not "
+                      "label it as an opinion question."
+                    : "";
+                item["has_answer"] = answer != nullptr;
+                if (answer != nullptr) {
+                    item["answer_text"] = answer->text;
+                    item["answer_turn"] = answer->turn_index;
+                }
+                checks.push_back(std::move(item));
+            }
+        }
+
+        crow::json::wvalue context;
+        context["title"] = attempt.student_name.empty() ? attempt.student_email
+                                                        : attempt.student_name;
+        context["meta"] = meta;
+        context["any_checks"] = !checks.empty();
+        context["checks"] = std::move(checks);
+        context["any_turns"] = !turns.empty();
+        context["turns"] = std::move(turns);
+        return html_fragment(
+            crow::mustache::load("attempt.html").render(context).dump());
     });
 }
 
