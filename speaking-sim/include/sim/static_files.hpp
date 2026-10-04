@@ -28,4 +28,9 @@ bool is_safe_font_name(const std::string& file);
 //same treatment for the font folder: a name from the URL, held to
 //<letters, digits, hyphens>.woff2 before it is pasted into a path
 
+bool is_safe_vendor_name(const std::string& file);
+//the vendored browser libraries. A closed list rather than a shape: the folder
+//is small and every page names its files in full, so a list is one edit to
+//extend and nothing else under vendor/ can be read through the route
+
 }  // namespace sim

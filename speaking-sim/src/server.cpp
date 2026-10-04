@@ -244,6 +244,18 @@ void Server::run()
     //closed while it deletes them, and the records are no more overdue for
     //the few seconds it takes the socket to come up
 
+    crow::mustache::set_global_base("web(frontend)/templates");
+    //where the page fragments live, relative to the working directory like
+    //every other path here - so this too wants the binary run from
+    //speaking-sim/. crow::mustache::load() re-reads the file on every call, so
+    //editing a fragment's markup is a refresh; only the code that fills its
+    //context needs a rebuild.
+    //
+    //set_global_base, NOT set_base: crow resets the route-level base to the
+    //global one before it runs each handler (routing.h:642-644), so a set_base
+    //here is undone by the first request and every template then "not found"
+    //against the default "templates/".
+
     CROW_ROUTE(app_, "/") //HTTP ROUTE -----------------------------------
     ([] {
         return serve_static_file("web(frontend)/index.html", "text/html");
@@ -286,6 +298,19 @@ void Server::run()
     });
     //crow's <string> stops at a /, and is_safe_font_name keeps the rest of the
     //folder from being readable through a name the stylesheet never asks for
+
+    CROW_ROUTE(app_, "/vendor/<string>") //HTTP ROUTE -----------------------------------
+    ([](const std::string& file) {
+        if (!is_safe_vendor_name(file)) {
+            return crow::response(404);
+        }
+        return serve_static_file("web(frontend)/vendor/" + file,
+                                 "application/javascript");
+    });
+    //the vendored browser libraries, htmx for now. Same shape as the fonts
+    //route above, and allowlisted for the same reason. application/javascript
+    //is right for a module too - what makes it one is the type on the <script>
+    //or, here, the import that pulls it in
 
     CROW_ROUTE(app_, "/teacher") //HTTP ROUTE -----------------------------------
     ([] {

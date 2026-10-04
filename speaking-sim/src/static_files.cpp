@@ -131,6 +131,13 @@ bool is_safe_font_name(const std::string& file) {
     return true;
 }
 
+bool is_safe_vendor_name(const std::string& file) {
+    return file == "htmx.esm.js";
+    //a closed list like is_known_language above, not a pattern. Adding a
+    //vendored library is a deliberate edit here, and the README beside it -
+    //or a stale copy left in the folder - stays unreadable over HTTP
+}
+
 crow::response serve_range_file(const crow::request& req,
                                 const std::string& path,
                                 const char* content_type) {
