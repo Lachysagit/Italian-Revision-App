@@ -68,6 +68,18 @@ void test_time_format() {
           "1 Sep 2026, 2:00 pm", "Sep keeps its capital P");
 }
 
+void test_short_time_format() {
+    using sim::format_short_time;
+
+    equal(format_short_time(0), "-", "a zero is a dash here too");
+    equal(format_short_time(local_instant(2026, 10, 4, 13, 23)),
+          "4 Oct, 1:23 pm", "no year: the history table is recent by nature");
+    equal(format_short_time(local_instant(2026, 5, 4, 13, 23)),
+          "4 May, 1:23 pm", "May keeps its capital in the short form too");
+    equal(format_short_time(local_instant(2026, 11, 20, 0, 0)),
+          "20 Nov, 12:00 am", "midnight, two-digit day");
+}
+
 void test_capitalise() {
     equal(sim::capitalise("school"), "School", "a group name");
     equal(sim::capitalise(""), "", "an empty string stays empty");
@@ -98,6 +110,7 @@ void test_join_code() {
 
 int main() {
     test_time_format();
+    test_short_time_format();
     test_capitalise();
     test_end_reason();
     test_join_code();

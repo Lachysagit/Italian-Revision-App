@@ -19,6 +19,10 @@ std::string format_local_time(std::int64_t seconds);
 //A server in another zone to its students would differ, and the swap is here
 //rather than hidden in a route so that is easy to find again
 
+std::string format_short_time(std::int64_t seconds);
+//the same, without the year: what the student's own exam history showed, where
+//every row is recent by nature and the year is the same noise four times over
+
 std::string capitalise(std::string text);
 //the first byte, which is the first letter for the values this is used on:
 //syllabus group names and the stored subject levels, both ASCII. Never on a

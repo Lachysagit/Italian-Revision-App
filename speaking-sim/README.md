@@ -308,6 +308,11 @@ tests (`cmake --build build --target views-tests`).
 | `DELETE /teacher/classes/<id>/members/<user>` | `DELETE /api/classes/<id>/members/<user>` | removes, then answers with the members table redrawn |
 | `GET /teacher/classes/<id>/attempts` | `GET /api/classes/<id>/attempts` | exams sat for the class |
 | `GET /teacher/classes/<id>/coverage` | `GET /api/classes/<id>/coverage` | tenses and topics per student |
+| `GET /me/classes` | `GET /api/classes` | the caller's own classes, as cards |
+| `GET /me/attempts` | `GET /api/my-attempts` | the caller's own exam history |
+
+`/teacher/...` is a fragment only a teacher of that class may read; `/me/...` is
+one about the caller, which reads their own id and never one from the URL.
 
 A fragment route answers HTML; a refusal from one is still JSON, because htmx
 does not swap a 4xx or 5xx into the page - the dashboard reads the message out

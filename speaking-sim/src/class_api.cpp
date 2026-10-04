@@ -4,6 +4,7 @@
 #include <cctype>
 #include <exception>
 #include <iostream>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
@@ -188,6 +189,19 @@ void Server::register_class_routes() {
     ([this](const crow::request& req) {
         return serve_my_attempts(req);
     });
+
+    CROW_ROUTE(app_, "/me/classes") //HTTP ROUTE ---
+    ([this](const crow::request& req) {
+        return serve_my_classes_fragment(req);
+    });
+
+    CROW_ROUTE(app_, "/me/attempts") //HTTP ROUTE ---
+    ([this](const crow::request& req) {
+        return serve_my_history_fragment(req);
+    });
+    //the rendered twins of /api/classes and /api/my-attempts, for the student's
+    //own page. Under /me because that is what they are about - the caller - the
+    //way /teacher names the fragments only a teacher of that class may read
     //the student's own exam history, for the classes page. No id in the path
     //because the only history anyone may list here is their own
 
@@ -655,6 +669,100 @@ crow::response Server::serve_my_attempts(const crow::request& req) {
         return json_response(json);
         //the caller's own id, never one from the request: a student cannot ask
         //for somebody else's history by changing a number in the URL
+    });
+}
+
+crow::response Server::serve_my_classes_fragment(const crow::request& req) {
+    User user;
+    if (auto refusal = refuse_unless_signed_in(req, user)) {
+        return std::move(*refusal);
+    }
+
+    return guarded("my classes fragment", [&] {
+        std::vector<crow::json::wvalue> list;
+        for (const ClassInfo& klass : store_->classes_for_user(user.id)) {
+            const bool teaches = klass.caller_role == ClassRole::Teacher;
+            if (!teaches && klass.archived) continue;
+            //a student has nothing to do in an archived class; its teacher
+            //still sees it, to look back or to restore it
+
+            const LanguagePack* pack = languages_.find(klass.language_id);
+            std::string meta = pack ? pack->display_name : klass.language_id;
+            if (!meta.empty()) meta += " \xc2\xb7 ";
+            if (teaches) {
+                meta += "You teach this";
+            } else {
+                const int others = klass.student_count > 0 ? klass.student_count - 1 : 0;
+                //the student reading this is one of the count, and is not their
+                //own classmate
+                meta += others == 0 ? "You are the only student"
+                      : others == 1 ? "1 classmate"
+                                    : std::to_string(others) + " classmates";
+            }
+
+            crow::json::wvalue item;
+            item["id"] = klass.id;
+            item["name"] = klass.name;
+            item["meta"] = meta;
+            item["teaches"] = teaches;
+            //which link to offer is the template's to choose: a teacher listed
+            //in their own class goes to the dashboard, which is the only place
+            //a class can actually be changed
+            list.push_back(std::move(item));
+        }
+
+        crow::json::wvalue context;
+        context["any"] = !list.empty();
+        context["classes"] = std::move(list);
+        return html_fragment(
+            crow::mustache::load("my-classes.html").render(context).dump());
+    });
+}
+
+crow::response Server::serve_my_history_fragment(const crow::request& req) {
+    User user;
+    if (auto refusal = refuse_unless_signed_in(req, user)) {
+        return std::move(*refusal);
+    }
+
+    return guarded("my history fragment", [&] {
+        std::map<std::int64_t, std::string> names;
+        for (const ClassInfo& klass : store_->classes_for_user(user.id)) {
+            names[klass.id] = klass.name;
+        }
+        //read first, so every row below can be named in one pass. In the
+        //browser these were two requests and history usually won, which is
+        //why there was a second function to go back and fill these columns in
+
+        std::vector<crow::json::wvalue> list;
+        for (const AttemptSummary& attempt :
+             store_->user_attempts(user.id, kAttemptListLimit)) {
+            const LanguagePack* pack = languages_.find(attempt.language_id);
+
+            std::string class_name = "Private practice";
+            if (attempt.class_id != 0) {
+                const auto at = names.find(attempt.class_id);
+                class_name = at == names.end() ? "A class you have left"
+                                               : at->second;
+                //an exam sat for a class the student has since left is still
+                //theirs to see, so the row stays and says why it has no name
+            }
+
+            crow::json::wvalue item;
+            item["started"] = format_short_time(attempt.started_at);
+            item["class_name"] = class_name;
+            item["language"] = pack ? pack->display_name
+                                    : capitalise(attempt.language_id);
+            item["turn_count"] = attempt.turn_count;
+            item["ended"] = end_reason_label(attempt.ended_at, attempt.end_reason);
+            list.push_back(std::move(item));
+        }
+
+        crow::json::wvalue context;
+        context["any"] = !list.empty();
+        context["attempts"] = std::move(list);
+        return html_fragment(
+            crow::mustache::load("my-history.html").render(context).dump());
     });
 }
 

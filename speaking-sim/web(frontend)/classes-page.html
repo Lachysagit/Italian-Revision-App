@@ -29,12 +29,9 @@
                 <button type="button" id="joinFromPage">Join a class</button>
             </div>
 
-            <div id="classCards"></div>
-            <p id="classesEmpty" hidden>
-                You are not in a class yet. Join one with the code your teacher
-                gives you, or keep practising on your own from the
-                <a href="/">Speaking</a> page.
-            </p>
+            <div id="classCardsReport"></div>
+            <!-- filled by /me/classes, which answers with the cards or with
+                 the line that says what to do instead -->
         </section>
 
         <section id="historySection">
@@ -45,24 +42,10 @@
                 only ever yours.
             </p>
 
-            <div class="tableWrap">
-                <table id="historyTable">
-                    <thead>
-                        <tr>
-                            <th>Started</th>
-                            <th>Class</th>
-                            <th>Language</th>
-                            <th>Turns</th>
-                            <th>How it ended</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-            <p id="historyEmpty" hidden>
-                You have not sat an exam yet. Start one from the
-                <a href="/">Speaking</a> page.
-            </p>
+            <div id="historyReport"></div>
+            <!-- filled by /me/attempts. The class name and language columns
+                 are resolved there too, which is why this page no longer
+                 needs a second pass over the rows once /api/classes lands -->
         </section>
     </main>
 

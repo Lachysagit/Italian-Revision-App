@@ -105,12 +105,6 @@ body.classesPage {
     line-height: 1.5;
 }
 
-#classesEmpty[hidden],
-#historyEmpty[hidden],
-#historyTable[hidden] {
-    display: none;
-}
-
 /* ---- the exam history --------------------------------------------------- */
 
 #historySection {

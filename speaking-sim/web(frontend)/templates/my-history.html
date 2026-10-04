@@ -1,0 +1,39 @@
+{{! One student's own exam history, newest first.
+
+    The class name and the language label are resolved here rather than in the
+    browser, which removes a race this page used to carry: the class list and
+    the history were two requests, history usually landed first, and
+    paintHistoryClassNames existed to go back and fill in the two columns that
+    needed the other answer. One request knows both. }}
+{{#any}}
+<div class="tableWrap">
+    <table id="historyTable">
+        <thead>
+            <tr>
+                <th>Started</th>
+                <th>Class</th>
+                <th>Language</th>
+                <th>Turns</th>
+                <th>How it ended</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{#attempts}}
+            <tr>
+                <td>{{started}}</td>
+                <td>{{class_name}}</td>
+                <td>{{language}}</td>
+                <td>{{turn_count}}</td>
+                <td>{{ended}}</td>
+            </tr>
+            {{/attempts}}
+        </tbody>
+    </table>
+</div>
+{{/any}}
+{{^any}}
+<p id="historyEmpty">
+    You have not sat an exam yet. Start one from the
+    <a href="/">Speaking</a> page.
+</p>
+{{/any}}

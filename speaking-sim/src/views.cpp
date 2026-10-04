@@ -8,7 +8,12 @@
 
 namespace sim {
 
-std::string format_local_time(std::int64_t seconds) {
+namespace {
+
+// strftime plus the tidying that makes it read like
+// toLocaleString("en-AU", ...) did in the browser: %e and %l pad a single digit
+// with a space, and %p is upper case.
+std::string format_with(std::int64_t seconds, const char* pattern) {
     if (seconds == 0) {
         return "-";
     }
@@ -20,10 +25,7 @@ std::string format_local_time(std::int64_t seconds) {
     if (localtime_r(&stamp, &parts) == nullptr) return "-";
 #endif
     char buffer[64];
-    //"%e %b %Y, %l:%M %p" is what toLocaleString("en-AU", medium/short) read
-    //like - "4 Oct 2026, 1:23 pm" - but %e and %l are padded with a space and
-    //%p is upper case, so both are tidied below
-    if (std::strftime(buffer, sizeof(buffer), "%e %b %Y, %l:%M %p", &parts) == 0) {
+    if (std::strftime(buffer, sizeof(buffer), pattern, &parts) == 0) {
         return "-";
     }
 
@@ -35,8 +37,6 @@ std::string format_local_time(std::int64_t seconds) {
     while (!text.empty() && text.front() == ' ') {
         text.erase(0, 1);
     }
-    //%e and %l pad a single digit with a space, so "  4 Oct ...,  1:23" arrives
-    //with a leading space and a double one before the hour
 
     if (text.size() >= 2) {
         char& meridiem = text[text.size() - 2];
@@ -46,10 +46,19 @@ std::string format_local_time(std::int64_t seconds) {
             mark = 'm';
         }
     }
-    //only the final two characters, never a sweep for A, P or M: "4 Apr", "4 Aug"
-    //and "4 May" all carry one and must keep their capital
-
+    //only the final two characters, never a sweep for A, P or M: "4 Apr",
+    //"4 Aug", "4 May", "4 Mar" and "4 Sep" all carry one and keep their capital
     return text;
+}
+
+}  // namespace
+
+std::string format_local_time(std::int64_t seconds) {
+    return format_with(seconds, "%e %b %Y, %l:%M %p");
+}
+
+std::string format_short_time(std::int64_t seconds) {
+    return format_with(seconds, "%e %b, %l:%M %p");
 }
 
 std::string capitalise(std::string text) {

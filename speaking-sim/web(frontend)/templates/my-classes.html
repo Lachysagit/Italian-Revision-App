@@ -1,0 +1,32 @@
+{{! The classes one student is in. Server::serve_my_classes_fragment fills it.
+    Read-only: a student cannot rename a class or remove anybody from here, and
+    the server refuses both whatever this page asks. The only link out is to
+    sitting an exam, or - for a teacher listed in their own class - to the
+    dashboard, which is the one place a class can actually be changed. }}
+{{#any}}
+<div id="classCards">
+    {{#classes}}
+    <article class="classCard">
+        <h3>{{name}}</h3>
+        <p class="classCardMeta">{{meta}}</p>
+        <div class="classCardActions">
+            {{#teaches}}<a href="/teacher#class-{{id}}">Manage this class</a>{{/teaches}}
+            {{^teaches}}<a href="/?class={{id}}">Sit an exam for this class</a>{{/teaches}}
+        </div>
+        {{! the link is built from literal text here rather than handed over
+            whole, so only the id runs through the escaper. A ready-made URL
+            comes back as href="&#x2F;?class&#x3D;1" - which browsers do decode,
+            but it is noise in the page source for nothing }}
+    </article>
+    {{/classes}}
+</div>
+{{/any}}
+{{^any}}
+<p id="classesEmpty">
+    You are not in a class yet. Join one with the code your teacher
+    gives you, or keep practising on your own from the
+    <a href="/">Speaking</a> page.
+</p>
+{{/any}}
+{{! the empty line keeps its links: it is the only thing on the page telling a
+    student with no classes what to do next, which an "(none yet)" would not }}
