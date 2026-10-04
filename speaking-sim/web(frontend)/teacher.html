@@ -114,23 +114,9 @@
 
             <div class="card">
                 <h3>Students</h3>
-                <div class="tableWrap">
-                    <table id="membersTable">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Email</th>
-                                <th>Year</th>
-                                <th>Level</th>
-                                <th>Exams</th>
-                                <th>Last exam</th>
-                                <th><span class="visuallyHidden">Actions</span></th>
-                            </tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-                <p class="empty" id="membersEmpty" hidden>No students yet.</p>
+                <div id="membersReport"></div>
+                <!-- filled by /teacher/classes/<id>/members, and replaced by
+                     the answer to a Remove, which is the same table redrawn -->
             </div>
 
             <div class="card" id="coverageCard">
@@ -153,21 +139,8 @@
                     Only exams a student starts with this class selected appear
                     here. Private practice stays private.
                 </p>
-                <div class="tableWrap">
-                    <table id="attemptsTable">
-                        <thead>
-                            <tr>
-                                <th>Student</th>
-                                <th>Started</th>
-                                <th>Turns</th>
-                                <th>How it ended</th>
-                                <th><span class="visuallyHidden">Open</span></th>
-                            </tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-                <p class="empty" id="attemptsEmpty" hidden>No exams yet.</p>
+                <div id="attemptsReport"></div>
+                <!-- filled by /teacher/classes/<id>/attempts -->
             </div>
         </section>
 

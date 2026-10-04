@@ -137,6 +137,12 @@ private:
     crow::response serve_archive(const crow::request& req, std::int64_t class_id);
     crow::response serve_class_attempts(const crow::request& req,
                                         std::int64_t class_id);
+    crow::response serve_class_members(const crow::request& req,
+                                       std::int64_t class_id);
+    crow::response members_fragment(std::int64_t class_id,
+                                    const ClassInfo& klass);
+    //shared by the GET and by a successful DELETE, so a removal answers with
+    //the table redrawn by the same code rather than a second copy of it
     crow::response serve_my_attempts(const crow::request& req);
     crow::response serve_attempt(const crow::request& req, std::int64_t attempt_id);
     crow::response serve_join(const crow::request& req);

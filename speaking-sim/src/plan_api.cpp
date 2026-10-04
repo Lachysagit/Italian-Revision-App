@@ -10,6 +10,7 @@
 
 #include "sim/http_util.hpp"
 #include "sim/plan_json.hpp"
+#include "sim/views.hpp"
 #include "sim/tenses.hpp"
 #include "sim/topics.hpp"
 
@@ -24,16 +25,6 @@ std::string tense_label(const LanguagePack& pack, std::string_view key) {
     return std::string(key);
     //the canonical key is the fallback, so a pack that names only some of them
     //still reports the rest rather than blanking the column
-}
-
-std::string capitalise(std::string text) {
-    if (!text.empty()) {
-        text[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(text[0])));
-    }
-    return text;
-    //the syllabus group names are English and ASCII - see topics.cpp - so the
-    //first byte is the first letter. Not safe on a name typed by a student,
-    //which is why nothing here is passed through it
 }
 
 int count_for(const std::map<std::string, int>& counts, const std::string& key) {

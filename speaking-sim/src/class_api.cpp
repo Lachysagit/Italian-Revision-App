@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "sim/http_util.hpp"
+#include "sim/views.hpp"
 #include "sim/topics.hpp"
 
 namespace sim {
@@ -143,17 +144,26 @@ void Server::register_class_routes() {
         return serve_revoke_invite(req, class_id, invite_id);
     });
 
-    CROW_ROUTE(app_, "/api/classes/<int>/members/<int>").methods("DELETE"_method) //HTTP ROUTE ---
+    CROW_ROUTE(app_, "/teacher/classes/<int>/members").methods("GET"_method) //HTTP ROUTE ---
+    ([this](const crow::request& req, std::int64_t class_id) {
+        return serve_class_members(req, class_id);
+    });
+
+    CROW_ROUTE(app_, "/teacher/classes/<int>/members/<int>").methods("DELETE"_method) //HTTP ROUTE ---
     ([this](const crow::request& req, std::int64_t class_id, std::int64_t user_id) {
         return serve_remove_member(req, class_id, user_id);
     });
+    //answers with the members table redrawn, so the button that sent this needs
+    //no follow-up request, and with HX-Trigger so the cards that also went stale
+    //- the coverage report, the exam list, the sidebar's student count - are
+    //told to refresh themselves
 
     CROW_ROUTE(app_, "/api/classes/<int>/archive").methods("POST"_method) //HTTP ROUTE ---
     ([this](const crow::request& req, std::int64_t class_id) {
         return serve_archive(req, class_id);
     });
 
-    CROW_ROUTE(app_, "/api/classes/<int>/attempts") //HTTP ROUTE ---
+    CROW_ROUTE(app_, "/teacher/classes/<int>/attempts") //HTTP ROUTE ---
     ([this](const crow::request& req, std::int64_t class_id) {
         return serve_class_attempts(req, class_id);
     });
@@ -437,6 +447,47 @@ crow::response Server::serve_revoke_invite(const crow::request& req,
     });
 }
 
+crow::response Server::members_fragment(std::int64_t class_id,
+                                        const ClassInfo& klass) {
+    std::vector<crow::json::wvalue> students;
+    for (const ClassMember& member : store_->class_members(class_id)) {
+        if (member.role != ClassRole::Student) continue;
+        crow::json::wvalue item;
+        item["user_id"] = member.user_id;
+        item["name"] = member.display_name.empty() ? "(no name)"
+                                                   : member.display_name;
+        item["email"] = member.email;
+        item["year"] = member.year_level.empty() ? "-" : member.year_level;
+        item["level"] = member.subject_level.empty()
+                            ? "-" : capitalise(member.subject_level);
+        item["attempt_count"] = member.attempt_count;
+        item["last_attempt"] = format_local_time(member.last_attempt_at);
+        students.push_back(std::move(item));
+    }
+
+    crow::json::wvalue context;
+    context["any"] = !students.empty();
+    context["class_id"] = class_id;
+    context["class_name"] = klass.name;
+    //both read inside the students section by the Remove button's hx-delete and
+    //hx-confirm. Mustache walks out to the parent context for a name a section
+    //does not carry, so they are set once here rather than copied per row
+    context["students"] = std::move(students);
+    return html_fragment(
+        crow::mustache::load("members.html").render(context).dump());
+}
+
+crow::response Server::serve_class_members(const crow::request& req,
+                                           std::int64_t class_id) {
+    User user;
+    ClassInfo klass;
+    if (auto refusal = refuse_unless_teaches(req, class_id, user, klass)) {
+        return std::move(*refusal);
+    }
+    return guarded("class members",
+                   [&] { return members_fragment(class_id, klass); });
+}
+
 crow::response Server::serve_remove_member(const crow::request& req,
                                            std::int64_t class_id,
                                            std::int64_t user_id) {
@@ -457,9 +508,14 @@ crow::response Server::serve_remove_member(const crow::request& req,
             //accident and leave it with nobody able to manage it
         }
         store_->remove_member(class_id, user_id);
-        crow::json::wvalue json;
-        json["ok"] = true;
-        return json_response(json);
+
+        crow::response response = members_fragment(class_id, klass);
+        response.set_header("HX-Trigger", "class-changed");
+        //the removal also changed the coverage report, the exam list and the
+        //sidebar's student count. htmx fires this as an event on the body and
+        //the dashboard refreshes those from it, so each card stays responsible
+        //for its own markup
+        return response;
     });
 }
 
@@ -501,11 +557,22 @@ crow::response Server::serve_class_attempts(const crow::request& req,
         std::vector<crow::json::wvalue> list;
         for (const AttemptSummary& attempt :
              store_->class_attempts(class_id, kAttemptListLimit)) {
-            list.push_back(attempt_json(attempt));
+            crow::json::wvalue item;
+            item["id"] = attempt.id;
+            item["student"] = attempt.student_name.empty()
+                                  ? attempt.student_email : attempt.student_name;
+            item["started"] = format_local_time(attempt.started_at);
+            item["turn_count"] = attempt.turn_count;
+            item["ended"] = end_reason_label(attempt.ended_at, attempt.end_reason);
+            list.push_back(std::move(item));
         }
-        crow::json::wvalue json;
-        json["attempts"] = std::move(list);
-        return json_response(json);
+
+        crow::json::wvalue context;
+        context["any"] = !list.empty();
+        context["class_id"] = class_id;
+        context["attempts"] = std::move(list);
+        return html_fragment(
+            crow::mustache::load("attempts.html").render(context).dump());
     });
 }
 

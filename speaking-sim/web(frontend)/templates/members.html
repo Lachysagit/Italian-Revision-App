@@ -1,0 +1,46 @@
+{{! The students in one class. Server::members_fragment fills the context, and
+    both GET .../members and a successful DELETE .../members/<user> answer with
+    this, so a removal repaints the table from the same code that drew it.
+
+    The Remove button carries its own request: hx-delete sends it, hx-confirm
+    asks first, and hx-target puts the answer back here. There is no click
+    handler behind it, which is why the table can be replaced wholesale without
+    anything needing to re-bind. }}
+{{#any}}
+<div class="tableWrap">
+    <table id="membersTable">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Year</th>
+                <th>Level</th>
+                <th>Exams</th>
+                <th>Last exam</th>
+                <th><span class="visuallyHidden">Actions</span></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{#students}}
+            <tr>
+                <td>{{name}}</td>
+                <td class="muted">{{email}}</td>
+                <td>{{year}}</td>
+                <td>{{level}}</td>
+                <td class="number">{{attempt_count}}</td>
+                <td>{{last_attempt}}</td>
+                <td class="actions">
+                    <button class="quiet small" type="button"
+                            hx-delete="/teacher/classes/{{class_id}}/members/{{user_id}}"
+                            hx-target="#membersReport"
+                            hx-confirm="Remove {{name}} from {{class_name}}? Their exams for this class will no longer show here.">Remove</button>
+                </td>
+            </tr>
+            {{/students}}
+        </tbody>
+    </table>
+</div>
+{{/any}}
+{{^any}}
+<p class="empty">No students yet.</p>
+{{/any}}

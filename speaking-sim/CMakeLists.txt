@@ -253,6 +253,7 @@ endif()
 # added to a glob without a manual reconfigure.
 add_executable(speaking-sim
     src/main.cpp
+    src/views.cpp
     src/plan_api.cpp
     src/plan_json.cpp
     src/audio_encode.cpp
@@ -347,6 +348,19 @@ add_executable(safety-tests EXCLUDE_FROM_ALL
 target_include_directories(safety-tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(safety-tests PRIVATE Threads::Threads)
 set_target_properties(safety-tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+)
+
+# The presentation helpers the server-rendered fragments go through. Separate
+# from safety-tests because it shares none of its sources, and EXCLUDE_FROM_ALL
+# for the same reason:
+#   cmake --build <dir> --target views-tests && ./<dir>/views-tests
+add_executable(views-tests EXCLUDE_FROM_ALL
+    tests/views_tests.cpp
+    src/views.cpp
+)
+target_include_directories(views-tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+set_target_properties(views-tests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
 )
 

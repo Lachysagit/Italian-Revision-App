@@ -212,9 +212,10 @@ The routes behind the dashboard, all JSON and all cookie-authenticated:
 | `POST /api/classes/<id>/join-code` | its teacher | `{action: "rotate" \| "disable"}` |
 | `POST /api/classes/<id>/invites` | its teacher | `{emails}` as pasted text or a list |
 | `DELETE /api/classes/<id>/invites/<invite>` | its teacher | cancel an unclaimed invite |
-| `DELETE /api/classes/<id>/members/<user>` | its teacher | remove a student |
+| `DELETE /teacher/classes/<id>/members/<user>` | its teacher | remove a student; answers with the members table redrawn |
 | `POST /api/classes/<id>/archive` | its teacher | `{archived: true \| false}` |
-| `GET /api/classes/<id>/attempts` | its teacher | exams sat for the class |
+| `GET /teacher/classes/<id>/attempts` | its teacher | exams sat for the class, as an HTML fragment |
+| `GET /teacher/classes/<id>/members` | its teacher | the class's students, as an HTML fragment |
 | `GET /api/attempts/<id>` | the student, or the class's teacher | one exam with its turns |
 | `POST /api/join` | anyone signed in | `{code}`, join as a student |
 

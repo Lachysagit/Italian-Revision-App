@@ -1,0 +1,32 @@
+{{! The exams sat for one class, newest first, capped by kAttemptListLimit.
+    Read-only: the View link is an ordinary hash link, which the dashboard's
+    own router picks up exactly as it did when teacher.js built this table. }}
+{{#any}}
+<div class="tableWrap">
+    <table id="attemptsTable">
+        <thead>
+            <tr>
+                <th>Student</th>
+                <th>Started</th>
+                <th>Turns</th>
+                <th>How it ended</th>
+                <th><span class="visuallyHidden">Open</span></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{#attempts}}
+            <tr>
+                <td>{{student}}</td>
+                <td>{{started}}</td>
+                <td class="number">{{turn_count}}</td>
+                <td>{{ended}}</td>
+                <td class="actions"><a href="#class-{{class_id}}/attempt-{{id}}">View</a></td>
+            </tr>
+            {{/attempts}}
+        </tbody>
+    </table>
+</div>
+{{/any}}
+{{^any}}
+<p class="empty">No exams yet.</p>
+{{/any}}

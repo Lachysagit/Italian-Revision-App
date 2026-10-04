@@ -272,21 +272,16 @@ function showPanel(which) {
 function openClass(classId) {
     return Promise.all([
         api("GET", `/api/classes/${classId}`),
-        api("GET", `/api/classes/${classId}/attempts`),
         api("GET", `/api/classes/${classId}/plans`),
     ])
-        .then(([detail, history, plans]) =>
+        .then(([detail, plans]) =>
             examOptions(detail.class.language).then((options) => {
                 currentClass = detail.class;
                 currentPlans = plans.plans;
                 currentOptions = options;
-                paintClass(detail, history.attempts);
+                paintClass(detail);
                 paintPlans(currentPlans);
-                htmx.ajax("GET", `/teacher/classes/${classId}/coverage`,
-                          "#coverageReport");
-                //deliberately outside the chain above: a coverage report that
-                //fails is one card short, not a reason to blank the panel and
-                //show an error over a class that loaded fine
+                paintReports(classId);
                 paintClassList();
             }))
         // the options come after the class, because which tense names to
@@ -298,6 +293,26 @@ function openClass(classId) {
         });
 }
 
+document.body.addEventListener("class-changed", () => {
+    refreshClass();
+});
+//sent as HX-Trigger by the routes that change a class. The card that asked for
+//the change has already been replaced by the answer; this is for the ones that
+//went stale beside it - the coverage report, the exam list, the sidebar count
+
+document.body.addEventListener("htmx:responseError", (event) => {
+    let message = "That did not work. Reload the page and try again.";
+    try {
+        message = JSON.parse(event.detail.xhr.responseText).error || message;
+    } catch (error) {
+        //a refusal that is not JSON, so the fixed sentence above stands
+    }
+    showTeacherNotice(message);
+});
+//htmx leaves the page alone on a 4xx or 5xx, which is what should happen - but
+//it says nothing either, and a Remove that silently did nothing is worse than
+//one that explains itself. The server's own wording is reused where there is one
+
 function refreshClass() {
     if (!currentClass) return Promise.resolve();
     const id = currentClass.id;
@@ -305,7 +320,21 @@ function refreshClass() {
     // the list is reloaded too: student counts and the archived flag show there
 }
 
-function paintClass(detail, attempts) {
+function paintReports(classId) {
+    for (const [path, target] of [
+        ["members", "#membersReport"],
+        ["attempts", "#attemptsReport"],
+        ["coverage", "#coverageReport"],
+    ]) {
+        htmx.ajax("GET", `/teacher/classes/${classId}/${path}`, target);
+    }
+    //deliberately outside openClass's promise chain: a card that fails to load
+    //leaves the panel one card short rather than blanking a class that loaded
+    //fine. Each is a whole region the server owns now, so there is nothing to
+    //keep in step with it here beyond the id its answer lands in
+}
+
+function paintClass(detail) {
     const klass = detail.class;
     document.getElementById("className").textContent = klass.name;
     document.getElementById("classMeta").textContent =
@@ -322,8 +351,6 @@ function paintClass(detail, attempts) {
 
     paintJoinCode(klass.join_code);
     paintPending(detail.invites);
-    paintMembers(detail.members);
-    paintAttempts(attempts);
 
     setStatus("joinStatus", "");
     setStatus("inviteStatus", "");
@@ -363,70 +390,6 @@ function paintPending(invites) {
         list.appendChild(item);
     });
     document.getElementById("pendingBlock").hidden = invites.length === 0;
-}
-
-function paintMembers(members) {
-    const body = document.querySelector("#membersTable tbody");
-    body.textContent = "";
-
-    const students = members.filter((member) => member.role === "student");
-    students.forEach((member) => {
-        const row = element("tr");
-        row.appendChild(element("td", null, member.name || "(no name)"));
-        row.appendChild(element("td", "muted", member.email));
-        row.appendChild(element("td", null, member.year_level || "-"));
-        row.appendChild(element("td", null, capitalise(member.subject_level) || "-"));
-        row.appendChild(element("td", "number", String(member.attempt_count)));
-        row.appendChild(element("td", null, formatTime(member.last_attempt_at)));
-
-        const actions = element("td", "actions");
-        const remove = element("button", "quiet small", "Remove");
-        remove.type = "button";
-        remove.onclick = () => removeMember(member);
-        actions.appendChild(remove);
-        row.appendChild(actions);
-
-        body.appendChild(row);
-    });
-
-    document.getElementById("membersEmpty").hidden = students.length > 0;
-    document.getElementById("membersTable").hidden = students.length === 0;
-}
-
-function removeMember(member) {
-    const name = member.name || member.email;
-    if (!window.confirm(
-        `Remove ${name} from ${currentClass.name}? Their exams for this class ` +
-        "will no longer show here.")) {
-        return;
-    }
-    api("DELETE", `/api/classes/${currentClass.id}/members/${member.user_id}`)
-        .then(refreshClass)
-        .catch((error) => showTeacherNotice(error.message));
-}
-
-function paintAttempts(attempts) {
-    const body = document.querySelector("#attemptsTable tbody");
-    body.textContent = "";
-
-    attempts.forEach((attempt) => {
-        const row = element("tr");
-        row.appendChild(element("td", null, attempt.student_name || attempt.student_email));
-        row.appendChild(element("td", null, formatTime(attempt.started_at)));
-        row.appendChild(element("td", "number", String(attempt.turn_count)));
-        row.appendChild(element("td", null, endLabel(attempt)));
-
-        const open = element("td", "actions");
-        const link = element("a", null, "View");
-        link.href = `#class-${currentClass.id}/attempt-${attempt.id}`;
-        open.appendChild(link);
-        row.appendChild(open);
-
-        body.appendChild(row);
-    });
-
-    document.getElementById("attemptsEmpty").hidden = attempts.length > 0;
-    document.getElementById("attemptsTable").hidden = attempts.length === 0;
 }
 
 function endLabel(attempt) {
