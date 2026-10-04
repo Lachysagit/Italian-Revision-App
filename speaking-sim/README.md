@@ -212,10 +212,9 @@ The routes behind the dashboard, all JSON and all cookie-authenticated:
 | `POST /api/classes/<id>/join-code` | its teacher | `{action: "rotate" \| "disable"}` |
 | `POST /api/classes/<id>/invites` | its teacher | `{emails}` as pasted text or a list |
 | `DELETE /api/classes/<id>/invites/<invite>` | its teacher | cancel an unclaimed invite |
-| `DELETE /teacher/classes/<id>/members/<user>` | its teacher | remove a student; answers with the members table redrawn |
+| `DELETE /api/classes/<id>/members/<user>` | its teacher | remove a student |
 | `POST /api/classes/<id>/archive` | its teacher | `{archived: true \| false}` |
-| `GET /teacher/classes/<id>/attempts` | its teacher | exams sat for the class, as an HTML fragment |
-| `GET /teacher/classes/<id>/members` | its teacher | the class's students, as an HTML fragment |
+| `GET /api/classes/<id>/attempts` | its teacher | exams sat for the class |
 | `GET /api/attempts/<id>` | the student, or the class's teacher | one exam with its turns |
 | `POST /api/join` | anyone signed in | `{code}`, join as a student |
 
@@ -278,11 +277,55 @@ the answers in which they used each tense and the questions asked in it.
 | `POST /api/plans/<id>/archive` | its class's teacher | archive, and stop it being the default |
 | `POST /api/classes/<id>/default-plan` | its teacher | `{plan_id}`, or 0 for none |
 | `GET /api/exam-options?language=` | anyone signed in | syllabus topics and tense names for the editor |
-| `GET /teacher/classes/<id>/coverage` | its teacher | tenses and topics per student, as an HTML fragment |
+| `GET /api/classes/<id>/coverage` | its teacher | tenses and topics per student |
 
 A plan is checked when it is saved: known topics and tenses, set questions only
 on ticked topics, one opening question at most, and no more set questions than
 the exam has room for at about 30 seconds a question.
+
+## Rendered fragments
+
+The dashboard's read-only cards are rendered by the server rather than built in
+the browser. Each one is a mustache template under `web(frontend)/templates/`,
+filled by a route under `/teacher/`, and swapped into the page by htmx - which
+is vendored at `web(frontend)/vendor/htmx.esm.js` and imported like any other
+module. `crow.h` already includes crow's mustache, so this added no dependency
+to the build; `Server` points it at the template directory with
+`crow::mustache::set_global_base`, which has to be the *global* base because
+crow resets the route-level one from it before running each handler.
+
+**The JSON routes above stay.** Every fragment has an `/api` twin answering the
+same thing as data, so `src/class_api.cpp` is still a JSON API that could move
+into a service of its own - the thing the section above says it is kept separate
+for. The two share one pass over the database and differ only in shaping: `/api`
+answers an epoch and `end_reason: "timer"`, `/teacher` answers "4 Oct 2026,
+1:23 pm" and "Time ran out". The labels live in `src/views.cpp`, which has
+tests (`cmake --build build --target views-tests`).
+
+| Fragment | Twin | Shows |
+| --- | --- | --- |
+| `GET /teacher/classes/<id>/members` | inside `GET /api/classes/<id>` | the class's students, each with a Remove button |
+| `DELETE /teacher/classes/<id>/members/<user>` | `DELETE /api/classes/<id>/members/<user>` | removes, then answers with the members table redrawn |
+| `GET /teacher/classes/<id>/attempts` | `GET /api/classes/<id>/attempts` | exams sat for the class |
+| `GET /teacher/classes/<id>/coverage` | `GET /api/classes/<id>/coverage` | tenses and topics per student |
+
+A fragment route answers HTML; a refusal from one is still JSON, because htmx
+does not swap a 4xx or 5xx into the page - the dashboard reads the message out
+of it and shows it instead.
+
+Anything that changes a class also sends `HX-Trigger: class-changed`, which
+htmx fires as an event on the body. The card that asked for the change has
+already been replaced by the answer; that event is for the ones that went stale
+beside it.
+
+**Two parts of the dashboard stay in the browser on purpose.** The exam plan
+editor reacts to every tick and keystroke - which questions a ticked topic
+allows, whether a tense's count box is live, how many questions still fit in
+the time - against a form that has not been saved, so there is nothing on the
+server to ask. The sign-up wizard holds a draft across the redirect to Google
+and back. Both are local, unsaved state that changes faster than a request, and
+that is the line: the server renders what it owns, the browser handles what has
+not been written down yet.
 
 ## Usage limits and paid access
 

@@ -32,6 +32,46 @@ int count_for(const std::map<std::string, int>& counts, const std::string& key) 
     return at == counts.end() ? 0 : at->second;
 }
 
+// What one student has been through, totalled from the feature rows. The two
+// coverage routes - JSON for anything that wants the numbers, HTML for the
+// dashboard's own table - share this so neither becomes a second reading of
+// the same database rows.
+struct CoverageTotals {
+    std::map<std::string, int> produced;
+    std::map<std::string, int> asked;
+    std::map<std::string, int> topics;
+};
+
+std::map<std::int64_t, CoverageTotals> gather_coverage(
+    const std::vector<CoverageRow>& rows) {
+    std::map<std::int64_t, CoverageTotals> by_user;
+    for (const CoverageRow& row : rows) {
+        CoverageTotals& student = by_user[row.user_id];
+        if (row.kind == "tense") {
+            (row.role == "student" ? student.produced : student.asked)[row.value] +=
+                row.count;
+        } else if (row.kind == "topic") {
+            const std::string group = topic_group(row.value);
+            student.topics[group.empty() ? row.value : group] += row.count;
+            //tags fold into their syllabus group, which is what a teacher
+            //plans in: "home" and "family" are one topic on the report
+        }
+    }
+    return by_user;
+}
+
+// The tense keys with the class language's own names for them, in kTenseKeys
+// order. Both routes need that order: the table lines its header up with every
+// row's cells by position, because mustache cannot look a key up in a map.
+std::vector<std::pair<std::string, std::string>> tense_columns(
+    const LanguagePack& pack) {
+    std::vector<std::pair<std::string, std::string>> columns;
+    for (const std::string_view key : kTenseKeys) {
+        columns.emplace_back(std::string(key), tense_label(pack, key));
+    }
+    return columns;
+}
+
 }  // namespace
 
 // Exam plans: the teacher's side of what an exam covers, and the student's
@@ -69,13 +109,18 @@ void Server::register_plan_routes() {
     //what the plan editor offers: the syllabus topics, and the tenses in the
     //class language's own names
 
-    CROW_ROUTE(app_, "/teacher/classes/<int>/coverage") //HTTP ROUTE ---
+    CROW_ROUTE(app_, "/api/classes/<int>/coverage") //HTTP ROUTE ---
     ([this](const crow::request& req, std::int64_t class_id) {
         return serve_coverage(req, class_id);
     });
-    //an HTML fragment, not JSON: the table is the only thing that ever read
-    //this and htmx swaps it in whole. Under /teacher rather than /api for the
-    //same reason - /api is what the exam page's own JavaScript still speaks
+
+    CROW_ROUTE(app_, "/teacher/classes/<int>/coverage") //HTTP ROUTE ---
+    ([this](const crow::request& req, std::int64_t class_id) {
+        return serve_coverage_fragment(req, class_id);
+    });
+    //the same report twice over: /api answers with the numbers, for anything
+    //that wants to read them, and /teacher with the finished table, which is
+    //what the dashboard swaps in. One pass over the database behind both
 }
 
 crow::response Server::serve_class_plans(const crow::request& req,
@@ -286,24 +331,50 @@ crow::response Server::serve_coverage(const crow::request& req,
     }
 
     return guarded("coverage", [&] {
-        struct Student {
-            std::map<std::string, int> produced;
-            std::map<std::string, int> asked;
-            std::map<std::string, int> topics;
+        const auto by_user = gather_coverage(store_->class_coverage(class_id));
+
+        const auto map_json = [](const std::map<std::string, int>& counts) {
+            crow::json::wvalue json = crow::json::wvalue::object();
+            for (const auto& [key, count] : counts) json[key] = count;
+            return json;
         };
-        std::map<std::int64_t, Student> by_user;
-        for (const CoverageRow& row : store_->class_coverage(class_id)) {
-            Student& student = by_user[row.user_id];
-            if (row.kind == "tense") {
-                (row.role == "student" ? student.produced : student.asked)[row.value] +=
-                    row.count;
-            } else if (row.kind == "topic") {
-                const std::string group = topic_group(row.value);
-                student.topics[group.empty() ? row.value : group] += row.count;
-                //tags fold into their syllabus group, which is what a teacher
-                //plans in: "home" and "family" are one topic on the report
-            }
+
+        std::vector<crow::json::wvalue> students;
+        for (const ClassMember& member : store_->class_members(class_id)) {
+            if (member.role != ClassRole::Student) continue;
+            const auto at = by_user.find(member.user_id);
+            const CoverageTotals counts =
+                at == by_user.end() ? CoverageTotals{} : at->second;
+
+            crow::json::wvalue item;
+            item["user_id"] = member.user_id;
+            item["name"] = member.display_name;
+            item["email"] = member.email;
+            item["attempt_count"] = member.attempt_count;
+            item["tenses_produced"] = map_json(counts.produced);
+            item["tenses_asked"] = map_json(counts.asked);
+            item["topics"] = map_json(counts.topics);
+            students.push_back(std::move(item));
         }
+        crow::json::wvalue json;
+        json["students"] = std::move(students);
+        return json_response(json);
+        //every student, including one who has sat nothing: this answers with
+        //the numbers and leaves it to the caller to decide what is worth
+        //showing. The table below drops the empty rows itself
+    });
+}
+
+crow::response Server::serve_coverage_fragment(const crow::request& req,
+                                               std::int64_t class_id) {
+    User user;
+    ClassInfo klass;
+    if (auto refusal = refuse_unless_teaches(req, class_id, user, klass)) {
+        return std::move(*refusal);
+    }
+
+    return guarded("coverage fragment", [&] {
+        const auto by_user = gather_coverage(store_->class_coverage(class_id));
 
         const LanguagePack* pack = languages_.find(klass.language_id);
         if (pack == nullptr) {
@@ -311,19 +382,14 @@ crow::response Server::serve_coverage(const crow::request& req,
         }
         //the tense names are the class language's own, so an Italian class
         //reads "passato prossimo" where a German one reads "Perfekt"
+        const auto ordered = tense_columns(*pack);
 
         std::vector<crow::json::wvalue> columns;
-        std::vector<std::pair<std::string, std::string>> ordered;
-        for (const std::string_view key : kTenseKeys) {
-            std::string label = tense_label(*pack, key);
+        for (const auto& [key, label] : ordered) {
             crow::json::wvalue column;
             column["label"] = label;
             columns.push_back(std::move(column));
-            ordered.emplace_back(std::string(key), std::move(label));
         }
-        //one pass, so the header and every row's cells walk kTenseKeys in the
-        //same order. The template cannot line them up itself: mustache has no
-        //way to look a key up in a map
 
         std::vector<crow::json::wvalue> students;
         for (const ClassMember& member : store_->class_members(class_id)) {
@@ -332,7 +398,9 @@ crow::response Server::serve_coverage(const crow::request& req,
             //a student who has sat nothing is a row of zeroes. The gap this
             //table is read for is a tense missing from exams that happened
 
-            const Student& counts = by_user[member.user_id];
+            const auto at = by_user.find(member.user_id);
+            const CoverageTotals counts =
+                at == by_user.end() ? CoverageTotals{} : at->second;
             const std::string who =
                 member.display_name.empty() ? member.email : member.display_name;
             const std::string whose =

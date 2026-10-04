@@ -4,6 +4,7 @@
 #include <cctype>
 #include <exception>
 #include <iostream>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -149,23 +150,33 @@ void Server::register_class_routes() {
         return serve_class_members(req, class_id);
     });
 
-    CROW_ROUTE(app_, "/teacher/classes/<int>/members/<int>").methods("DELETE"_method) //HTTP ROUTE ---
+    CROW_ROUTE(app_, "/api/classes/<int>/members/<int>").methods("DELETE"_method) //HTTP ROUTE ---
     ([this](const crow::request& req, std::int64_t class_id, std::int64_t user_id) {
         return serve_remove_member(req, class_id, user_id);
     });
-    //answers with the members table redrawn, so the button that sent this needs
-    //no follow-up request, and with HX-Trigger so the cards that also went stale
-    //- the coverage report, the exam list, the sidebar's student count - are
-    //told to refresh themselves
+
+    CROW_ROUTE(app_, "/teacher/classes/<int>/members/<int>").methods("DELETE"_method) //HTTP ROUTE ---
+    ([this](const crow::request& req, std::int64_t class_id, std::int64_t user_id) {
+        return serve_remove_member_fragment(req, class_id, user_id);
+    });
+    //the same removal twice over. /api answers {ok:true}; /teacher answers with
+    //the members table redrawn, so the button that sent it needs no follow-up
+    //request, and with HX-Trigger so the cards that also went stale - the
+    //coverage report, the exam list, the sidebar's student count - refresh
 
     CROW_ROUTE(app_, "/api/classes/<int>/archive").methods("POST"_method) //HTTP ROUTE ---
     ([this](const crow::request& req, std::int64_t class_id) {
         return serve_archive(req, class_id);
     });
 
-    CROW_ROUTE(app_, "/teacher/classes/<int>/attempts") //HTTP ROUTE ---
+    CROW_ROUTE(app_, "/api/classes/<int>/attempts") //HTTP ROUTE ---
     ([this](const crow::request& req, std::int64_t class_id) {
         return serve_class_attempts(req, class_id);
+    });
+
+    CROW_ROUTE(app_, "/teacher/classes/<int>/attempts") //HTTP ROUTE ---
+    ([this](const crow::request& req, std::int64_t class_id) {
+        return serve_class_attempts_fragment(req, class_id);
     });
 
     CROW_ROUTE(app_, "/api/attempts/<int>") //HTTP ROUTE ---
@@ -488,9 +499,23 @@ crow::response Server::serve_class_members(const crow::request& req,
                    [&] { return members_fragment(class_id, klass); });
 }
 
-crow::response Server::serve_remove_member(const crow::request& req,
-                                           std::int64_t class_id,
-                                           std::int64_t user_id) {
+std::optional<crow::response> Server::refuse_unless_removable(
+    std::int64_t class_id, std::int64_t user_id) {
+    const auto role = store_->class_role(class_id, user_id);
+    if (!role) {
+        return json_error(404, "that student is not in this class");
+    }
+    if (*role == ClassRole::Teacher) {
+        return json_error(400, "teachers cannot be removed from here");
+        //so the last teacher of a class cannot remove themselves by accident
+        //and leave it with nobody able to manage it
+    }
+    return std::nullopt;
+}
+
+crow::response Server::serve_remove_member_fragment(const crow::request& req,
+                                                    std::int64_t class_id,
+                                                    std::int64_t user_id) {
     User user;
     ClassInfo klass;
     if (auto refusal = refuse_unless_teaches(req, class_id, user, klass)) {
@@ -498,14 +523,8 @@ crow::response Server::serve_remove_member(const crow::request& req,
     }
 
     return guarded("remove member", [&] {
-        const auto role = store_->class_role(class_id, user_id);
-        if (!role) {
-            return json_error(404, "that student is not in this class");
-        }
-        if (*role == ClassRole::Teacher) {
-            return json_error(400, "teachers cannot be removed from here");
-            //so the last teacher of a class cannot remove themselves by
-            //accident and leave it with nobody able to manage it
+        if (auto refusal = refuse_unless_removable(class_id, user_id)) {
+            return std::move(*refusal);
         }
         store_->remove_member(class_id, user_id);
 
@@ -516,6 +535,26 @@ crow::response Server::serve_remove_member(const crow::request& req,
         //the dashboard refreshes those from it, so each card stays responsible
         //for its own markup
         return response;
+    });
+}
+
+crow::response Server::serve_remove_member(const crow::request& req,
+                                           std::int64_t class_id,
+                                           std::int64_t user_id) {
+    User user;
+    ClassInfo klass;
+    if (auto refusal = refuse_unless_teaches(req, class_id, user, klass)) {
+        return std::move(*refusal);
+    }
+
+    return guarded("remove member", [&] {
+        if (auto refusal = refuse_unless_removable(class_id, user_id)) {
+            return std::move(*refusal);
+        }
+        store_->remove_member(class_id, user_id);
+        crow::json::wvalue json;
+        json["ok"] = true;
+        return json_response(json);
     });
 }
 
@@ -557,6 +596,26 @@ crow::response Server::serve_class_attempts(const crow::request& req,
         std::vector<crow::json::wvalue> list;
         for (const AttemptSummary& attempt :
              store_->class_attempts(class_id, kAttemptListLimit)) {
+            list.push_back(attempt_json(attempt));
+        }
+        crow::json::wvalue json;
+        json["attempts"] = std::move(list);
+        return json_response(json);
+    });
+}
+
+crow::response Server::serve_class_attempts_fragment(const crow::request& req,
+                                                     std::int64_t class_id) {
+    User user;
+    ClassInfo klass;
+    if (auto refusal = refuse_unless_teaches(req, class_id, user, klass)) {
+        return std::move(*refusal);
+    }
+
+    return guarded("class attempts fragment", [&] {
+        std::vector<crow::json::wvalue> list;
+        for (const AttemptSummary& attempt :
+             store_->class_attempts(class_id, kAttemptListLimit)) {
             crow::json::wvalue item;
             item["id"] = attempt.id;
             item["student"] = attempt.student_name.empty()
@@ -566,6 +625,9 @@ crow::response Server::serve_class_attempts(const crow::request& req,
             item["ended"] = end_reason_label(attempt.ended_at, attempt.end_reason);
             list.push_back(std::move(item));
         }
+        //the same rows as the JSON above, with the labels resolved: a date in
+        //words instead of an epoch, "Time ran out" instead of "timer". The
+        //store call is shared; only the shaping differs, which is the point
 
         crow::json::wvalue context;
         context["any"] = !list.empty();

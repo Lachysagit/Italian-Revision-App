@@ -134,9 +134,18 @@ private:
     crow::response serve_remove_member(const crow::request& req,
                                        std::int64_t class_id,
                                        std::int64_t user_id);
+    crow::response serve_remove_member_fragment(const crow::request& req,
+                                                std::int64_t class_id,
+                                                std::int64_t user_id);
+    std::optional<crow::response> refuse_unless_removable(std::int64_t class_id,
+                                                          std::int64_t user_id);
+    //the rule about who may be removed, held in one place so the JSON route and
+    //the fragment route cannot drift apart on it
     crow::response serve_archive(const crow::request& req, std::int64_t class_id);
     crow::response serve_class_attempts(const crow::request& req,
                                         std::int64_t class_id);
+    crow::response serve_class_attempts_fragment(const crow::request& req,
+                                                 std::int64_t class_id);
     crow::response serve_class_members(const crow::request& req,
                                        std::int64_t class_id);
     crow::response members_fragment(std::int64_t class_id,
@@ -156,6 +165,8 @@ private:
     crow::response serve_default_plan(const crow::request& req, std::int64_t class_id);
     crow::response serve_exam_options(const crow::request& req);
     crow::response serve_coverage(const crow::request& req, std::int64_t class_id);
+    crow::response serve_coverage_fragment(const crow::request& req,
+                                           std::int64_t class_id);
 
     RateLimiter limiter_;
     std::optional<crow::response> refuse_if_rate_limited(const std::string& key,
