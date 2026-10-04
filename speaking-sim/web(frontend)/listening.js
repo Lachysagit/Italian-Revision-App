@@ -1,3 +1,11 @@
+import { initTranslate, setTranslateLanguage } from "/translate.js";
+import { savePreferredLanguage } from "/account.js";
+
+export let applyListeningLanguage = () => {};
+//assigned by the setup below. It still runs inside an IIFE left over from
+//the global-script days: module scope already isolates this file, so the
+//wrapper now only keeps its var declarations together
+
 (function(){
   // The page is served at /listening, with no trailing slash, so a relative
   // "clips/..." would resolve against the site root. Prefixing here keeps each
@@ -475,7 +483,7 @@
   langSel.addEventListener('change', function(){
     language = LANGUAGES[langSel.value] ? langSel.value : 'italian';
     localStorage.setItem(LANG_STORAGE, language);
-    if (typeof savePreferredLanguage === 'function') savePreferredLanguage(language);
+    savePreferredLanguage(language);
     //to the account as well as this browser, so the exam page and the next
     //device open on the same language
     setTranslateLanguage(LANGUAGES[language].code);
@@ -485,7 +493,7 @@
   // The account's language wins over whatever this browser last saved, the same
   // way it does on the exam page. Ignored when the account names a language this
   // page has no clips for, which leaves the picker where localStorage put it.
-  window.applyListeningLanguage = function(id){
+  applyListeningLanguage = function(id){
     if (!LANGUAGES[id] || id === language) return;
     language = id;
     localStorage.setItem(LANG_STORAGE, language);

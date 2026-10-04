@@ -155,13 +155,15 @@
          Turns are grouped one question with its answer, so a pair can be saved
          on its own. Diagnostics go to the console via addLog(), never here -->
 
-    <script src="translate.js"></script>
-    <!-- before client.js, which calls initTranslate() as it runs -->
-    <script src="classes.js"></script>
-    <!-- before client.js too: setTurnState reads the class picker -->
-    <script src="client.js"></script>
-    <script src="account.js"></script>
-    <script>
+    <script type="module">
+        import { initAccount } from "/account.js";
+        import { initClasses } from "/classes.js";
+        import { applyPreferredLanguage, applyAccountName, paintUsage }
+            from "/client.js";
+        //the four <script src> tags these replace had to be written in
+        //dependency order, with a comment beside each one saying so. The
+        //imports state the same thing in a way the browser enforces
+
         initAccount({
             onReady: (user) => {
                 // the account is where the language lives, so it wins over

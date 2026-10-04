@@ -6,8 +6,8 @@
 // never innerHTML: names and emails are typed by students and teachers, and a
 // name is not allowed to become markup on somebody else's screen.
 //
-// Loaded with a plain <script src> after account.js, which calls initTeacher
-// once it knows who is signed in.
+// An ES module. The page imports initTeacher and hands it to initAccount,
+// which calls it once it knows who is signed in.
 
 const END_REASONS = {
     student_end: "Ended by student",
@@ -77,7 +77,7 @@ function shortLength(seconds) {
     return `${Math.floor(seconds / 60)} min ${seconds % 60} s`;
 }
 
-function initTeacher(user) {
+export function initTeacher(user) {
     if (!user.is_teacher) {
         showTeacherNotice(
             "This page is for teachers. If you teach a class, ask whoever runs " +

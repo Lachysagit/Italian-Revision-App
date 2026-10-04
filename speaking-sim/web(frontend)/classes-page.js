@@ -10,8 +10,8 @@
 // innerHTML: class names are typed by teachers, and a name is not allowed to
 // become markup on a student's screen.
 //
-// Loaded with a plain <script src> after account.js, which calls
-// initClassesPage once it knows who is signed in.
+// An ES module. The page imports initClassesPage and hands it to initAccount,
+// which calls it once it knows who is signed in.
 
 const END_REASONS = {
     student_end: "Ended by student",
@@ -27,7 +27,7 @@ let classesLoaded = false;
 //either way, because history names its classes from it and must not call one
 //"left" merely because the other request has not landed yet
 
-function initClassesPage() {
+export function initClassesPage() {
     document.getElementById("classesMain").hidden = false;
     wireJoinBox();
 

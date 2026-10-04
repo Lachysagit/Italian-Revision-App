@@ -10,15 +10,17 @@
 // held in sessionStorage across the redirect and posted once the account
 // exists. Signing in is the other button and goes straight to Google.
 //
-// Loaded with a plain <script src> like translate.js, and defines one entry
-// point. Load order is the only dependency.
+// An ES module with one entry point, imported by every page. The gate it
+// builds is the same on all four, so this is the only place it is written.
+
+import { setTranslateLocked } from "/translate.js";
 
 const SIGNUP_DRAFT = "signupDraft";
 
 let currentUser = null;
 let gateLanguages = [];
 
-function initAccount(options) {
+export function initAccount(options) {
     const settings = options || {};
     const onReady = settings.onReady || function () {};
     const needsOnboarding = settings.needsOnboarding !== false;
@@ -584,7 +586,7 @@ function postProfile(draft) {
 // choice follows the student to their next device rather than living in one
 // browser's localStorage. The endpoint validates all three fields together, so
 // year and subject level are resent unchanged from the account we already hold.
-function savePreferredLanguage(id) {
+export function savePreferredLanguage(id) {
     if (!currentUser || !currentUser.onboarded) return Promise.resolve(null);
     if (!id || id === currentUser.preferred_language) return Promise.resolve(null);
 

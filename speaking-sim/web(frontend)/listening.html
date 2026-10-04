@@ -56,10 +56,12 @@
 
 <audio id="audio" preload="none"></audio>
 
-<script src="/translate.js"></script>
-<script src="/listening.js"></script>
-<script src="/account.js"></script>
-<script>
+<script type="module">
+  import { initAccount } from "/account.js";
+  import { applyListeningLanguage } from "/listening.js";
+  //listening.js imports translate.js itself, so all three of the
+  //<script src> tags these replace are accounted for
+
   initAccount({
     onReady: (user) => {
       // the account is where the language lives, and a change made from the

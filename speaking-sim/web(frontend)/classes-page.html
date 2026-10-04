@@ -83,9 +83,10 @@
     <!-- the same box as the exam page's, so a student who lands here from a
          join link or a teacher's code has it where they are looking -->
 
-    <script src="/account.js"></script>
-    <script src="/classes-page.js"></script>
-    <script>
+    <script type="module">
+        import { initAccount } from "/account.js";
+        import { initClassesPage } from "/classes-page.js";
+
         initAccount({ onReady: initClassesPage });
     </script>
 </body>

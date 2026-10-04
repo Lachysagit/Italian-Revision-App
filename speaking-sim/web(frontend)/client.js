@@ -1,3 +1,12 @@
+import { initTranslate, setTranslateLanguage } from "/translate.js";
+import { savePreferredLanguage } from "/account.js";
+import {
+    classLocksLanguage, classSelect, joinClassButton, planSelect,
+    selectedClassId, selectedPlanId,
+} from "/classes.js";
+//classes.js imports this file back; see the note at the top of it for why
+//the cycle holds and what would break it
+
 const transcript = document.getElementById("transcript");
 const startButton = document.getElementById("start");
 const doneButton = document.getElementById("done");
@@ -8,7 +17,7 @@ const settingsButton = document.getElementById("settings");
 const settingsOverlay = document.getElementById("settingsOverlay");
 const settingsClose = document.getElementById("settingsClose");
 const geminiKeySelect = document.getElementById("geminiKeySelect");
-const languageSelect = document.getElementById("languageSelect");
+export const languageSelect = document.getElementById("languageSelect");
 const studentName = document.getElementById("studentName");
 const micOverlay = document.getElementById("micOverlay");
 const micReason = document.getElementById("micReason");
@@ -28,7 +37,7 @@ const pageTitle = document.getElementById("pageTitle");
 
 const GEMINI_KEY_STORAGE = "geminiKeyName";
 //persists the picked key across page reloads, same tab only
-const LANGUAGE_STORAGE = "examLanguage";
+export const LANGUAGE_STORAGE = "examLanguage";
 //which exam was last taken, so the picker reopens on it. Separate from the
 //listening page's own "listeningLanguage": the two pages are chosen
 //independently, and sharing one key would make picking a German listening
@@ -75,7 +84,7 @@ let micReady = false;
 let pendingArm = false;
 
 
-let turnState = "idle";
+export let turnState = "idle";
 //"idle" no session; "thinking" examiner is working and the mic is muted;
 //"armed" student's turn, mic live and frames streaming
 //"paused" the clock and the mic are both stopped until Resume
@@ -477,7 +486,7 @@ function addTurn(role, text) {
     }
 }
 
-function paintUsage(usage) {
+export function paintUsage(usage) {
     if (usage) {
         speakingUsage = Object.assign({}, usage);
     }
@@ -811,16 +820,16 @@ async function loadGeminiKeys() {
     }
 }
 
-let languages = [];
+export let languages = [];
 //[{id, label, translate_code}] from /api/languages, kept so the change handler
 //can map the picked id back to its translate code without a second fetch
 
-function translateCodeFor(id) {
+export function translateCodeFor(id) {
     const match = languages.find((entry) => entry.id === id);
     return match ? match.translate_code : "it";
 }
 
-function updatePageTitle(id) {
+export function updatePageTitle(id) {
     const match = languages.find((entry) => entry.id === id);
     const label = match ? match.label : "Italian";
     pageTitle.textContent = `${label} Speaking Exam Simulator`;
@@ -871,7 +880,7 @@ async function loadLanguages() {
     return languageSelect.value;
 }
 
-async function applyPreferredLanguage(id) {
+export async function applyPreferredLanguage(id) {
     // the language the account carries, which is the one the page opens on.
     // Waits on the picker's own fetch rather than assuming it has landed:
     // /api/me and /api/languages are two requests in flight at once, and
@@ -889,7 +898,7 @@ async function applyPreferredLanguage(id) {
     // student's saved one would
 }
 
-function applyAccountName(fullName) {
+export function applyAccountName(fullName) {
     //the page greets with the name you are called rather than the one on the
     //enrolment form. It stays in this browser: localStorage and the heading of
     //a saved transcript are the whole of its reach
@@ -960,7 +969,7 @@ initTranslate({
 
 loadGeminiKeys();
 
-const languagesReady = loadLanguages().then((id) => {
+export const languagesReady = loadLanguages().then((id) => {
     setTranslateLanguage(translateCodeFor(id));
     //re-applied here rather than only above: until the fetch lands, languages
     //is empty and translateCodeFor falls back to "it" for every id

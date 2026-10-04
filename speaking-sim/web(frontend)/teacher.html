@@ -261,9 +261,10 @@
         <p id="noClassSelected">Choose a class, or create one.</p>
     </main>
 
-    <script src="/account.js"></script>
-    <script src="/teacher.js"></script>
-    <script>
+    <script type="module">
+        import { initAccount } from "/account.js";
+        import { initTeacher } from "/teacher.js";
+
         initAccount({ onReady: initTeacher });
     </script>
 </body>

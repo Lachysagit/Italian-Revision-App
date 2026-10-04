@@ -17,11 +17,11 @@ const TRANSLATE_LANGUAGES = {
 //the non-English side of the pair. English is always the other half, so only this
 //end varies
 
-let setTranslateLanguage = () => {};
+export let setTranslateLanguage = () => {};
 //replaced by initTranslate on a page that has the box; the listening page calls it
 //when its language picker moves
 
-let setTranslateLocked = () => {};
+export let setTranslateLocked = () => {};
 //replaced the same way. account.js calls it once /api/me says whether this
 //account has paid access: translation is part of it, and a free account sees
 //the box shut rather than a failure on every lookup
@@ -30,7 +30,7 @@ const TRANSLATE_LOCKED_TEXT =
     "Translation is part of paid access - a class licence from your school, or " +
     "your own. Speaking practice and every listening paper stay free.";
 
-function initTranslate(options) {
+export function initTranslate(options) {
     const translateInput = document.getElementById("translateInput");
     const translateDirection = document.getElementById("translateDirection");
     const translateGo = document.getElementById("translateGo");

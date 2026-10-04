@@ -1,19 +1,30 @@
 // The student's side of classes on the exam page: which class an exam is sat
 // for, and the box that joins a class with the code a teacher hands out.
 //
-// Loaded with a plain <script src> before client.js. It defines functions and
-// reads its own elements; everything that touches client.js's state (the
-// language picker, the turn state) runs later, from initClasses and from the
-// handlers, by which time client.js has loaded too.
+// An ES module. client.js imports this file and this file imports it back, so
+// neither may touch the other's bindings while it is still being evaluated:
+// everything that reads client.js's state (the language picker, the turn
+// state) runs later, from initClasses and from the handlers.
+
+import { setTranslateLanguage } from "/translate.js";
+import {
+    LANGUAGE_STORAGE, languageSelect, languages, languagesReady,
+    translateCodeFor, updatePageTitle, turnState,
+} from "/client.js";
+//client.js imports this file back. The cycle is safe because neither
+//module touches the other's bindings while it is being evaluated - every
+//use is inside a function that runs later. Keep it that way: a call to
+//any of the names above at this file's top level would read a const that
+//client.js has not reached yet and throw.
 
 const CLASS_STORAGE = "examClass";
 const PENDING_JOIN = "pendingJoinCode";
 const PENDING_CLASS = "pendingExamClass";
 
-const classSelect = document.getElementById("classSelect");
-const joinClassButton = document.getElementById("joinClass");
+export const classSelect = document.getElementById("classSelect");
+export const joinClassButton = document.getElementById("joinClass");
 const classHint = document.getElementById("classHint");
-const planSelect = document.getElementById("planSelect");
+export const planSelect = document.getElementById("planSelect");
 const planLabel = document.getElementById("planLabel");
 const joinOverlay = document.getElementById("joinOverlay");
 const joinForm = document.getElementById("joinModal");
@@ -71,7 +82,7 @@ let plansRequest = 0;
         window.location.pathname + (rest ? `?${rest}` : "") + window.location.hash);
 })();
 
-function initClasses() {
+export function initClasses() {
     wireJoinBox();
     return loadStudentClasses().then(() => {
         let pending = null;
@@ -151,12 +162,12 @@ function selectedClass() {
     return studentClasses.find((klass) => String(klass.id) === id) || null;
 }
 
-function selectedClassId() {
+export function selectedClassId() {
     const klass = selectedClass();
     return klass ? klass.id : 0;
 }
 
-function classLocksLanguage() {
+export function classLocksLanguage() {
     return Boolean(selectedClass());
     // an exam for a class is in the class's language - the server enforces
     // that anyway, so the picker shows it rather than offering a choice that
@@ -257,7 +268,7 @@ function paintPlanSelect(klass) {
     planSelect.disabled = turnState !== "idle";
 }
 
-function selectedPlanId() {
+export function selectedPlanId() {
     return Number(planSelect.value) || 0;
 }
 
