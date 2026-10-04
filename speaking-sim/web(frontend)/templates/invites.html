@@ -1,0 +1,18 @@
+{{! Addresses a teacher has pasted in that have not signed in yet. The whole
+    block, heading included, so an empty one is absent rather than hidden -
+    which is why there is nothing here for the no-invites case. }}
+{{#any}}
+<div id="pendingBlock">
+    <h4>Waiting to sign in</h4>
+    <ul id="pendingInvites">
+        {{#invites}}
+        <li>
+            <span>{{email}}</span>
+            <button class="quiet small" type="button"
+                    hx-delete="/teacher/classes/{{class_id}}/invites/{{id}}"
+                    hx-target="#invitesReport">Cancel</button>
+        </li>
+        {{/invites}}
+    </ul>
+</div>
+{{/any}}

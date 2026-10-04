@@ -92,6 +92,25 @@ std::string end_reason_label(std::int64_t ended_at, const std::string& reason) {
     return reason.empty() ? "Ended" : reason;
 }
 
+std::string short_length(int seconds) {
+    if (seconds % 60 == 0) {
+        return std::to_string(seconds / 60) + " min";
+    }
+    return std::to_string(seconds / 60) + " min " +
+           std::to_string(seconds % 60) + " s";
+}
+
+std::string format_length(int seconds, int standard) {
+    if (seconds == 0) {
+        return "Standard (" + short_length(standard) + ")";
+    }
+    return short_length(seconds);
+}
+
+std::string pluralise(int count, const char* one, const char* many) {
+    return std::to_string(count) + " " + (count == 1 ? one : many);
+}
+
 std::string format_join_code(const std::string& code) {
     if (code.size() != 8) {
         return code;

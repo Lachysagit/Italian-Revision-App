@@ -1,0 +1,22 @@
+{{! A class's exam plans, archived ones left out. The default toggle posts to
+    /teacher/classes/<id>/default-plan with the id in the query string: htmx
+    sends a form body, not JSON, and the plan_id is the whole of what it needs
+    to say - so the query string saves carrying a body parser for one number. }}
+<ul id="planList">
+    {{#plans}}
+    <li class="planRow">
+        <div>
+            <a class="planName" href="#class-{{class_id}}/plan-{{id}}">{{name}}</a>
+            {{#is_default}}<span class="badge">Default</span>{{/is_default}}
+            {{#hidden_from_students}}<span class="badge quietBadge">Hidden</span>{{/hidden_from_students}}
+            <div class="planMeta">{{meta}}</div>
+        </div>
+        <button class="quiet small" type="button"{{#class_archived}} disabled{{/class_archived}}
+                hx-post="/teacher/classes/{{class_id}}/default-plan?plan_id={{toggle_to}}"
+                hx-target="#plansReport">{{toggle_label}}</button>
+    </li>
+    {{/plans}}
+</ul>
+{{^any}}
+<p class="empty" id="plansEmpty">No plans yet.</p>
+{{/any}}

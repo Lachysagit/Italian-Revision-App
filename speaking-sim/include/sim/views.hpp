@@ -42,6 +42,17 @@ std::string tense_label(const LanguagePack& pack, std::string_view key);
 //pack that names only some of them still reports the rest rather than blanking
 //the column
 
+std::string short_length(int seconds);
+//"5 min", or "5 min 30 s" when it does not land on a whole minute
+
+std::string format_length(int seconds, int standard);
+//an exam plan's length, where zero means "whatever the server's own length is"
+//- named rather than blank, because a plan that does not set one is a choice
+//and the teacher should be able to see what it works out to
+
+std::string pluralise(int count, const char* one, const char* many);
+//"1 student" / "2 students", the join the dashboard does in a dozen places
+
 std::string format_join_code(const std::string& code);
 //in two halves, because it is read off a board. Stored and matched without the
 //hyphen, so this is presentation only

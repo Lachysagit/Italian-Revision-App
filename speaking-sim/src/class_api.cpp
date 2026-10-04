@@ -1,6 +1,7 @@
 #include "sim/server.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cctype>
 #include <exception>
 #include <iostream>
@@ -199,6 +200,24 @@ void Server::register_class_routes() {
     CROW_ROUTE(app_, "/api/my-attempts") //HTTP ROUTE ---
     ([this](const crow::request& req) {
         return serve_my_attempts(req);
+    });
+
+    CROW_ROUTE(app_, "/teacher/classes") //HTTP ROUTE ---
+    ([this](const crow::request& req) {
+        return serve_class_list_fragment(req);
+    });
+    //the dashboard sidebar. Takes ?archived= and ?current= because both are
+    //the page's state rather than the database's: which filter the box is on,
+    //and which class is open
+
+    CROW_ROUTE(app_, "/teacher/classes/<int>/invites").methods("GET"_method) //HTTP ROUTE ---
+    ([this](const crow::request& req, std::int64_t class_id) {
+        return serve_invites_fragment(req, class_id);
+    });
+
+    CROW_ROUTE(app_, "/teacher/classes/<int>/invites/<int>").methods("DELETE"_method) //HTTP ROUTE ---
+    ([this](const crow::request& req, std::int64_t class_id, std::int64_t invite_id) {
+        return serve_revoke_invite_fragment(req, class_id, invite_id);
     });
 
     CROW_ROUTE(app_, "/me/classes") //HTTP ROUTE ---
@@ -681,6 +700,101 @@ crow::response Server::serve_my_attempts(const crow::request& req) {
         //the caller's own id, never one from the request: a student cannot ask
         //for somebody else's history by changing a number in the URL
     });
+}
+
+crow::response Server::serve_class_list_fragment(const crow::request& req) {
+    User user;
+    if (auto refusal = refuse_unless_signed_in(req, user)) {
+        return std::move(*refusal);
+    }
+
+    const char* archived_param = req.url_params.get("archived");
+    const bool show_archived = archived_param != nullptr &&
+                               std::string(archived_param) == "1";
+    const char* current_param = req.url_params.get("current");
+    const std::int64_t current =
+        current_param == nullptr ? 0 : std::atoll(current_param);
+
+    return guarded("class list fragment", [&] {
+        const std::vector<ClassInfo> all = store_->classes_for_user(user.id);
+
+        std::vector<crow::json::wvalue> list;
+        int teaches = 0;
+        for (const ClassInfo& klass : all) {
+            if (klass.caller_role != ClassRole::Teacher) continue;
+            ++teaches;
+            if (!show_archived && klass.archived) continue;
+
+            const LanguagePack* pack = languages_.find(klass.language_id);
+            std::string meta = (pack ? pack->display_name : klass.language_id) +
+                               " \xc2\xb7 " +
+                               pluralise(klass.student_count, "student", "students");
+            if (klass.archived) meta += " \xc2\xb7 archived";
+
+            crow::json::wvalue item;
+            item["id"] = klass.id;
+            item["name"] = klass.name;
+            item["meta"] = meta;
+            item["current"] = klass.id == current;
+            list.push_back(std::move(item));
+        }
+
+        crow::json::wvalue context;
+        context["any_at_all"] = teaches > 0;
+        //the empty line is about having no classes, not about the filter hiding
+        //them: a teacher whose only class is archived, with the box unchecked,
+        //gets an empty list and no line, which is what it meant before
+        context["classes"] = std::move(list);
+        return html_fragment(
+            crow::mustache::load("class-list.html").render(context).dump());
+    });
+}
+
+crow::response Server::serve_invites_fragment(const crow::request& req,
+                                              std::int64_t class_id) {
+    User user;
+    ClassInfo klass;
+    if (auto refusal = refuse_unless_teaches(req, class_id, user, klass)) {
+        return std::move(*refusal);
+    }
+    return guarded("invites fragment",
+                   [&] { return invites_fragment(class_id); });
+}
+
+crow::response Server::serve_revoke_invite_fragment(const crow::request& req,
+                                                    std::int64_t class_id,
+                                                    std::int64_t invite_id) {
+    User user;
+    ClassInfo klass;
+    if (auto refusal = refuse_unless_teaches(req, class_id, user, klass)) {
+        return std::move(*refusal);
+    }
+
+    return guarded("revoke invite", [&] {
+        if (!store_->revoke_invite(class_id, invite_id)) {
+            return json_error(404, "no such invite");
+        }
+        return invites_fragment(class_id);
+        //no HX-Trigger: an unclaimed invite is nobody's membership yet, so
+        //cancelling one dates no other card on the page
+    });
+}
+
+crow::response Server::invites_fragment(std::int64_t class_id) {
+    std::vector<crow::json::wvalue> list;
+    for (const ClassInvite& invite : store_->pending_invites(class_id)) {
+        crow::json::wvalue item;
+        item["id"] = invite.id;
+        item["email"] = invite.email;
+        list.push_back(std::move(item));
+    }
+
+    crow::json::wvalue context;
+    context["any"] = !list.empty();
+    context["class_id"] = class_id;
+    context["invites"] = std::move(list);
+    return html_fragment(
+        crow::mustache::load("invites.html").render(context).dump());
 }
 
 crow::response Server::serve_my_classes_fragment(const crow::request& req) {

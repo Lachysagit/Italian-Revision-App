@@ -46,12 +46,6 @@ function examOptions(language) {
         });
 }
 
-function tenseLabel(key) {
-    const match = currentOptions &&
-        currentOptions.tenses.find((tense) => tense.key === key);
-    return match ? match.label : key;
-}
-
 function capitaliseTopic(group) {
     return group ? group.charAt(0).toUpperCase() + group.slice(1) : "";
 }
@@ -194,31 +188,6 @@ function loadClasses() {
         .catch((error) => showTeacherNotice(error.message));
 }
 
-function paintClassList() {
-    const list = document.getElementById("classList");
-    const showArchived = document.getElementById("showArchived").checked;
-    list.textContent = "";
-
-    const visible = classes.filter((entry) => showArchived || !entry.archived);
-    visible.forEach((entry) => {
-        const item = element("li");
-        const link = element("a", "classLink");
-        link.href = `#class-${entry.id}`;
-        link.appendChild(element("span", "classLinkName", entry.name));
-        link.appendChild(element("span", "classLinkMeta",
-            `${entry.language_label} · ${entry.student_count} ` +
-            (entry.student_count === 1 ? "student" : "students") +
-            (entry.archived ? " · archived" : "")));
-        if (currentClass && currentClass.id === entry.id) {
-            link.classList.add("current");
-        }
-        item.appendChild(link);
-        list.appendChild(item);
-    });
-
-    document.getElementById("classListEmpty").hidden = classes.length > 0;
-}
-
 // ---------------------------------------------------------------------------
 // routing: #class-12 opens a class, #class-12/attempt-34 one of its exams
 // ---------------------------------------------------------------------------
@@ -266,6 +235,9 @@ function openClass(classId) {
     return Promise.all([
         api("GET", `/api/classes/${classId}`),
         api("GET", `/api/classes/${classId}/plans`),
+        //still fetched as data, and no longer for the list beside it: the plan
+        //editor opens a plan out of currentPlans, which is the one part of this
+        //page that needs a plan in full rather than a line about it
     ])
         .then(([detail, plans]) =>
             examOptions(detail.class.language).then((options) => {
@@ -273,7 +245,6 @@ function openClass(classId) {
                 currentPlans = plans.plans;
                 currentOptions = options;
                 paintClass(detail);
-                paintPlans(currentPlans);
                 paintReports(classId);
                 paintClassList();
             }))
@@ -313,11 +284,25 @@ function refreshClass() {
     // the list is reloaded too: student counts and the archived flag show there
 }
 
+function paintClassList() {
+    const archived = document.getElementById("showArchived").checked ? "1" : "0";
+    const current = currentClass ? currentClass.id : 0;
+    htmx.ajax("GET",
+        `/teacher/classes?archived=${archived}&current=${current}`,
+        "#classListReport");
+    //the filter and the open class go up as parameters. They are the only two
+    //things the sidebar needs that the server could not already know, and
+    //sending them is cheaper than keeping a copy of the class list here to
+    //re-filter
+}
+
 function paintReports(classId) {
     for (const [path, target] of [
         ["members", "#membersReport"],
         ["attempts", "#attemptsReport"],
         ["coverage", "#coverageReport"],
+        ["invites", "#invitesReport"],
+        ["plans", "#plansReport"],
     ]) {
         htmx.ajax("GET", `/teacher/classes/${classId}/${path}`, target);
     }
@@ -343,7 +328,11 @@ function paintClass(detail) {
     }
 
     paintJoinCode(klass.join_code);
-    paintPending(detail.invites);
+
+    document.getElementById("newPlanLink").href = `#class-${klass.id}/plan-new`;
+    document.getElementById("newPlanLink").hidden = klass.archived;
+    //on the card head rather than in the list, so it stays put while the list
+    //below it is replaced
 
     setStatus("joinStatus", "");
     setStatus("inviteStatus", "");
@@ -366,74 +355,9 @@ function joinLink(code) {
     return `${window.location.origin}/join/${code}`;
 }
 
-function paintPending(invites) {
-    const list = document.getElementById("pendingInvites");
-    list.textContent = "";
-    invites.forEach((invite) => {
-        const item = element("li");
-        item.appendChild(element("span", null, invite.email));
-        const revoke = element("button", "quiet small", "Cancel");
-        revoke.type = "button";
-        revoke.onclick = () => {
-            api("DELETE", `/api/classes/${currentClass.id}/invites/${invite.id}`)
-                .then(refreshClass)
-                .catch((error) => setStatus("inviteStatus", error.message, true));
-        };
-        item.appendChild(revoke);
-        list.appendChild(item);
-    });
-    document.getElementById("pendingBlock").hidden = invites.length === 0;
-}
-
 // ---------------------------------------------------------------------------
 // exam plans and coverage
 // ---------------------------------------------------------------------------
-
-function paintPlans(plans) {
-    const list = document.getElementById("planList");
-    list.textContent = "";
-    document.getElementById("newPlanLink").href = `#class-${currentClass.id}/plan-new`;
-    document.getElementById("newPlanLink").hidden = currentClass.archived;
-
-    const live = plans.filter((plan) => !plan.archived);
-    live.forEach((plan) => {
-        const item = element("li", "planRow");
-        const text = element("div");
-        const name = element("a", "planName", plan.name);
-        name.href = `#class-${currentClass.id}/plan-${plan.id}`;
-        text.appendChild(name);
-        if (plan.is_default) text.appendChild(element("span", "badge", "Default"));
-        if (!plan.visible) text.appendChild(element("span", "badge quietBadge", "Hidden"));
-
-        const parts = [formatLength(plan.duration_seconds)];
-        parts.push(plan.topics.length
-            ? `${plan.topics.length} ${plan.topics.length === 1 ? "topic" : "topics"}`
-            : "all topics");
-        if (plan.questions.length) {
-            parts.push(`${plan.questions.length} set ` +
-                (plan.questions.length === 1 ? "question" : "questions"));
-        }
-        if (plan.tenses.length) {
-            parts.push(plan.tenses.map((t) => tenseLabel(t.tense)).join(", "));
-        }
-        text.appendChild(element("div", "planMeta", parts.join(" · ")));
-        item.appendChild(text);
-
-        const toggle = element("button", "quiet small",
-            plan.is_default ? "Stop using as default" : "Make default");
-        toggle.type = "button";
-        toggle.disabled = currentClass.archived;
-        toggle.onclick = () => {
-            api("POST", `/api/classes/${currentClass.id}/default-plan`,
-                { plan_id: plan.is_default ? 0 : plan.id })
-                .then(refreshClass)
-                .catch((error) => showTeacherNotice(error.message));
-        };
-        item.appendChild(toggle);
-        list.appendChild(item);
-    });
-    document.getElementById("plansEmpty").hidden = live.length > 0;
-}
 
 // ---------------------------------------------------------------------------
 // the plan editor

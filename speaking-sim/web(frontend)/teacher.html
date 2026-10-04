@@ -24,8 +24,10 @@
     <main id="dashboard" hidden>
         <aside id="classColumn">
             <h2>Classes</h2>
-            <ul id="classList"></ul>
-            <p id="classListEmpty" hidden>No classes yet. Create your first one below.</p>
+            <div id="classListReport"></div>
+            <!-- filled by /teacher/classes, which takes the filter below and
+                 the open class as query parameters: both are this page's state
+                 rather than anything stored -->
 
             <label class="inlineCheck">
                 <input type="checkbox" id="showArchived"> Show archived classes
@@ -90,10 +92,10 @@
                 </div>
                 <p class="status" id="inviteStatus" role="status"></p>
 
-                <div id="pendingBlock" hidden>
-                    <h4>Waiting to sign in</h4>
-                    <ul id="pendingInvites"></ul>
-                </div>
+                <div id="invitesReport"></div>
+                <!-- filled by /teacher/classes/<id>/invites, heading included,
+                     so an empty one is absent rather than hidden. A Cancel
+                     answers with the list redrawn -->
             </div>
 
             <div class="card" id="plansCard">
@@ -108,8 +110,10 @@
                     class; students can also pick any plan shown to them by name.
                     Without a plan, exams cover the whole syllabus.
                 </p>
-                <ul id="planList"></ul>
-                <p class="empty" id="plansEmpty" hidden>No plans yet.</p>
+                <div id="plansReport"></div>
+                <!-- filled by /teacher/classes/<id>/plans. The default toggle
+                     posts back here and answers with the whole list, because
+                     naming one plan the default unnames the one that held it -->
             </div>
 
             <div class="card">

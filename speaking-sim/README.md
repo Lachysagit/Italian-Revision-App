@@ -311,6 +311,16 @@ tests (`cmake --build build --target views-tests`).
 | `GET /me/classes` | `GET /api/classes` | the caller's own classes, as cards |
 | `GET /me/attempts` | `GET /api/my-attempts` | the caller's own exam history |
 | `GET /teacher/attempts/<id>` | `GET /api/attempts/<id>` | one exam: heading, plan checks and transcript |
+| `GET /teacher/classes?archived=&current=` | `GET /api/classes` | the dashboard sidebar |
+| `GET /teacher/classes/<id>/invites` | inside `GET /api/classes/<id>` | addresses waiting to sign in |
+| `DELETE /teacher/classes/<id>/invites/<invite>` | `DELETE /api/classes/<id>/invites/<invite>` | cancels one, then answers with the list redrawn |
+| `GET /teacher/classes/<id>/plans` | `GET /api/classes/<id>/plans` | the class's exam plans |
+| `POST /teacher/classes/<id>/default-plan?plan_id=` | `POST /api/classes/<id>/default-plan` | sets or clears the default, then answers with the list redrawn |
+
+The sidebar takes the archived filter and the open class as query parameters,
+because both are the page's state rather than anything stored. The default-plan
+fragment takes `plan_id` in the query string rather than a JSON body: htmx posts
+a form, and one number is not worth a body parser of its own.
 
 `/teacher/...` is a fragment only a teacher of that class may read; `/me/...` is
 one about the caller, which reads their own id and never one from the URL.

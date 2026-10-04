@@ -1,0 +1,16 @@
+{{! The sidebar: every class this teacher has, newest query first. Two pieces of
+    browser state ride in on the query string - whether archived classes are
+    shown, and which class is open - because they are the page's business, not
+    the database's.
+
+    The empty line is about having no classes at all, not about the filter
+    hiding them: a teacher whose only class is archived, with the box unchecked,
+    gets an empty list and no line, which is what it meant before. }}
+<ul id="classList">
+    {{#classes}}
+    <li><a class="classLink{{#current}} current{{/current}}" href="#class-{{id}}"><span class="classLinkName">{{name}}</span><span class="classLinkMeta">{{meta}}</span></a></li>
+    {{/classes}}
+</ul>
+{{^any_at_all}}
+<p id="classListEmpty">No classes yet. Create your first one below.</p>
+{{/any_at_all}}

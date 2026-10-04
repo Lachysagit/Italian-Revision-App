@@ -99,6 +99,26 @@ void test_end_reason() {
     equal(end_reason_label(1, ""), "Ended", "ended with no reason recorded");
 }
 
+void test_lengths() {
+    equal(sim::short_length(300), "5 min", "a whole number of minutes");
+    equal(sim::short_length(60), "1 min", "one minute");
+    equal(sim::short_length(90), "1 min 30 s", "a half minute shows the seconds");
+    equal(sim::short_length(600), "10 min", "ten minutes");
+
+    equal(sim::format_length(0, 300), "Standard (5 min)",
+          "zero means the server's own length, named rather than blank");
+    equal(sim::format_length(0, 90), "Standard (1 min 30 s)",
+          "and it is formatted the same way");
+    equal(sim::format_length(420, 300), "7 min", "a length the plan set wins");
+}
+
+void test_pluralise() {
+    equal(sim::pluralise(0, "student", "students"), "0 students", "none");
+    equal(sim::pluralise(1, "student", "students"), "1 student", "exactly one");
+    equal(sim::pluralise(2, "student", "students"), "2 students", "more than one");
+    equal(sim::pluralise(1, "topic", "topics"), "1 topic", "a different noun");
+}
+
 void test_join_code() {
     equal(sim::format_join_code("ABCDEFGH"), "ABCD-EFGH", "eight splits in two");
     equal(sim::format_join_code(""), "", "joining switched off");
@@ -113,6 +133,8 @@ int main() {
     test_short_time_format();
     test_capitalise();
     test_end_reason();
+    test_lengths();
+    test_pluralise();
     test_join_code();
 
     if (failures != 0) {

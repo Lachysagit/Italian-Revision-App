@@ -150,9 +150,16 @@ private:
                                        std::int64_t class_id);
     crow::response members_fragment(std::int64_t class_id,
                                     const ClassInfo& klass);
+    crow::response invites_fragment(std::int64_t class_id);
     //shared by the GET and by a successful DELETE, so a removal answers with
     //the table redrawn by the same code rather than a second copy of it
     crow::response serve_my_attempts(const crow::request& req);
+    crow::response serve_class_list_fragment(const crow::request& req);
+    crow::response serve_invites_fragment(const crow::request& req,
+                                          std::int64_t class_id);
+    crow::response serve_revoke_invite_fragment(const crow::request& req,
+                                                std::int64_t class_id,
+                                                std::int64_t invite_id);
     crow::response serve_my_classes_fragment(const crow::request& req);
     crow::response serve_my_history_fragment(const crow::request& req);
     //the student's own two cards on /classes. Both read the caller's id and
@@ -181,6 +188,11 @@ private:
     crow::response serve_coverage(const crow::request& req, std::int64_t class_id);
     crow::response serve_coverage_fragment(const crow::request& req,
                                            std::int64_t class_id);
+    crow::response serve_plans_fragment(const crow::request& req,
+                                        std::int64_t class_id);
+    crow::response serve_default_plan_fragment(const crow::request& req,
+                                               std::int64_t class_id);
+    crow::response plans_fragment(std::int64_t class_id, const ClassInfo& klass);
 
     RateLimiter limiter_;
     std::optional<crow::response> refuse_if_rate_limited(const std::string& key,

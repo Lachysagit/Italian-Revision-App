@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <map>
 #include <string>
 #include <string_view>
@@ -99,6 +100,18 @@ void Server::register_plan_routes() {
     });
     //what the plan editor offers: the syllabus topics, and the tenses in the
     //class language's own names
+
+    CROW_ROUTE(app_, "/teacher/classes/<int>/plans") //HTTP ROUTE ---
+    ([this](const crow::request& req, std::int64_t class_id) {
+        return serve_plans_fragment(req, class_id);
+    });
+
+    CROW_ROUTE(app_, "/teacher/classes/<int>/default-plan").methods("POST"_method) //HTTP ROUTE ---
+    ([this](const crow::request& req, std::int64_t class_id) {
+        return serve_default_plan_fragment(req, class_id);
+    });
+    //plan_id rides in the query string rather than a JSON body: htmx posts a
+    //form, and one number is not worth a body parser of its own
 
     CROW_ROUTE(app_, "/api/classes/<int>/coverage") //HTTP ROUTE ---
     ([this](const crow::request& req, std::int64_t class_id) {
@@ -311,6 +324,102 @@ crow::response Server::serve_exam_options(const crow::request& req) {
     //than written into the page: changing them here must not need the
     //dashboard edited to match
     return json_response(json);
+}
+
+crow::response Server::serve_plans_fragment(const crow::request& req,
+                                            std::int64_t class_id) {
+    User user;
+    ClassInfo klass;
+    if (auto refusal = refuse_unless_teaches(req, class_id, user, klass)) {
+        return std::move(*refusal);
+    }
+    return guarded("plans fragment",
+                   [&] { return plans_fragment(class_id, klass); });
+}
+
+crow::response Server::serve_default_plan_fragment(const crow::request& req,
+                                                   std::int64_t class_id) {
+    User user;
+    ClassInfo klass;
+    if (auto refusal = refuse_unless_teaches(req, class_id, user, klass)) {
+        return std::move(*refusal);
+    }
+
+    const char* wanted = req.url_params.get("plan_id");
+    const std::int64_t plan_id = wanted == nullptr ? 0 : std::atoll(wanted);
+
+    return guarded("default plan", [&] {
+        if (plan_id > 0) {
+            const auto plan = store_->plan_by_id(plan_id);
+            if (!plan || plan->class_id != class_id || plan->archived) {
+                return json_error(404, "no such exam in this class");
+            }
+            store_->set_default_plan(class_id, plan_id);
+        } else {
+            store_->set_default_plan(class_id, std::nullopt);
+            //0: the class goes back to exams with no plan at all
+        }
+        return plans_fragment(class_id, klass);
+        //the whole list again, not just the row that changed: naming one plan
+        //the default unnames whichever held it, so a single row is never the
+        //only thing that moved
+    });
+}
+
+crow::response Server::plans_fragment(std::int64_t class_id,
+                                      const ClassInfo& klass) {
+    const LanguagePack* pack = languages_.find(klass.language_id);
+
+    std::vector<crow::json::wvalue> list;
+    for (const ExamPlan& plan : store_->class_plans(class_id, false)) {
+        if (plan.archived) continue;
+
+        std::vector<std::string> parts;
+        parts.push_back(format_length(plan.duration_seconds,
+                                      config_.exam_duration_seconds));
+        parts.push_back(plan.topics.empty()
+            ? "all topics"
+            : pluralise(static_cast<int>(plan.topics.size()), "topic", "topics"));
+        if (!plan.questions.empty()) {
+            parts.push_back(pluralise(static_cast<int>(plan.questions.size()),
+                                      "set question", "set questions"));
+        }
+        if (!plan.tenses.empty()) {
+            std::string tenses;
+            for (const TenseTarget& target : plan.tenses) {
+                if (!tenses.empty()) tenses += ", ";
+                tenses += pack ? tense_label(*pack, target.tense) : target.tense;
+            }
+            parts.push_back(tenses);
+        }
+
+        std::string meta;
+        for (const std::string& part : parts) {
+            if (!meta.empty()) meta += " \xc2\xb7 ";
+            meta += part;
+        }
+
+        crow::json::wvalue item;
+        item["id"] = plan.id;
+        item["class_id"] = class_id;
+        item["class_archived"] = klass.archived;
+        item["name"] = plan.name;
+        item["meta"] = meta;
+        item["is_default"] = plan.is_default;
+        item["hidden_from_students"] = !plan.visible;
+        //named for what it means rather than for the stored flag: a template
+        //reading {{#visible}} would have to say "not hidden" to show a badge
+        item["toggle_to"] = plan.is_default ? 0 : plan.id;
+        item["toggle_label"] = plan.is_default ? "Stop using as default"
+                                               : "Make default";
+        list.push_back(std::move(item));
+    }
+
+    crow::json::wvalue context;
+    context["any"] = !list.empty();
+    context["plans"] = std::move(list);
+    return html_fragment(
+        crow::mustache::load("plans.html").render(context).dump());
 }
 
 crow::response Server::serve_coverage(const crow::request& req,
