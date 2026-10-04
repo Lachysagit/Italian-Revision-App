@@ -50,10 +50,6 @@ public:
 
     const LanguagePack& language() const;
 
-    void set_student_name(std::string name);
-    //taken from the Start message alongside the key, and folded into every
-    //snapshot from then on. Empty is a valid answer: the examiner is simply
-    //told nothing rather than being handed a blank name to greet
     void set_gemini_key_name(std::string name);
     const std::string& gemini_key_name() const;
     //picked once from the Start message and reused by every turn in this
@@ -237,7 +233,7 @@ private:
     std::string last_question_;
     std::string last_answer_;
     std::string gemini_key_name_;
-    std::string student_name_;
+    //no student_name_: the examiner is never told who it is speaking to
 
     std::string current_topic_;
     std::vector<std::string> covered_topics_;

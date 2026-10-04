@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "sim/config.hpp"
 #include "sim/exam_plan.hpp"
 #include "sim/safety.hpp"
 #include "sim/safety/adjudicator.hpp"
@@ -34,7 +35,6 @@ struct User {
     std::int64_t id = 0;
     std::string email;
     std::string display_name;
-    std::string picture_url;
     bool is_teacher = false;
     std::string year_level;
     //'9'..'12', for class grouping and reporting. Does not route keys
@@ -52,8 +52,9 @@ struct GoogleProfile {
     std::string subject;   //Google's `sub`, stable forever - the join key
     std::string email;
     std::string display_name;
-    std::string picture_url;
 };
+//no picture: a Google profile photo of a minor is not needed to practise
+//Italian speaking, and A1 says collect only what the purpose requires
 
 const char* class_role_name(ClassRole role);
 std::optional<ClassRole> class_role_from_name(const std::string& name);
@@ -222,6 +223,24 @@ struct AttemptTurn {
     std::string text;
     std::string topic;
     std::int64_t created_at = 0;
+};
+
+// What one retention pass deleted. Reported rather than returned as a bare
+// total because the four windows are different promises, and a pass that
+// removed ten thousand transcripts and no safety events is a different thing
+// from one that removed ten of each.
+struct PurgeCounts {
+    int transcripts = 0;
+    int attempts = 0;
+    int safety_events = 0;
+    int auth_sessions = 0;
+    int usage_rows = 0;
+    int accounts = 0;
+
+    int total() const {
+        return transcripts + attempts + safety_events + auth_sessions +
+               usage_rows + accounts;
+    }
 };
 
 class Store {
@@ -465,6 +484,27 @@ public:
     void end_attempt(std::int64_t attempt_id, const std::string& reason);
     //WHERE ended_at IS NULL, so a disconnect arriving after a timer has already
     //closed the attempt cannot overwrite the more specific reason
+
+    // ---- retention, export and erasure (A3, A7) ----------------------------
+
+    PurgeCounts purge_expired(const RetentionPolicy& policy);
+    //deletes everything past its window and reports what went. Safe to call
+    //repeatedly and safe to call against a running server: every statement is
+    //a bounded DELETE under the same lock as every other write here. Server
+    //runs it at startup and once a day; --purge-now runs it by hand
+
+    std::string export_user_json(std::int64_t user_id);
+    std::string export_class_json(std::int64_t class_id);
+    //the A7 obligation: assessment-related records have to be retrievable by
+    //DoE, not merely visible in a dashboard. Attempts, turns, tense features,
+    //set questions and safety events, as JSON on stdout. The same call answers
+    //a student or parent asking what is held about them, which is the access
+    //half of the PPIP access-and-amendment principle
+
+    bool delete_user(std::int64_t user_id);
+    //erases the account and everything that cascades from it. Returns false
+    //when there was no such account. The foreign keys already did the work -
+    //this is the entry point they never had
 
 private:
     void exec(const char* sql);

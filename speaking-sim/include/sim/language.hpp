@@ -44,9 +44,10 @@ struct LanguagePack {
     std::string opinion_opener_label;
     //quoted back to the examiner as the phrase to open an opinion question with
 
-    std::string student_name_sentence;
-    //{0} stands in for the name. A System turn rather than an edit to the
-    //prompt file, which is shared by every session
+    std::string anonymity_sentence;
+    //sent as a System turn on every snapshot. It carries NO slot and names no
+    //student: this is the turn that used to supply the name and now withholds
+    //it. Keep it slotless - a {0} here is an invitation to put the name back
     std::string sample_question_header;
     //"...:" precedes the drawn questions; {0} stands in for the topic group
     std::string sample_question_footer;

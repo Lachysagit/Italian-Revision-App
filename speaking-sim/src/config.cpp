@@ -309,6 +309,17 @@ Config load_config() {
     config.free_daily_questions = daily("FREE_DAILY_QUESTIONS", 5);
     config.paid_daily_questions = daily("PAID_DAILY_QUESTIONS", 200);
 
+    config.retention.transcript_days = daily("TRANSCRIPT_RETENTION_DAYS", 90);
+    config.retention.attempt_days = daily("ATTEMPT_RETENTION_DAYS", 455);
+    config.retention.safety_event_days =
+        daily("SAFETY_EVENT_RETENTION_DAYS", 365);
+    config.retention.inactive_account_days =
+        daily("INACTIVE_ACCOUNT_RETENTION_DAYS", 0);
+    //the same helper as the daily caps: a value that is not a whole number
+    //falls back to the default with a line on stderr, and 0 means none. What
+    //0 means differs - no cap there, no deletion here - which is why the
+    //checks below say so out loud rather than letting it pass unremarked
+
     const std::string exam_text = get_env("EXAM_DURATION_SECONDS", "300");
     int exam_seconds = 300;
     if (!parse_int_strict(exam_text, exam_seconds)) {
@@ -447,6 +458,56 @@ Config load_config() {
         config.content_safety_endpoint.empty()) {
         throw std::runtime_error(
             "SAFETY_MODE is azure but CONTENT_SAFETY_ENDPOINT is empty.");
+    }
+
+    const RetentionPolicy& keep = config.retention;
+
+    if (config.auth_required &&
+        (keep.transcript_days == 0 || keep.attempt_days == 0 ||
+         keep.safety_event_days == 0)) {
+        throw std::runtime_error(
+            "AUTH_REQUIRED is on but one of TRANSCRIPT_RETENTION_DAYS, "
+            "ATTEMPT_RETENTION_DAYS or SAFETY_EVENT_RETENTION_DAYS is 0, "
+            "which means keep forever. A3 requires records be kept no longer "
+            "than necessary, and forever is not a period. Set a window for "
+            "each - the defaults and the reasoning are in "
+            "docs/compliance/data-retention.md.");
+        //INACTIVE_ACCOUNT_RETENTION_DAYS is deliberately NOT in this list. An
+        //account is deleted when a school asks for it, and an automatic sweep
+        //of children's accounts is a decision somebody signs rather than a
+        //default that arrives with the build
+    }
+
+    if (keep.attempt_days != 0 &&
+        (keep.transcript_days == 0 || keep.transcript_days > keep.attempt_days)) {
+        throw std::runtime_error(
+            "TRANSCRIPT_RETENTION_DAYS must be a window no longer than "
+            "ATTEMPT_RETENTION_DAYS: attempt_turns rows hang off exam_attempts "
+            "and are deleted with the parent, so a longer transcript window is "
+            "one the database cannot honour.");
+    }
+
+    if (keep.attempt_days != 0 &&
+        (keep.safety_event_days == 0 ||
+         keep.safety_event_days > keep.attempt_days)) {
+        throw std::runtime_error(
+            "SAFETY_EVENT_RETENTION_DAYS must be a window no longer than "
+            "ATTEMPT_RETENTION_DAYS: safety_events cascades from "
+            "exam_attempts, so purging the attempt takes the event with it and "
+            "the longer window would be a promise the schema breaks.");
+        //stated as a refusal rather than a warning because the failure is
+        //silent otherwise: the rows simply would not be there, and the first
+        //person to notice would be whoever went looking for an incident
+    }
+
+    if (keep.safety_event_days != 0 &&
+        keep.safety_event_days < keep.transcript_days) {
+        std::cerr << "SAFETY_EVENT_RETENTION_DAYS (" << keep.safety_event_days
+                  << ") is shorter than TRANSCRIPT_RETENTION_DAYS ("
+                  << keep.transcript_days
+                  << "): the record that something was flagged will be gone "
+                     "while the words that triggered it are still stored, "
+                     "which is backwards\n";
     }
 
     if (config.examiner_backend == ExaminerBackend::Gemini &&
