@@ -38,12 +38,23 @@ crow::response guarded(const char* what, F&& handler) {
     //exception loose on a Crow socket thread
 }
 
+crow::response json_ok();
+//{"ok": true}, for the routes whose whole answer is that the thing was done
+
 std::string string_field(const crow::json::rvalue& body, const char* key);
 //empty when the key is missing or not a string. rvalue::operator[] throws on a
 //missing key and .s() on a wrong type, so both are checked before reading
 
 std::optional<std::int64_t> int_field(const crow::json::rvalue& body,
                                       const char* key);
+
+std::optional<bool> bool_field(const crow::json::rvalue& body, const char* key);
+//nullopt unless the key holds a JSON true or false. Crow gives the two their
+//own types, so a 1, a "true" or a missing key all come back as "not said"
+
+std::string query_param(const crow::request& req, const char* name);
+//empty when the parameter is absent: url_params.get hands back a null pointer
+//for a miss, and a std::string built from one is undefined behaviour
 
 std::string cookie_value(const std::string& header, const std::string& name);
 //one cookie out of a raw Cookie header. The websocket handshake needs this

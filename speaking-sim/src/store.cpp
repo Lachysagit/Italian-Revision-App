@@ -13,8 +13,11 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "crow/json.h"
+
+#include "sim/text_util.hpp"
 
 namespace sim {
 
@@ -352,6 +355,148 @@ CREATE INDEX class_invites_open ON class_invites(email) WHERE claimed_at IS NULL
 //SQLite would accept either order, but the readable order is the one where a
 //table exists before it is pointed at
 
+void run_sql(sqlite3* db, const char* sql) {
+    char* error = nullptr;
+    if (sqlite3_exec(db, sql, nullptr, nullptr, &error) != SQLITE_OK) {
+        const std::string message = error != nullptr ? error : "unknown error";
+        sqlite3_free(error);
+        throw std::runtime_error("sqlite exec failed: " + message);
+    }
+}
+
+// Owns one prepared statement for the length of a scope, and turns every
+// failure into an exception. Every query in this file goes through it: the
+// account and attempt methods used to prepare, bind, step and finalize by
+// hand, and several of them never looked at what prepare or step returned, so
+// a failed write went by without a word.
+class Statement {
+public:
+    Statement(sqlite3* db, const char* sql) : db_(db) {
+        if (sqlite3_prepare_v2(db, sql, -1, &stmt_, nullptr) != SQLITE_OK) {
+            throw std::runtime_error(std::string("prepare: ") +
+                                     sqlite3_errmsg(db) + " in: " + sql);
+        }
+    }
+    Statement(sqlite3* db, const std::string& sql) : Statement(db, sql.c_str()) {}
+    ~Statement() { sqlite3_finalize(stmt_); }
+
+    Statement(const Statement&) = delete;
+    Statement& operator=(const Statement&) = delete;
+
+    Statement& int64(int index, std::int64_t value) {
+        sqlite3_bind_int64(stmt_, index, value);
+        return *this;
+    }
+    Statement& int64(int index, std::optional<std::int64_t> value) {
+        if (value) {
+            sqlite3_bind_int64(stmt_, index, *value);
+        } else {
+            sqlite3_bind_null(stmt_, index);
+        }
+        return *this;
+    }
+    //nullopt binds NULL: an attempt with no account, or with no class
+    Statement& text(int index, const std::string& value) {
+        sqlite3_bind_text(stmt_, index, value.c_str(), -1, SQLITE_TRANSIENT);
+        return *this;
+    }
+    Statement& blob(int index, const std::string& bytes) {
+        sqlite3_bind_blob(stmt_, index, bytes.data(),
+                          static_cast<int>(bytes.size()), SQLITE_TRANSIENT);
+        return *this;
+    }
+    Statement& real(int index, double value) {
+        sqlite3_bind_double(stmt_, index, value);
+        return *this;
+    }
+
+    bool row() {
+        const int rc = sqlite3_step(stmt_);
+        if (rc == SQLITE_ROW) return true;
+        if (rc == SQLITE_DONE) return false;
+        throw std::runtime_error(std::string("step: ") + sqlite3_errmsg(db_));
+    }
+    //true while there is a row to read, false once the statement is done
+
+    void run() {
+        while (row()) {
+        }
+    }
+
+    std::int64_t col_int64(int col) { return sqlite3_column_int64(stmt_, col); }
+    int col_int(int col) { return sqlite3_column_int(stmt_, col); }
+    bool col_bool(int col) { return sqlite3_column_int64(stmt_, col) != 0; }
+    bool col_null(int col) { return sqlite3_column_type(stmt_, col) == SQLITE_NULL; }
+    double col_double(int col) { return sqlite3_column_double(stmt_, col); }
+    std::string col_text(int col) {
+        const unsigned char* value = sqlite3_column_text(stmt_, col);
+        return value ? std::string(reinterpret_cast<const char*>(value))
+                     : std::string();
+    }
+
+private:
+    sqlite3* db_;
+    sqlite3_stmt* stmt_ = nullptr;
+};
+
+// Every remaining row of a statement, each read by `read`.
+template <typename Read>
+auto all_rows(Statement& stmt, Read&& read) {
+    std::vector<decltype(read(stmt))> rows;
+    while (stmt.row()) {
+        rows.push_back(read(stmt));
+    }
+    return rows;
+}
+
+// BEGIN IMMEDIATE, the body, COMMIT - or ROLLBACK and the body's own exception.
+// Eight methods each carried a copy of this, and the copies rolled back with a
+// call that could itself throw, which replaced the error worth reading with
+// "cannot rollback - no transaction is active".
+template <typename Body>
+void transaction(sqlite3* db, Body&& body) {
+    run_sql(db, "BEGIN IMMEDIATE");
+    try {
+        body();
+        run_sql(db, "COMMIT");
+    } catch (...) {
+        sqlite3_exec(db, "ROLLBACK", nullptr, nullptr, nullptr);
+        //result ignored on purpose: the exception already in flight is the
+        //one the caller needs, and a failed COMMIT has usually rolled back
+        throw;
+    }
+}
+
+//sessions are looked up by the hash of the cookie, never by the cookie itself:
+//a copied database file then contains no usable tokens.
+std::string sha256_raw(const std::string& text) {
+    unsigned char digest[SHA256_DIGEST_LENGTH];
+    SHA256(reinterpret_cast<const unsigned char*>(text.data()), text.size(),
+           digest);
+    return std::string(reinterpret_cast<const char*>(digest), sizeof(digest));
+}
+
+constexpr const char* kUserColumns =
+    "users.id, users.email, users.display_name, "
+    "users.is_teacher, users.year_level, users.subject_level, "
+    "users.preferred_language, users.onboarded_at";
+//table qualified: user_for_auth_token joins auth_sessions, which has its own
+//user_id, and an unqualified "id" is ambiguous there
+//one list, so read_user's column indices cannot drift from the queries
+
+User read_user(Statement& stmt) {
+    User user;
+    user.id = stmt.col_int64(0);
+    user.email = stmt.col_text(1);
+    user.display_name = stmt.col_text(2);
+    user.is_teacher = stmt.col_bool(3);
+    user.year_level = stmt.col_text(4);
+    user.subject_level = stmt.col_text(5);
+    user.preferred_language = stmt.col_text(6);
+    user.onboarded = !stmt.col_null(7);
+    return user;
+}
+
 }  // namespace
 
 Store::Store(const std::string& path) {
@@ -382,38 +527,23 @@ Store::~Store() {
 }
 
 void Store::exec(const char* sql) {
-    char* error = nullptr;
-    if (sqlite3_exec(db_, sql, nullptr, nullptr, &error) != SQLITE_OK) {
-        const std::string message = error != nullptr ? error : "unknown error";
-        sqlite3_free(error);
-        throw std::runtime_error("sqlite exec failed: " + message);
-    }
+    run_sql(db_, sql);
 }
 
 void Store::migrate() {
     std::lock_guard<std::recursive_mutex> lock(m_);
 
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db_, "PRAGMA user_version", -1, &stmt, nullptr) !=
-        SQLITE_OK) {
-        throw std::runtime_error("sqlite could not read user_version");
-    }
     int version = 0;
-    if (sqlite3_step(stmt) == SQLITE_ROW) {
-        version = sqlite3_column_int(stmt, 0);
+    {
+        Statement stmt(db_, "PRAGMA user_version");
+        if (stmt.row()) version = stmt.col_int(0);
     }
-    sqlite3_finalize(stmt);
 
     if (version < 1) {
-        exec("BEGIN");
-        try {
+        transaction(db_, [this] {
             exec(kSchemaV1);
             exec("PRAGMA user_version=1");
-            exec("COMMIT");
-        } catch (...) {
-            exec("ROLLBACK");
-            throw;
-        }
+        });
         std::cerr << "store: created schema version 1\n";
     }
     //one version, one CREATE: the database is still only ever made from
@@ -424,8 +554,7 @@ void Store::reconcile_crashed_attempts() {
     std::lock_guard<std::recursive_mutex> lock(m_);
 
     exec("UPDATE exam_attempts "
-         "SET ended_at = CAST(strftime('%s','now') AS INTEGER), "
-         "    end_reason = 'crash' "
+         "SET ended_at = unixepoch(), end_reason = 'crash' "
          "WHERE ended_at IS NULL");
     //a killed server leaves attempts open forever, and a dashboard showing them
     //as permanently in progress reads as a bug in the exam rather than in the
@@ -443,156 +572,69 @@ void Store::reconcile_crashed_attempts() {
     //the set questions of an exam the crash ended were not asked either
 }
 
-namespace {
-
-//sessions are looked up by the hash of the cookie, never by the cookie itself:
-//a copied database file then contains no usable tokens.
-std::string sha256_raw(const std::string& text) {
-    unsigned char digest[SHA256_DIGEST_LENGTH];
-    SHA256(reinterpret_cast<const unsigned char*>(text.data()), text.size(),
-           digest);
-    return std::string(reinterpret_cast<const char*>(digest), sizeof(digest));
-}
-
-User read_user_row(sqlite3_stmt* stmt) {
-    const auto text = [stmt](int col) {
-        const unsigned char* value = sqlite3_column_text(stmt, col);
-        return value ? std::string(reinterpret_cast<const char*>(value))
-                     : std::string();
-    };
-    User user;
-    user.id = sqlite3_column_int64(stmt, 0);
-    user.email = text(1);
-    user.display_name = text(2);
-    user.is_teacher = sqlite3_column_int(stmt, 3) != 0;
-    user.year_level = text(4);
-    user.subject_level = text(5);
-    user.preferred_language = text(6);
-    user.onboarded = sqlite3_column_type(stmt, 7) != SQLITE_NULL;
-    return user;
-}
-
-constexpr const char* kUserColumns =
-    "users.id, users.email, users.display_name, "
-    "users.is_teacher, users.year_level, users.subject_level, "
-    "users.preferred_language, users.onboarded_at";
-//table qualified: user_for_auth_token joins auth_sessions, which has its own
-//user_id, and an unqualified "id" is ambiguous there
-//one list, so read_user_row's column indices cannot drift from the queries
-
-}  // namespace
-
 User Store::upsert_google_user(const GoogleProfile& profile, bool is_teacher) {
     std::lock_guard<std::recursive_mutex> lock(m_);
 
-    exec("BEGIN IMMEDIATE");
-    try {
-        std::int64_t user_id = 0;
-
-        sqlite3_stmt* find = nullptr;
-        sqlite3_prepare_v2(db_,
-            "SELECT user_id FROM oauth_identities "
-            "WHERE provider = 'google' AND subject = ?",
-            -1, &find, nullptr);
-        sqlite3_bind_text(find, 1, profile.subject.c_str(), -1, SQLITE_TRANSIENT);
-        if (sqlite3_step(find) == SQLITE_ROW) {
-            user_id = sqlite3_column_int64(find, 0);
+    std::int64_t user_id = 0;
+    transaction(db_, [&] {
+        {
+            Statement by_subject(db_,
+                "SELECT user_id FROM oauth_identities "
+                "WHERE provider = 'google' AND subject = ?");
+            by_subject.text(1, profile.subject);
+            if (by_subject.row()) user_id = by_subject.col_int64(0);
         }
-        sqlite3_finalize(find);
 
         if (user_id == 0) {
-            sqlite3_stmt* by_email = nullptr;
-            sqlite3_prepare_v2(db_, "SELECT id FROM users WHERE email = ?",
-                               -1, &by_email, nullptr);
-            sqlite3_bind_text(by_email, 1, profile.email.c_str(), -1,
-                              SQLITE_TRANSIENT);
-            if (sqlite3_step(by_email) == SQLITE_ROW) {
-                user_id = sqlite3_column_int64(by_email, 0);
-            }
-            sqlite3_finalize(by_email);
+            Statement by_email(db_, "SELECT id FROM users WHERE email = ?");
+            by_email.text(1, profile.email);
+            if (by_email.row()) user_id = by_email.col_int64(0);
         }
         //the email fallback is what lets a roster entry and a first sign-in
         //meet on one row. email is COLLATE NOCASE, so the capitals a teacher
         //typed do not open a second account
 
         if (user_id == 0) {
-            sqlite3_stmt* insert = nullptr;
-            sqlite3_prepare_v2(db_,
+            Statement insert(db_,
                 "INSERT INTO users (email, display_name, "
                 " is_teacher, created_at, last_seen_at) "
-                "VALUES (?, ?, ?, CAST(strftime('%s','now') AS INTEGER), "
-                "        CAST(strftime('%s','now') AS INTEGER))",
-                -1, &insert, nullptr);
-            sqlite3_bind_text(insert, 1, profile.email.c_str(), -1, SQLITE_TRANSIENT);
-            sqlite3_bind_text(insert, 2, profile.display_name.c_str(), -1,
-                              SQLITE_TRANSIENT);
-            sqlite3_bind_int(insert, 3, is_teacher ? 1 : 0);
-            const int rc = sqlite3_step(insert);
-            sqlite3_finalize(insert);
-            if (rc != SQLITE_DONE) {
-                throw std::runtime_error(std::string("user insert: ") +
-                                         sqlite3_errmsg(db_));
-            }
+                "VALUES (?, ?, ?, unixepoch(), unixepoch())");
+            insert.text(1, profile.email).text(2, profile.display_name)
+                  .int64(3, is_teacher ? 1 : 0).run();
             user_id = sqlite3_last_insert_rowid(db_);
         } else {
-            sqlite3_stmt* update = nullptr;
-            sqlite3_prepare_v2(db_,
+            Statement update(db_,
                 "UPDATE users SET display_name = ?, "
                 " is_teacher = max(is_teacher, ?), "
-                " last_seen_at = CAST(strftime('%s','now') AS INTEGER) "
-                "WHERE id = ?",
-                -1, &update, nullptr);
-            sqlite3_bind_text(update, 1, profile.display_name.c_str(), -1,
-                              SQLITE_TRANSIENT);
-            sqlite3_bind_int(update, 2, is_teacher ? 1 : 0);
-            sqlite3_bind_int64(update, 3, user_id);
-            sqlite3_step(update);
-            sqlite3_finalize(update);
+                " last_seen_at = unixepoch() "
+                "WHERE id = ?");
+            update.text(1, profile.display_name).int64(2, is_teacher ? 1 : 0)
+                  .int64(3, user_id).run();
             //max() so dropping an address from TEACHER_EMAILS does not quietly
             //demote somebody mid-term. Taking the role away is a deliberate act
         }
 
-        sqlite3_stmt* link = nullptr;
-        sqlite3_prepare_v2(db_,
+        Statement link(db_,
             "INSERT OR IGNORE INTO oauth_identities (user_id, provider, subject) "
-            "VALUES (?, 'google', ?)",
-            -1, &link, nullptr);
-        sqlite3_bind_int64(link, 1, user_id);
-        sqlite3_bind_text(link, 2, profile.subject.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_step(link);
-        sqlite3_finalize(link);
+            "VALUES (?, 'google', ?)");
+        link.int64(1, user_id).text(2, profile.subject).run();
+    });
 
-        exec("COMMIT");
-
-        auto user = user_by_id(user_id);
-        if (!user) {
-            throw std::runtime_error("user vanished immediately after upsert");
-        }
-        return *user;
-    } catch (...) {
-        exec("ROLLBACK");
-        throw;
+    auto user = user_by_id(user_id);
+    if (!user) {
+        throw std::runtime_error("user vanished immediately after upsert");
     }
+    return *user;
 }
 
 std::optional<User> Store::user_by_id(std::int64_t user_id) {
     std::lock_guard<std::recursive_mutex> lock(m_);
 
-    const std::string sql =
-        std::string("SELECT ") + kUserColumns + " FROM users WHERE id = ?";
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(std::string("user_by_id prepare: ") +
-                                 sqlite3_errmsg(db_));
-    }
-    sqlite3_bind_int64(stmt, 1, user_id);
-
-    std::optional<User> found;
-    if (sqlite3_step(stmt) == SQLITE_ROW) {
-        found = read_user_row(stmt);
-    }
-    sqlite3_finalize(stmt);
-    return found;
+    Statement stmt(db_,
+        std::string("SELECT ") + kUserColumns + " FROM users WHERE id = ?");
+    stmt.int64(1, user_id);
+    if (!stmt.row()) return std::nullopt;
+    return read_user(stmt);
 }
 
 void Store::set_profile(std::int64_t user_id,
@@ -601,67 +643,34 @@ void Store::set_profile(std::int64_t user_id,
                         const std::string& preferred_language) {
     std::lock_guard<std::recursive_mutex> lock(m_);
 
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db_,
-            "UPDATE users SET year_level = ?, subject_level = ?, "
-            " preferred_language = ?, "
-            " onboarded_at = COALESCE(onboarded_at, "
-            "                         CAST(strftime('%s','now') AS INTEGER)) "
-            "WHERE id = ?",
-            -1, &stmt, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(std::string("set_profile prepare: ") +
-                                 sqlite3_errmsg(db_));
-    }
+    Statement stmt(db_,
+        "UPDATE users SET year_level = ?, subject_level = ?, "
+        " preferred_language = ?, "
+        " onboarded_at = COALESCE(onboarded_at, unixepoch()) "
+        "WHERE id = ?");
     //COALESCE so onboarded_at records the first time only: it is the answer to
     //"has this account finished signing up", not "when was the profile last
     //touched", and a later edit must not restart that clock
-
-    sqlite3_bind_text(stmt, 1, year_level.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 2, subject_level.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 3, preferred_language.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int64(stmt, 4, user_id);
-
-    const int rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
-    if (rc != SQLITE_DONE) {
-        throw std::runtime_error(std::string("set_profile step: ") +
-                                 sqlite3_errmsg(db_));
-    }
+    stmt.text(1, year_level).text(2, subject_level).text(3, preferred_language)
+        .int64(4, user_id).run();
 }
 
 bool Store::is_in_any_class(std::int64_t user_id) {
     std::lock_guard<std::recursive_mutex> lock(m_);
 
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db_,
-            "SELECT 1 FROM class_members "
-            "WHERE user_id = ? AND role = 'student' LIMIT 1",
-            -1, &stmt, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(std::string("is_in_any_class prepare: ") +
-                                 sqlite3_errmsg(db_));
-    }
-    sqlite3_bind_int64(stmt, 1, user_id);
-
-    const bool found = sqlite3_step(stmt) == SQLITE_ROW;
-    sqlite3_finalize(stmt);
-    return found;
+    Statement stmt(db_,
+        "SELECT 1 FROM class_members "
+        "WHERE user_id = ? AND role = 'student' LIMIT 1");
+    stmt.int64(1, user_id);
+    return stmt.row();
 }
 
 bool Store::has_created_class(std::int64_t user_id) {
     std::lock_guard<std::recursive_mutex> lock(m_);
 
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db_,
-            "SELECT 1 FROM classes WHERE owner_id = ? LIMIT 1",
-            -1, &stmt, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(std::string("has_created_class prepare: ") +
-                                 sqlite3_errmsg(db_));
-    }
-    sqlite3_bind_int64(stmt, 1, user_id);
-
-    const bool found = sqlite3_step(stmt) == SQLITE_ROW;
-    sqlite3_finalize(stmt);
-    return found;
+    Statement stmt(db_, "SELECT 1 FROM classes WHERE owner_id = ? LIMIT 1");
+    stmt.int64(1, user_id);
+    return stmt.row();
     //owner_id rather than class_members, and archived classes count: a teacher
     //who made a class and archived it has still been asked once
 }
@@ -671,29 +680,12 @@ std::string Store::create_auth_session(std::int64_t user_id,
     std::lock_guard<std::recursive_mutex> lock(m_);
 
     const std::string token = auth::random_token(32);
-    const std::string hash = sha256_raw(token);
 
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db_,
-            "INSERT INTO auth_sessions "
-            "(user_id, token_hash, created_at, expires_at, user_agent) "
-            "VALUES (?, ?, CAST(strftime('%s','now') AS INTEGER), "
-            "        CAST(strftime('%s','now','+30 days') AS INTEGER), ?)",
-            -1, &stmt, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(std::string("create_auth_session prepare: ") +
-                                 sqlite3_errmsg(db_));
-    }
-    sqlite3_bind_int64(stmt, 1, user_id);
-    sqlite3_bind_blob(stmt, 2, hash.data(), static_cast<int>(hash.size()),
-                      SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 3, user_agent.c_str(), -1, SQLITE_TRANSIENT);
-
-    const int rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
-    if (rc != SQLITE_DONE) {
-        throw std::runtime_error(std::string("create_auth_session step: ") +
-                                 sqlite3_errmsg(db_));
-    }
+    Statement stmt(db_,
+        "INSERT INTO auth_sessions "
+        "(user_id, token_hash, created_at, expires_at, user_agent) "
+        "VALUES (?, ?, unixepoch(), unixepoch('now','+30 days'), ?)");
+    stmt.int64(1, user_id).blob(2, sha256_raw(token)).text(3, user_agent).run();
     return token;
 }
 
@@ -702,27 +694,14 @@ std::optional<User> Store::user_for_auth_token(const std::string& token) {
 
     std::lock_guard<std::recursive_mutex> lock(m_);
 
-    const std::string hash = sha256_raw(token);
-    const std::string sql =
+    Statement stmt(db_,
         std::string("SELECT ") + kUserColumns +
         " FROM users JOIN auth_sessions ON auth_sessions.user_id = users.id "
         " WHERE auth_sessions.token_hash = ? "
-        "   AND auth_sessions.expires_at > CAST(strftime('%s','now') AS INTEGER)";
-
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(std::string("user_for_auth_token prepare: ") +
-                                 sqlite3_errmsg(db_));
-    }
-    sqlite3_bind_blob(stmt, 1, hash.data(), static_cast<int>(hash.size()),
-                      SQLITE_TRANSIENT);
-
-    std::optional<User> found;
-    if (sqlite3_step(stmt) == SQLITE_ROW) {
-        found = read_user_row(stmt);
-    }
-    sqlite3_finalize(stmt);
-    return found;
+        "   AND auth_sessions.expires_at > unixepoch()");
+    stmt.blob(1, sha256_raw(token));
+    if (!stmt.row()) return std::nullopt;
+    return read_user(stmt);
 }
 
 void Store::delete_auth_session(const std::string& token) {
@@ -730,14 +709,8 @@ void Store::delete_auth_session(const std::string& token) {
 
     std::lock_guard<std::recursive_mutex> lock(m_);
 
-    const std::string hash = sha256_raw(token);
-    sqlite3_stmt* stmt = nullptr;
-    sqlite3_prepare_v2(db_, "DELETE FROM auth_sessions WHERE token_hash = ?",
-                       -1, &stmt, nullptr);
-    sqlite3_bind_blob(stmt, 1, hash.data(), static_cast<int>(hash.size()),
-                      SQLITE_TRANSIENT);
-    sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
+    Statement stmt(db_, "DELETE FROM auth_sessions WHERE token_hash = ?");
+    stmt.blob(1, sha256_raw(token)).run();
 }
 
 std::int64_t Store::begin_attempt(std::optional<std::int64_t> user_id,
@@ -746,38 +719,17 @@ std::int64_t Store::begin_attempt(std::optional<std::int64_t> user_id,
                                   const std::string& gemini_key_name) {
     std::lock_guard<std::recursive_mutex> lock(m_);
 
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db_,
-            "INSERT INTO exam_attempts "
-            "(user_id, class_id, language_id, gemini_key_name, started_at) "
-            "VALUES (?, ?, ?, ?, CAST(strftime('%s','now') AS INTEGER))",
-            -1, &stmt, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(std::string("begin_attempt prepare: ") +
-                                 sqlite3_errmsg(db_));
-    }
-
-    if (user_id.has_value()) {
-        sqlite3_bind_int64(stmt, 1, *user_id);
-    } else {
-        sqlite3_bind_null(stmt, 1);
-        //a browser that never signed in, which AUTH_REQUIRED=false still
-        //allows. The column tightens once that switch is gone
-    }
-    if (class_id.has_value()) {
-        sqlite3_bind_int64(stmt, 2, *class_id);
-    } else {
-        sqlite3_bind_null(stmt, 2);
-        //private practice: no class, so no teacher can see it
-    }
-    sqlite3_bind_text(stmt, 3, language_id.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 4, gemini_key_name.c_str(), -1, SQLITE_TRANSIENT);
-
-    const int rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
-    if (rc != SQLITE_DONE) {
-        throw std::runtime_error(std::string("begin_attempt step: ") +
-                                 sqlite3_errmsg(db_));
-    }
+    Statement stmt(db_,
+        "INSERT INTO exam_attempts "
+        "(user_id, class_id, language_id, gemini_key_name, started_at) "
+        "VALUES (?, ?, ?, ?, unixepoch())");
+    stmt.int64(1, user_id)
+        .int64(2, class_id)
+        .text(3, language_id)
+        .text(4, gemini_key_name)
+        .run();
+    //a NULL user_id is a browser that never signed in, which AUTH_REQUIRED=false
+    //still allows; a NULL class_id is private practice, which no teacher can see
     return sqlite3_last_insert_rowid(db_);
 }
 
@@ -791,94 +743,48 @@ void Store::record_turn(std::int64_t attempt_id,
                         long long tts_ms) {
     std::lock_guard<std::recursive_mutex> lock(m_);
 
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db_,
-            "INSERT INTO attempt_turns "
-            "(attempt_id, turn_index, role, text, topic, "
-            " stt_ms, examiner_ms, tts_ms, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, "
-            "        CAST(strftime('%s','now') AS INTEGER))",
-            -1, &stmt, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(std::string("record_turn prepare: ") +
-                                 sqlite3_errmsg(db_));
-    }
+    Statement insert(db_,
+        "INSERT INTO attempt_turns "
+        "(attempt_id, turn_index, role, text, topic, "
+        " stt_ms, examiner_ms, tts_ms, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, unixepoch())");
+    insert.int64(1, attempt_id).int64(2, turn_index).text(3, role).text(4, text)
+          .text(5, topic).int64(6, stt_ms).int64(7, examiner_ms).int64(8, tts_ms)
+          .run();
 
-    sqlite3_bind_int64(stmt, 1, attempt_id);
-    sqlite3_bind_int(stmt, 2, turn_index);
-    sqlite3_bind_text(stmt, 3, role.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 4, text.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 5, topic.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int64(stmt, 6, stt_ms);
-    sqlite3_bind_int64(stmt, 7, examiner_ms);
-    sqlite3_bind_int64(stmt, 8, tts_ms);
-
-    const int rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
-    if (rc != SQLITE_DONE) {
-        throw std::runtime_error(std::string("record_turn step: ") +
-                                 sqlite3_errmsg(db_));
-    }
-
-    exec("UPDATE exam_attempts SET turn_count = turn_count + 1 "
-         "WHERE id = " + std::to_string(attempt_id));
-    //attempt_id is an integer this process generated, never client input, so
-    //there is nothing here for a bind to protect against
+    Statement count(db_,
+        "UPDATE exam_attempts SET turn_count = turn_count + 1 WHERE id = ?");
+    count.int64(1, attempt_id).run();
 }
 
 void Store::note_examiner_call(std::int64_t attempt_id,
                                const std::string& gemini_key_name) {
     std::lock_guard<std::recursive_mutex> lock(m_);
 
-    exec("UPDATE exam_attempts SET examiner_calls = examiner_calls + 1 "
-         "WHERE id = " + std::to_string(attempt_id));
+    Statement calls(db_,
+        "UPDATE exam_attempts SET examiner_calls = examiner_calls + 1 "
+        "WHERE id = ?");
+    calls.int64(1, attempt_id).run();
 
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db_,
-            "INSERT INTO key_usage_daily (day, gemini_key_name, call_count) "
-            "VALUES (date('now','localtime'), ?, 1) "
-            "ON CONFLICT(day, gemini_key_name) "
-            "DO UPDATE SET call_count = call_count + 1",
-            -1, &stmt, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(std::string("note_examiner_call prepare: ") +
-                                 sqlite3_errmsg(db_));
-    }
+    Statement usage(db_,
+        "INSERT INTO key_usage_daily (day, gemini_key_name, call_count) "
+        "VALUES (date('now','localtime'), ?, 1) "
+        "ON CONFLICT(day, gemini_key_name) "
+        "DO UPDATE SET call_count = call_count + 1");
     //localtime rather than UTC: a daily cap has to roll over at the student's
     //midnight, not at whatever hour UTC lands on
-
-    sqlite3_bind_text(stmt, 1, gemini_key_name.c_str(), -1, SQLITE_TRANSIENT);
-    const int rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
-    if (rc != SQLITE_DONE) {
-        throw std::runtime_error(std::string("note_examiner_call step: ") +
-                                 sqlite3_errmsg(db_));
-    }
+    usage.text(1, gemini_key_name).run();
 }
 
 void Store::end_attempt(std::int64_t attempt_id, const std::string& reason) {
     std::lock_guard<std::recursive_mutex> lock(m_);
 
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db_,
-            "UPDATE exam_attempts "
-            "SET ended_at = CAST(strftime('%s','now') AS INTEGER), "
-            "    end_reason = ? "
-            "WHERE id = ? AND ended_at IS NULL",
-            -1, &stmt, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(std::string("end_attempt prepare: ") +
-                                 sqlite3_errmsg(db_));
-    }
+    Statement stmt(db_,
+        "UPDATE exam_attempts SET ended_at = unixepoch(), end_reason = ? "
+        "WHERE id = ? AND ended_at IS NULL");
     //ended_at IS NULL makes this idempotent: the socket closing after the timer
     //already ended the exam must not relabel a clean finish as a disconnect
-
-    sqlite3_bind_text(stmt, 1, reason.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int64(stmt, 2, attempt_id);
-
-    const int rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
-    if (rc != SQLITE_DONE) {
-        throw std::runtime_error(std::string("end_attempt step: ") +
-                                 sqlite3_errmsg(db_));
-    }
+    stmt.text(1, reason).int64(2, attempt_id).run();
 
     if (sqlite3_changes(db_) > 0) {
         close_required_questions(attempt_id);
@@ -890,62 +796,6 @@ void Store::end_attempt(std::int64_t attempt_id, const std::string& reason) {
 // ---- classes ---------------------------------------------------------------
 
 namespace {
-
-// Owns one prepared statement for the length of a scope. The methods above
-// finalize by hand; the class methods below take several steps each, and a
-// throw between prepare and finalize is exactly where a hand-written finalize
-// gets skipped.
-class Statement {
-public:
-    Statement(sqlite3* db, const char* sql) : db_(db) {
-        if (sqlite3_prepare_v2(db, sql, -1, &stmt_, nullptr) != SQLITE_OK) {
-            throw std::runtime_error(std::string("prepare: ") +
-                                     sqlite3_errmsg(db) + " in: " + sql);
-        }
-    }
-    ~Statement() { sqlite3_finalize(stmt_); }
-
-    Statement(const Statement&) = delete;
-    Statement& operator=(const Statement&) = delete;
-
-    Statement& int64(int index, std::int64_t value) {
-        sqlite3_bind_int64(stmt_, index, value);
-        return *this;
-    }
-    Statement& text(int index, const std::string& value) {
-        sqlite3_bind_text(stmt_, index, value.c_str(), -1, SQLITE_TRANSIENT);
-        return *this;
-    }
-    Statement& real(int index, double value) {
-        sqlite3_bind_double(stmt_, index, value);
-        return *this;
-    }
-
-    bool row() {
-        const int rc = sqlite3_step(stmt_);
-        if (rc == SQLITE_ROW) return true;
-        if (rc == SQLITE_DONE) return false;
-        throw std::runtime_error(std::string("step: ") + sqlite3_errmsg(db_));
-    }
-    //true while there is a row to read, false once the statement is done
-
-    void run() {
-        while (row()) {
-        }
-    }
-
-    std::int64_t col_int64(int col) { return sqlite3_column_int64(stmt_, col); }
-    double col_double(int col) { return sqlite3_column_double(stmt_, col); }
-    std::string col_text(int col) {
-        const unsigned char* value = sqlite3_column_text(stmt_, col);
-        return value ? std::string(reinterpret_cast<const char*>(value))
-                     : std::string();
-    }
-
-private:
-    sqlite3* db_;
-    sqlite3_stmt* stmt_ = nullptr;
-};
 
 // Eight characters from 31 symbols: about 8.5 * 10^11 codes, far past guessing
 // range. 0/O and 1/I/L are left out because the code is read off a board.
@@ -1057,27 +907,21 @@ ClassInfo Store::create_class(std::int64_t owner_id,
                               const std::string& language_id) {
     std::lock_guard<std::recursive_mutex> lock(m_);
 
-    exec("BEGIN IMMEDIATE");
     std::int64_t class_id = 0;
-    try {
+    transaction(db_, [&] {
         Statement insert(db_,
             "INSERT INTO classes (name, language_id, join_code, owner_id, "
             " created_at) "
-            "VALUES (?, ?, ?, ?, CAST(strftime('%s','now') AS INTEGER))");
+            "VALUES (?, ?, ?, ?, unixepoch())");
         insert.text(1, name).text(2, language_id).text(3, unused_join_code())
               .int64(4, owner_id).run();
         class_id = sqlite3_last_insert_rowid(db_);
 
         Statement member(db_,
             "INSERT INTO class_members (class_id, user_id, role, added_at) "
-            "VALUES (?, ?, 'teacher', CAST(strftime('%s','now') AS INTEGER))");
+            "VALUES (?, ?, 'teacher', unixepoch())");
         member.int64(1, class_id).int64(2, owner_id).run();
-
-        exec("COMMIT");
-    } catch (...) {
-        exec("ROLLBACK");
-        throw;
-    }
+    });
 
     auto created = class_by_id(class_id);
     if (!created) {
@@ -1095,7 +939,7 @@ std::vector<ClassInfo> Store::classes_for_user(std::int64_t user_id) {
         "FROM classes c JOIN class_members m ON m.class_id = c.id "
         "WHERE m.user_id = ? "
         "ORDER BY c.archived_at IS NOT NULL, c.name COLLATE NOCASE";
-    Statement stmt(db_, sql.c_str());
+    Statement stmt(db_, sql);
     stmt.int64(1, user_id);
 
     std::vector<ClassInfo> classes;
@@ -1112,7 +956,7 @@ std::optional<ClassInfo> Store::class_by_id(std::int64_t class_id) {
 
     const std::string sql =
         std::string("SELECT ") + kClassColumns + " FROM classes c WHERE c.id = ?";
-    Statement stmt(db_, sql.c_str());
+    Statement stmt(db_, sql);
     stmt.int64(1, class_id);
     if (!stmt.row()) return std::nullopt;
     return read_class(stmt);
@@ -1128,7 +972,7 @@ std::optional<ClassInfo> Store::class_by_join_code(const std::string& code) {
     const std::string sql =
         std::string("SELECT ") + kClassColumns +
         " FROM classes c WHERE c.join_code = ? AND c.archived_at IS NULL";
-    Statement stmt(db_, sql.c_str());
+    Statement stmt(db_, sql);
     stmt.text(1, normalised);
     if (!stmt.row()) return std::nullopt;
     return read_class(stmt);
@@ -1151,7 +995,7 @@ bool Store::add_member(std::int64_t class_id, std::int64_t user_id,
 
     Statement stmt(db_,
         "INSERT OR IGNORE INTO class_members (class_id, user_id, role, added_at) "
-        "VALUES (?, ?, ?, CAST(strftime('%s','now') AS INTEGER))");
+        "VALUES (?, ?, ?, unixepoch())");
     stmt.int64(1, class_id).int64(2, user_id).text(3, class_role_name(role)).run();
     return sqlite3_changes(db_) > 0;
     //OR IGNORE on the (class_id, user_id) key: a second join is a no-op rather
@@ -1227,7 +1071,7 @@ void Store::set_archived(std::int64_t class_id, bool archived) {
     Statement stmt(db_,
         archived
             ? "UPDATE classes SET archived_at = COALESCE(archived_at, "
-              "  CAST(strftime('%s','now') AS INTEGER)) WHERE id = ?"
+              "  unixepoch()) WHERE id = ?"
             : "UPDATE classes SET archived_at = NULL WHERE id = ?");
     stmt.int64(1, class_id).run();
 }
@@ -1238,8 +1082,7 @@ InviteResult Store::invite_emails(std::int64_t class_id,
     std::lock_guard<std::recursive_mutex> lock(m_);
 
     InviteResult result;
-    exec("BEGIN IMMEDIATE");
-    try {
+    transaction(db_, [&] {
         for (const std::string& email : emails) {
             Statement find(db_, "SELECT id FROM users WHERE email = ?");
             find.text(1, email);
@@ -1249,8 +1092,7 @@ InviteResult Store::invite_emails(std::int64_t class_id,
                 Statement member(db_,
                     "INSERT OR IGNORE INTO class_members "
                     "(class_id, user_id, role, added_at) "
-                    "VALUES (?, ?, 'student', "
-                    "        CAST(strftime('%s','now') AS INTEGER))");
+                    "VALUES (?, ?, 'student', unixepoch())");
                 member.int64(1, class_id).int64(2, user_id).run();
                 (sqlite3_changes(db_) > 0 ? result.added : result.existing)++;
                 continue;
@@ -1262,16 +1104,11 @@ InviteResult Store::invite_emails(std::int64_t class_id,
             Statement invite(db_,
                 "INSERT OR IGNORE INTO class_invites "
                 "(class_id, email, role, invited_by, created_at) "
-                "VALUES (?, ?, 'student', ?, "
-                "        CAST(strftime('%s','now') AS INTEGER))");
+                "VALUES (?, ?, 'student', ?, unixepoch())");
             invite.int64(1, class_id).text(2, email).int64(3, invited_by).run();
             (sqlite3_changes(db_) > 0 ? result.invited : result.existing)++;
         }
-        exec("COMMIT");
-    } catch (...) {
-        exec("ROLLBACK");
-        throw;
-    }
+    });
     return result;
     //one transaction for the whole paste, so a list that fails half way leaves
     //no half-invited class behind it
@@ -1309,8 +1146,7 @@ int Store::claim_invites(const User& user) {
     std::lock_guard<std::recursive_mutex> lock(m_);
 
     int joined = 0;
-    exec("BEGIN IMMEDIATE");
-    try {
+    transaction(db_, [&] {
         Statement open(db_,
             "SELECT i.id, i.class_id, i.role FROM class_invites i "
             "JOIN classes c ON c.id = i.class_id "
@@ -1337,22 +1173,18 @@ int Store::claim_invites(const User& user) {
             Statement member(db_,
                 "INSERT OR IGNORE INTO class_members "
                 "(class_id, user_id, role, added_at) "
-                "VALUES (?, ?, ?, CAST(strftime('%s','now') AS INTEGER))");
+                "VALUES (?, ?, ?, unixepoch())");
             member.int64(1, invite.class_id).int64(2, user.id)
                   .text(3, class_role_name(role)).run();
             joined += sqlite3_changes(db_) > 0 ? 1 : 0;
 
             Statement claim(db_,
                 "UPDATE class_invites "
-                "SET claimed_at = CAST(strftime('%s','now') AS INTEGER) "
+                "SET claimed_at = unixepoch() "
                 "WHERE id = ?");
             claim.int64(1, invite.id).run();
         }
-        exec("COMMIT");
-    } catch (...) {
-        exec("ROLLBACK");
-        throw;
-    }
+    });
     return joined;
 }
 
@@ -1369,14 +1201,9 @@ std::vector<AttemptSummary> Store::class_attempts(std::int64_t class_id,
         "ORDER BY a.started_at DESC, a.id DESC LIMIT ?";
     //current members only: removing a student from the class is also what
     //takes their exams out of the teacher's view
-    Statement stmt(db_, sql.c_str());
+    Statement stmt(db_, sql);
     stmt.int64(1, class_id).int64(2, limit);
-
-    std::vector<AttemptSummary> attempts;
-    while (stmt.row()) {
-        attempts.push_back(read_attempt(stmt));
-    }
-    return attempts;
+    return all_rows(stmt, read_attempt);
 }
 
 std::vector<AttemptSummary> Store::user_attempts(std::int64_t user_id,
@@ -1390,14 +1217,9 @@ std::vector<AttemptSummary> Store::user_attempts(std::int64_t user_id,
         "ORDER BY a.started_at DESC, a.id DESC LIMIT ?";
     //no membership clause: these are the caller's own attempts, so leaving a
     //class hides them from that teacher but never from the student who sat them
-    Statement stmt(db_, sql.c_str());
+    Statement stmt(db_, sql);
     stmt.int64(1, user_id).int64(2, limit);
-
-    std::vector<AttemptSummary> attempts;
-    while (stmt.row()) {
-        attempts.push_back(read_attempt(stmt));
-    }
-    return attempts;
+    return all_rows(stmt, read_attempt);
 }
 
 std::optional<AttemptSummary> Store::attempt_by_id(std::int64_t attempt_id) {
@@ -1407,7 +1229,7 @@ std::optional<AttemptSummary> Store::attempt_by_id(std::int64_t attempt_id) {
         std::string("SELECT ") + kAttemptColumns +
         " FROM exam_attempts a LEFT JOIN users u ON u.id = a.user_id "
         "WHERE a.id = ?";
-    Statement stmt(db_, sql.c_str());
+    Statement stmt(db_, sql);
     stmt.int64(1, attempt_id);
     if (!stmt.row()) return std::nullopt;
     return read_attempt(stmt);
@@ -1478,11 +1300,7 @@ void Store::record_safety_event(std::int64_t attempt_id,
 
     std::lock_guard<std::recursive_mutex> lock(m_);
 
-    std::string matches;
-    for (const std::string& match : verdict.matches) {
-        if (!matches.empty()) matches += ',';
-        matches += match;
-    }
+    const std::string matches = join(verdict.matches, ",");
     //normalised terms only. If this line ever grows a fallback to the
     //utterance, read the comment above CREATE TABLE safety_events first
 
@@ -1492,7 +1310,7 @@ void Store::record_safety_event(std::int64_t attempt_id,
         " detector, matches, created_at, original_action, adjudication, "
         " reason_code) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, "
-        "        CAST(strftime('%s','now') AS INTEGER), ?, ?, ?)");
+        "        unixepoch(), ?, ?, ?)");
     stmt.int64(1, attempt_id)
         .int64(2, turn_index)
         .text(3, to_string(stage))
@@ -1517,12 +1335,9 @@ std::vector<SafetyEvent> Store::attempt_safety_events(std::int64_t attempt_id) {
     const std::string sql = "SELECT " + std::string(kSafetyColumns) +
         " FROM safety_events s WHERE s.attempt_id = ? "
         "ORDER BY s.turn_index, s.id";
-    Statement stmt(db_, sql.c_str());
+    Statement stmt(db_, sql);
     stmt.int64(1, attempt_id);
-
-    std::vector<SafetyEvent> events;
-    while (stmt.row()) events.push_back(read_safety_event(stmt));
-    return events;
+    return all_rows(stmt, read_safety_event);
 }
 
 std::vector<SafetyEvent> Store::class_escalations(std::int64_t class_id) {
@@ -1535,7 +1350,7 @@ std::vector<SafetyEvent> Store::class_escalations(std::int64_t class_id) {
         "JOIN users u ON u.id = a.user_id "
         "WHERE a.class_id = ? AND s.action = 'escalate' "
         "ORDER BY s.created_at DESC, s.id DESC";
-    Statement stmt(db_, sql.c_str());
+    Statement stmt(db_, sql);
     stmt.int64(1, class_id);
 
     std::vector<SafetyEvent> events;
@@ -1617,13 +1432,10 @@ std::vector<ExamPlan> Store::class_plans(std::int64_t class_id,
         "WHERE p.class_id = ?" +
         (include_archived ? "" : " AND p.archived_at IS NULL") +
         " ORDER BY p.archived_at IS NOT NULL, p.name COLLATE NOCASE";
-    Statement stmt(db_, sql.c_str());
+    Statement stmt(db_, sql);
     stmt.int64(1, class_id);
 
-    std::vector<ExamPlan> plans;
-    while (stmt.row()) {
-        plans.push_back(read_plan(stmt));
-    }
+    std::vector<ExamPlan> plans = all_rows(stmt, read_plan);
     for (ExamPlan& plan : plans) {
         load_plan_children(db_, plan);
     }
@@ -1636,7 +1448,7 @@ std::optional<ExamPlan> Store::plan_by_id(std::int64_t plan_id) {
     const std::string sql =
         std::string("SELECT ") + kPlanColumns +
         " FROM exam_plans p JOIN classes c ON c.id = p.class_id WHERE p.id = ?";
-    Statement stmt(db_, sql.c_str());
+    Statement stmt(db_, sql);
     stmt.int64(1, plan_id);
     if (!stmt.row()) return std::nullopt;
 
@@ -1649,16 +1461,13 @@ ExamPlan Store::save_plan(const ExamPlan& plan, std::int64_t user_id) {
     std::lock_guard<std::recursive_mutex> lock(m_);
 
     std::int64_t plan_id = plan.id;
-    exec("BEGIN IMMEDIATE");
-    try {
+    transaction(db_, [&] {
         if (plan_id == 0) {
             Statement insert(db_,
                 "INSERT INTO exam_plans (class_id, name, duration_seconds, "
                 " require_opinion, paraphrase_ok, visible, created_by, "
                 " created_at, updated_at) "
-                "VALUES (?, ?, NULLIF(?, 0), ?, ?, ?, ?, "
-                "        CAST(strftime('%s','now') AS INTEGER), "
-                "        CAST(strftime('%s','now') AS INTEGER))");
+                "VALUES (?, ?, NULLIF(?, 0), ?, ?, ?, ?, unixepoch(), unixepoch())");
             insert.int64(1, plan.class_id).text(2, plan.name)
                   .int64(3, plan.duration_seconds)
                   .int64(4, plan.require_opinion ? 1 : 0)
@@ -1671,7 +1480,7 @@ ExamPlan Store::save_plan(const ExamPlan& plan, std::int64_t user_id) {
                 "UPDATE exam_plans SET name = ?, "
                 " duration_seconds = NULLIF(?, 0), require_opinion = ?, "
                 " paraphrase_ok = ?, visible = ?, "
-                " updated_at = CAST(strftime('%s','now') AS INTEGER) "
+                " updated_at = unixepoch() "
                 "WHERE id = ? AND class_id = ?");
             update.text(1, plan.name).int64(2, plan.duration_seconds)
                   .int64(3, plan.require_opinion ? 1 : 0)
@@ -1686,9 +1495,8 @@ ExamPlan Store::save_plan(const ExamPlan& plan, std::int64_t user_id) {
 
             for (const char* table : {"exam_plan_topics", "exam_plan_questions",
                                       "exam_plan_tenses"}) {
-                const std::string sql =
-                    std::string("DELETE FROM ") + table + " WHERE plan_id = ?";
-                Statement clear(db_, sql.c_str());
+                Statement clear(db_,
+                    std::string("DELETE FROM ") + table + " WHERE plan_id = ?");
                 clear.int64(1, plan_id).run();
             }
         }
@@ -1719,12 +1527,7 @@ ExamPlan Store::save_plan(const ExamPlan& plan, std::int64_t user_id) {
             row.int64(1, plan_id).text(2, target.tense)
                .int64(3, target.min_count).run();
         }
-
-        exec("COMMIT");
-    } catch (...) {
-        exec("ROLLBACK");
-        throw;
-    }
+    });
 
     auto saved = plan_by_id(plan_id);
     if (!saved) {
@@ -1757,29 +1560,23 @@ void Store::set_default_plan(std::int64_t class_id,
 void Store::archive_plan(std::int64_t plan_id) {
     std::lock_guard<std::recursive_mutex> lock(m_);
 
-    exec("BEGIN IMMEDIATE");
-    try {
+    transaction(db_, [&] {
         Statement archive(db_,
             "UPDATE exam_plans SET archived_at = COALESCE(archived_at, "
-            "  CAST(strftime('%s','now') AS INTEGER)) WHERE id = ?");
+            "  unixepoch()) WHERE id = ?");
         archive.int64(1, plan_id).run();
 
         Statement unset(db_,
             "UPDATE classes SET default_plan_id = NULL WHERE default_plan_id = ?");
         unset.int64(1, plan_id).run();
-        exec("COMMIT");
-    } catch (...) {
-        exec("ROLLBACK");
-        throw;
-    }
+    });
 }
 
 void Store::attach_plan(std::int64_t attempt_id, const ExamPlan& plan,
                         const std::string& plan_json) {
     std::lock_guard<std::recursive_mutex> lock(m_);
 
-    exec("BEGIN IMMEDIATE");
-    try {
+    transaction(db_, [&] {
         Statement attempt(db_,
             "UPDATE exam_attempts SET plan_id = ?, plan_name = ?, plan_json = ?, "
             "  opinion_required = ? WHERE id = ?");
@@ -1796,11 +1593,7 @@ void Store::attach_plan(std::int64_t attempt_id, const ExamPlan& plan,
             row.int64(1, attempt_id).int64(2, question.id).text(3, question.text)
                .text(4, question.topic_group).run();
         }
-        exec("COMMIT");
-    } catch (...) {
-        exec("ROLLBACK");
-        throw;
-    }
+    });
 }
 
 void Store::record_turn_features(std::int64_t attempt_id, int turn_index,
@@ -1967,8 +1760,8 @@ PaidAccess Store::paid_access(std::int64_t user_id) {
     Statement stmt(db_,
         "SELECT l.kind, l.ends_at FROM licences l "
         "WHERE l.revoked_at IS NULL "
-        "  AND l.starts_at <= CAST(strftime('%s','now') AS INTEGER) "
-        "  AND l.ends_at   >  CAST(strftime('%s','now') AS INTEGER) "
+        "  AND l.starts_at <= unixepoch() "
+        "  AND l.ends_at   >  unixepoch() "
         "  AND ((l.kind = 'user' AND l.target_id = ?1) "
         "    OR (l.kind = 'class' AND l.target_id IN "
         "        (SELECT m.class_id FROM class_members m "
@@ -1995,9 +1788,9 @@ std::int64_t Store::grant_licence(const std::string& kind, std::int64_t target_i
 
     Statement stmt(db_,
         "INSERT INTO licences (kind, target_id, starts_at, ends_at, note, created_at) "
-        "VALUES (?, ?, CAST(strftime('%s','now') AS INTEGER), "
-        "        CAST(strftime('%s', ? || ' 23:59:59', 'utc') AS INTEGER), ?, "
-        "        CAST(strftime('%s','now') AS INTEGER))");
+        "VALUES (?, ?, unixepoch(), "
+        "        unixepoch(? || ' 23:59:59', 'utc'), ?, "
+        "        unixepoch())");
     //'utc' reads the date as local time and converts it, so the licence ends
     //at the end of that day where the server is, not in Greenwich
     stmt.text(1, kind).int64(2, target_id).text(3, until_date).text(4, note).run();
@@ -2008,7 +1801,7 @@ bool Store::revoke_licence(std::int64_t licence_id) {
     std::lock_guard<std::recursive_mutex> lock(m_);
 
     Statement stmt(db_,
-        "UPDATE licences SET revoked_at = CAST(strftime('%s','now') AS INTEGER) "
+        "UPDATE licences SET revoked_at = unixepoch() "
         "WHERE id = ? AND revoked_at IS NULL");
     stmt.int64(1, licence_id).run();
     return sqlite3_changes(db_) > 0;
@@ -2142,8 +1935,7 @@ PurgeCounts Store::purge_expired(const RetentionPolicy& policy) {
 
     {
         Statement stmt(db_,
-            "DELETE FROM auth_sessions WHERE expires_at < "
-            "CAST(strftime('%s','now') AS INTEGER)");
+            "DELETE FROM auth_sessions WHERE expires_at < unixepoch()");
         stmt.run();
         counts.auth_sessions = sqlite3_changes(db_);
         //no window of its own: a session past its own expiry is already
@@ -2151,18 +1943,19 @@ PurgeCounts Store::purge_expired(const RetentionPolicy& policy) {
         //should not contain
     }
 
-    if (const auto cutoff = cutoff_for(policy.attempt_days)) {
-        const std::string day_cutoff = "date('now','localtime','-" +
-                                       std::to_string(policy.attempt_days) +
-                                       " days')";
-        exec("DELETE FROM usage_daily WHERE day < " + day_cutoff);
-        counts.usage_rows = sqlite3_changes(db_);
-        exec("DELETE FROM key_usage_daily WHERE day < " + day_cutoff);
-        counts.usage_rows += sqlite3_changes(db_);
+    if (policy.attempt_days > 0) {
+        const std::string modifier =
+            "-" + std::to_string(policy.attempt_days) + " days";
+        for (const char* table : {"usage_daily", "key_usage_daily"}) {
+            Statement stmt(db_,
+                std::string("DELETE FROM ") + table +
+                " WHERE day < date('now','localtime', ?)");
+            stmt.text(1, modifier).run();
+            counts.usage_rows += sqlite3_changes(db_);
+        }
         //these two store a date string rather than a timestamp, so they get
-        //SQLite's own date arithmetic. The day count is interpolated, never a
-        //parameter: it is an int from config that has already been parsed as
-        //one, and SQLite will not take a bound value inside date()
+        //SQLite's own date arithmetic, with the "-N days" modifier bound like
+        //any other value
     }
 
     if (const auto cutoff = cutoff_for(policy.inactive_account_days)) {
@@ -2297,60 +2090,58 @@ bool Store::delete_user(std::int64_t user_id) {
         if (!exists.row()) return false;
     }
 
-    exec("BEGIN IMMEDIATE");
     try {
-        // Most of this person's data goes on its own: oauth_identities,
-        // auth_sessions, class_members, room_members, usage_daily,
-        // profile_change_requests.user_id and exam_attempts all declare
-        // ON DELETE CASCADE, and PRAGMA foreign_keys=ON in the constructor is
-        // what makes that true at runtime rather than only on paper. Deleting
-        // the attempts in turn takes their turns, features, set questions and
-        // safety events.
-        //
-        // What does NOT cascade are the columns naming this person as the one
-        // who DID something to somebody else's row. Those are cleared or
-        // removed here, in the same transaction, so a half-erased account is
-        // not a state the database can be left in.
-        Statement decided(db_,
-            "UPDATE profile_change_requests SET decided_by = NULL "
-            "WHERE decided_by = ?");
-        decided.int64(1, user_id).run();
-        //a teacher who approved a year-level change is not part of the record
-        //of that change once they are gone. The request itself belongs to the
-        //student and stays with them
+        transaction(db_, [&] {
+            // Most of this person's data goes on its own: oauth_identities,
+            // auth_sessions, class_members, room_members, usage_daily,
+            // profile_change_requests.user_id and exam_attempts all declare
+            // ON DELETE CASCADE, and PRAGMA foreign_keys=ON in the constructor is
+            // what makes that true at runtime rather than only on paper. Deleting
+            // the attempts in turn takes their turns, features, set questions and
+            // safety events.
+            //
+            // What does NOT cascade are the columns naming this person as the one
+            // who DID something to somebody else's row. Those are cleared or
+            // removed here, in the same transaction, so a half-erased account is
+            // not a state the database can be left in.
+            Statement decided(db_,
+                "UPDATE profile_change_requests SET decided_by = NULL "
+                "WHERE decided_by = ?");
+            decided.int64(1, user_id).run();
+            //a teacher who approved a year-level change is not part of the record
+            //of that change once they are gone. The request itself belongs to the
+            //student and stays with them
 
-        Statement speaker(db_,
-            "UPDATE attempt_turns SET speaker_user_id = NULL "
-            "WHERE speaker_user_id = ?");
-        speaker.int64(1, user_id).run();
+            Statement speaker(db_,
+                "UPDATE attempt_turns SET speaker_user_id = NULL "
+                "WHERE speaker_user_id = ?");
+            speaker.int64(1, user_id).run();
 
-        Statement room_speaker(db_,
-            "UPDATE room_turns SET speaker_user_id = NULL "
-            "WHERE speaker_user_id = ?");
-        room_speaker.int64(1, user_id).run();
+            Statement room_speaker(db_,
+                "UPDATE room_turns SET speaker_user_id = NULL "
+                "WHERE speaker_user_id = ?");
+            room_speaker.int64(1, user_id).run();
 
-        Statement nominated(db_,
-            "UPDATE room_turns SET nominated_user_id = NULL "
-            "WHERE nominated_user_id = ?");
-        nominated.int64(1, user_id).run();
-        //these three are nullable and belong to a shared exam somebody else
-        //may still be entitled to. Blanking the pointer erases the person
-        //without deleting another student's turn
+            Statement nominated(db_,
+                "UPDATE room_turns SET nominated_user_id = NULL "
+                "WHERE nominated_user_id = ?");
+            nominated.int64(1, user_id).run();
+            //these three are nullable and belong to a shared exam somebody else
+            //may still be entitled to. Blanking the pointer erases the person
+            //without deleting another student's turn
 
-        Statement licences(db_,
-            "DELETE FROM licences WHERE kind = 'user' AND target_id = ?");
-        licences.int64(1, user_id).run();
-        //no foreign key of its own, so nothing would have caught this. A
-        //licence row naming a deleted id is both a dangling record and, once
-        //ids are reused, a licence somebody else inherits
+            Statement licences(db_,
+                "DELETE FROM licences WHERE kind = 'user' AND target_id = ?");
+            licences.int64(1, user_id).run();
+            //no foreign key of its own, so nothing would have caught this. A
+            //licence row naming a deleted id is both a dangling record and, once
+            //ids are reused, a licence somebody else inherits
 
-        Statement gone(db_, "DELETE FROM users WHERE id = ?");
-        gone.int64(1, user_id).run();
-
-        exec("COMMIT");
+            Statement gone(db_, "DELETE FROM users WHERE id = ?");
+            gone.int64(1, user_id).run();
+        });
         return true;
     } catch (const std::exception& e) {
-        exec("ROLLBACK");
         throw std::runtime_error(
             std::string("could not delete the account: ") + e.what() +
             ". An account that still OWNS things another person depends on - "

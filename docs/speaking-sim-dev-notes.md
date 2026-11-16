@@ -84,9 +84,11 @@ and silently falls back to a one-line built-in system prompt rather than
 erroring, and a set-but-missing `WHISPER_MODEL_PATH` aborts startup outright.
 
 The pipeline can be exercised without a browser by driving the WebSocket
-directly — send `{"type":"start"}` for the opening examiner question, or
+directly — send `{"type":"start"}` for the opening examiner question, then
 stream 16 kHz mono PCM16 binary frames followed by `{"type":"stop"}` for a full
-STT → examiner → TTS turn. `third_party/whisper.cpp/samples/jfk.wav` is already
+STT → examiner → TTS turn. The Start is not optional: an answer on a socket
+with no running exam is refused, because Start is where the account checks and
+the daily allowance are applied. `third_party/whisper.cpp/samples/jfk.wav` is already
 in the right format for that.
 
 ## Turn latency

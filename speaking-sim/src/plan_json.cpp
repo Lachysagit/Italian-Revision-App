@@ -1,11 +1,13 @@
 #include "sim/plan_json.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <set>
 #include <utility>
 #include <vector>
 
 #include "sim/tenses.hpp"
+#include "sim/text_util.hpp"
 #include "sim/topics.hpp"
 
 namespace sim {
@@ -57,12 +59,6 @@ constexpr std::size_t kMaxQuestionBytes = 300;
 constexpr std::size_t kMaxQuestions = 20;
 constexpr int kMaxTenseCount = 5;
 
-std::string trimmed(const std::string& text) {
-    const std::size_t begin = text.find_first_not_of(" \t\r\n");
-    if (begin == std::string::npos) return std::string();
-    return text.substr(begin, text.find_last_not_of(" \t\r\n") - begin + 1);
-}
-
 bool flag(const crow::json::rvalue& body, const char* key, bool fallback) {
     if (!body.has(key)) return fallback;
     if (body[key].t() == crow::json::type::True) return true;
@@ -86,32 +82,32 @@ std::optional<ExamPlan> plan_from_json(const crow::json::rvalue& body,
 
     ExamPlan plan;
     if (body.has("name") && body["name"].t() == crow::json::type::String) {
-        plan.name = trimmed(std::string(body["name"].s()));
+        plan.name = trim(std::string(body["name"].s()));
     }
     if (plan.name.empty() || plan.name.size() > kMaxNameBytes) {
         error = "give the exam a name of up to 80 characters";
         return std::nullopt;
     }
 
+    std::int64_t requested = 0;
     if (body.has("duration_seconds") &&
         body["duration_seconds"].t() == crow::json::type::Number) {
-        plan.duration_seconds = static_cast<int>(body["duration_seconds"].i());
+        requested = body["duration_seconds"].i();
     }
-    if (plan.duration_seconds < 0) {
+    if (requested < 0) {
         error = "an exam cannot be a negative length";
         return std::nullopt;
         //caught before the bounds check so the sentence names the real
         //mistake: "shorter than 1 minute" reads like a rounding quarrel
     }
-    if (plan.duration_seconds != 0 &&
-        (plan.duration_seconds < kMinExamSeconds ||
-         plan.duration_seconds > kMaxExamSeconds)) {
+    if (requested != 0 &&
+        (requested < kMinExamSeconds || requested > kMaxExamSeconds)) {
         error = std::string("an exam runs between ") +
                 std::to_string(kMinExamSeconds / 60) + " and " +
                 std::to_string(kMaxExamSeconds / 60) + " minutes, or 0 to keep " +
                 "the standard length; " +
-                std::to_string(plan.duration_seconds) + " seconds is " +
-                (plan.duration_seconds < kMinExamSeconds ? "shorter" : "longer") +
+                std::to_string(requested) + " seconds is " +
+                (requested < kMinExamSeconds ? "shorter" : "longer") +
                 " than that";
         return std::nullopt;
         //refused rather than clamped, unlike EXAM_DURATION_SECONDS: an operator
@@ -120,6 +116,9 @@ std::optional<ExamPlan> plan_from_json(const crow::json::rvalue& body,
         //nobody chose. The bounds are read from the constants so the sentence
         //cannot go stale the way the old fixed "1 and 60 minutes" did
     }
+    plan.duration_seconds = static_cast<int>(requested);
+    //narrowed only after the bounds check, on the full 64-bit value: cast
+    //first, 4294967596 wrapped round to 300 and was saved as a five minute exam
 
     plan.require_opinion = flag(body, "require_opinion", true);
     plan.paraphrase_ok = flag(body, "paraphrase_ok", false);
@@ -146,7 +145,7 @@ std::optional<ExamPlan> plan_from_json(const crow::json::rvalue& body,
             if (item.t() != crow::json::type::Object) continue;
             PlanQuestion question;
             if (item.has("text") && item["text"].t() == crow::json::type::String) {
-                question.text = trimmed(std::string(item["text"].s()));
+                question.text = trim(std::string(item["text"].s()));
             }
             if (question.text.empty()) continue;
             //a blank row in the editor is skipped rather than refused
@@ -209,9 +208,9 @@ std::optional<ExamPlan> plan_from_json(const crow::json::rvalue& body,
                 return std::nullopt;
             }
             if (item.has("min_count") && item["min_count"].t() == crow::json::type::Number) {
-                target.min_count = static_cast<int>(item["min_count"].i());
+                target.min_count = static_cast<int>(std::clamp<std::int64_t>(
+                    item["min_count"].i(), 1, kMaxTenseCount));
             }
-            target.min_count = std::clamp(target.min_count, 1, kMaxTenseCount);
             if (seen.insert(target.tense).second) plan.tenses.push_back(target);
         }
     }

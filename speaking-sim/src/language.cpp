@@ -2,8 +2,9 @@
 
 #include <fstream>
 #include <iostream>
-#include <sstream>
 #include <utility>
+
+#include "sim/text_util.hpp"
 
 namespace sim {
 
@@ -15,17 +16,13 @@ constexpr const char* kDefaultLanguageId = "italian";
 // line: it keeps a server with no prompt files on disk running an exam rather
 // than refusing to start, and the log line is the only clue anyone gets.
 std::string load_prompt(const std::string& path, const std::string& fallback) {
-    std::ifstream file(path);
-    if (!file) {
-        std::cerr << "prompt file " << path
-                  << " not found, falling back to a built-in one line prompt"
-                  << std::endl;
-        return fallback;
+    if (auto text = read_file(path, std::ios::in)) {
+        return std::move(*text);
     }
-
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    return buffer.str();
+    std::cerr << "prompt file " << path
+              << " not found, falling back to a built-in one line prompt"
+              << std::endl;
+    return fallback;
 }
 
 // prompts/<id>/<name>, with prompts/<name> tried after it for italian alone.
@@ -148,9 +145,11 @@ std::vector<LanguagePack> built_in_packs() {
     };
 
     return {std::move(italian), std::move(german)};
-    //ASCII transliterations throughout (heisst, Pruefung, fuer). These strings
-    //are compiled in and travel to Gemini as part of a System turn; the prompt
-    //files on disk carry the real orthography, and the model reads both alike
+    //ASCII transliterations (heisst, Pruefung, fuer) in everything that goes
+    //to Gemini as part of a System turn; the prompt files on disk carry the
+    //real orthography, and the model reads both alike. The one exception is
+    //tense_labels, which a teacher reads on the dashboard and so keeps its
+    //umlauts
 }
 
 // LANGUAGE_VOICES wins, then PIPER_MODEL_PATH for italian alone, then the
@@ -173,6 +172,20 @@ std::string resolve_voice(const LanguagePack& pack, const Config& config) {
 }
 
 }  // namespace
+
+std::string LanguagePack::tense_label(const std::string& key) const {
+    for (const auto& [tense, name] : tense_labels) {
+        if (tense == key) return name;
+    }
+    return key;
+}
+
+std::string LanguagePack::tense_example(const std::string& key) const {
+    for (const auto& [tense, example] : tense_examples) {
+        if (tense == key) return example;
+    }
+    return std::string();
+}
 
 std::vector<std::string> configured_voice_paths(const Config& config) {
     std::vector<std::string> paths;

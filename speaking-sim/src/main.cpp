@@ -1,8 +1,8 @@
 #include <cmath>
+#include <csignal>
 #include <cstdlib>
 #include <ctime>
 #include <cstdint>
-#include <cstring>
 #include <exception>
 #include <iostream>
 #include <memory>
@@ -88,7 +88,12 @@ bool is_date(const std::string& text) {
         if (i == 4 || i == 7) continue;
         if (text[i] < '0' || text[i] > '9') return false;
     }
-    return true;
+    const int month = std::atoi(text.substr(5, 2).c_str());
+    const int day = std::atoi(text.substr(8, 2).c_str());
+    return month >= 1 && month <= 12 && day >= 1 && day <= 31;
+    //the range as well as the shape: 2027-13-45 passed the shape check and
+    //reached SQLite, whose date functions answer an impossible date with NULL,
+    //so the operator was shown "NOT NULL constraint failed: licences.ends_at"
 }
 
 std::string format_day(std::int64_t seconds) {
@@ -245,40 +250,48 @@ int records_command(int argc, char** argv) {
     //wanted - the cascade does not keep a copy
 }
 
-}  // namespace
-
-int main(int argc, char** argv) {
-    if (argc > 1 && std::strcmp(argv[1], "--check-audio-encode") == 0) {
+// The one-shot commands: each runs and exits without starting the server.
+int run_command(int argc, char** argv) {
+    const std::string command = argv[1];
+    if (command == "--check-audio-encode") {
         return check_audio_encode();
     }
-    if (argc > 1 && (std::strcmp(argv[1], "--grant-licence") == 0 ||
-                     std::strcmp(argv[1], "--revoke-licence") == 0 ||
-                     std::strcmp(argv[1], "--list-licences") == 0)) {
-        try {
-            return licence_command(argc, argv);
-        } catch (const std::exception& error) {
-            std::cerr << "fatal: " << error.what() << std::endl;
-            return 1;
-        }
-    }
-    if (argc > 1 && (std::strcmp(argv[1], "--purge-now") == 0 ||
-                     std::strcmp(argv[1], "--export-attempts") == 0 ||
-                     std::strcmp(argv[1], "--delete-user") == 0)) {
-        try {
-            return records_command(argc, argv);
-        } catch (const std::exception& error) {
-            std::cerr << "fatal: " << error.what() << std::endl;
-            return 1;
-        }
-    }
-    if (argc > 1 && std::strcmp(argv[1], "--check-tenses") == 0) {
+    if (command == "--check-tenses") {
         return sim::check_tense_rules();
         //the tense rules feed the teacher's report, and a rule that misfires
         //does not crash - it quietly credits a student with the wrong tense.
         //This runs them over known sentences without a server or a student
     }
+    if (command == "--grant-licence" || command == "--revoke-licence" ||
+        command == "--list-licences") {
+        return licence_command(argc, argv);
+    }
+    if (command == "--purge-now" || command == "--export-attempts" ||
+        command == "--delete-user") {
+        return records_command(argc, argv);
+    }
+    std::cerr << "unknown option " << command << "\n";
+    return 2;
+    //refused rather than ignored: "--purge-nwo" used to fall through and
+    //start the whole server, which is the last thing a typo should do
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+#ifndef _WIN32
+    std::signal(SIGPIPE, SIG_IGN);
+    //PiperTTS writes the reply to a child's stdin. If piper has already died -
+    //a missing binary, a bad voice - that write raises SIGPIPE, whose default
+    //action kills the whole server and every exam on it. Ignored, the write
+    //fails with EPIPE instead and the turn goes out as text with no audio
+#endif
 
     try {
+        if (argc > 1 && argv[1][0] == '-') {
+            return run_command(argc, argv);
+        }
+
         sim::Config config = sim::load_config();
         //read all settings from environment variables once at startup
 

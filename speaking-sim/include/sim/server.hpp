@@ -17,6 +17,7 @@
 #include "sim/config.hpp"
 #include "sim/examiner.hpp"
 #include "sim/language.hpp"
+#include "sim/protocol.hpp"
 #include "sim/rate_limit.hpp"
 #include "sim/safety/safety_chain.hpp"
 #include "sim/stt.hpp"
@@ -144,6 +145,9 @@ private:
     // ---- exam plans: src/plan_api.cpp ------------------------------------
 
     void register_plan_routes();
+    std::optional<ExamPlan> plan_taught_by(std::int64_t plan_id, const User& user);
+    //the plan, if it exists and the caller teaches the class it belongs to.
+    //nullopt for both misses, so a plan id cannot be probed for existence
     crow::response serve_class_plans(const crow::request& req, std::int64_t class_id);
     crow::response serve_plan(const crow::request& req, std::int64_t plan_id);
     crow::response serve_archive_plan(const crow::request& req, std::int64_t plan_id);
@@ -181,6 +185,17 @@ private:
     void handle_control(crow::websocket::connection& conn,
                         const std::shared_ptr<Session>& session,
                         const std::string& data);
+    void handle_start(crow::websocket::connection& conn,
+                      const std::shared_ptr<Session>& session,
+                      const Message& message);
+    //every check an exam has to pass before it begins, then the opening job
+    void handle_stop(crow::websocket::connection& conn,
+                     const std::shared_ptr<Session>& session,
+                     const Message& message);
+    //one answer: refused outside a running exam, otherwise a pipeline job
+
+    void end_exam(Session& session, const char* reason);
+    //marks the session over and closes its attempt row with that reason
     void enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                               const std::shared_ptr<Session>& session,
                               std::vector<std::int16_t> utterance_audio,
@@ -190,17 +205,16 @@ private:
     //answer_only stops the job after STT: the transcript is sent and recorded,
     //and the examiner is never called. It is how the last answer of an expired
     //exam is still heard without buying the student another question
+    void send_message(const std::shared_ptr<ConnHandle>& handle,
+                      MessageType type, const std::string& payload);
+    //a type and a payload and nothing else, which is all three of these send
     void send_status(const std::shared_ptr<ConnHandle>& handle,
                      const std::string& text);
     void send_busy(const std::shared_ptr<ConnHandle>& handle);
-
     void send_error(const std::shared_ptr<ConnHandle>& handle,
                     const std::string& text);
- 
-
     void send_transcript(const std::shared_ptr<ConnHandle>& handle,
                          const std::string& text);
-    
 
     void send_examiner_text(const std::shared_ptr<ConnHandle>& handle,
                             const std::string& reply,
@@ -209,7 +223,12 @@ private:
                             int exam_seconds = 0,
                             int questions_left = -1);
     //exam_seconds rides on the opening question only, the moment the server's
-    //clock starts, so the browser's countdown starts from the same instant
+    //clock starts, so the browser's countdown starts from the same instant.
+    //sample_rate is the session's own voice rate, passed in because two
+    //languages on one server produce different ones; it is ignored when
+    //speech_follows is false, since no frame is coming to describe. Sent ahead
+    //of the audio so the question is painted the moment the examiner returns
+    //it, rather than behind the TTS it describes
 
     struct Allowance {
         bool paid = false;
@@ -233,11 +252,6 @@ private:
     //writes the student's answer and the rule-based tenses in it, and returns
     //the turn's index so the examiner's own labels can be added once its reply
     //arrives. -1 when the attempt is not being recorded
-    //sample_rate is the session's own voice rate, passed in because two
-    //languages on one server produce different ones. Ignored when
-    //speech_follows is false, since no frame is coming to describe
-    //split off from the old send_examiner_result so the question can be painted
-    //the moment the examiner returns it, rather than behind the TTS it describes
 
     void send_speech(const std::shared_ptr<ConnHandle>& handle,
                      const std::vector<std::int16_t>& speech);
@@ -253,8 +267,11 @@ private:
         Continue,
         //Allow or Mask. transcript now holds what everything downstream sees
         TurnStopped,
-        //Halt or Escalate. The student has been told, the question refunded and
-        //the attempt closed where the action called for it. The caller returns
+        //Halt. The student has been told and the question refunded; the exam
+        //goes on, so the caller hands the turn back before it returns
+        ExamStopped,
+        //Escalate. All of the above, and the exam has been ended and the page
+        //told so. The caller returns and sends nothing more
     };
 
     ScreenOutcome screen_student_speech(Session& session,

@@ -64,7 +64,20 @@ bool decode_jwt_payload(const std::string& jwt, crow::json::rvalue& out) {
 
     if (decoded.empty()) return false;
     out = crow::json::load(decoded);
-    return static_cast<bool>(out);
+    return out && out.t() == crow::json::type::Object;
+    //an object, not merely valid JSON: every claim below is read with has(),
+    //which throws on a payload that decoded to a bare string or number
+}
+
+std::string base64url_unpadded(const unsigned char* data, std::size_t size) {
+    std::string encoded = crow::utility::base64encode_urlsafe(data, size);
+    while (!encoded.empty() && encoded.back() == '=') {
+        encoded.pop_back();
+    }
+    return encoded;
+    //unpadded: the '=' survives a URL only as %3D, these values travel as query
+    //parameters and cookie values alike, and Google rejects a padded S256
+    //challenge outright
 }
 
 //the first name out of a fuller one. `separators` differs by source: a real
@@ -82,8 +95,8 @@ std::string first_word(const std::string& text, const char* separators = " 	") {
     if (!word.empty()) {
         word[0] = static_cast<char>(
             std::toupper(static_cast<unsigned char>(word[0])));
-        //an email local part is usually lowercase, and the examiner says this
-        //name aloud. Only the first byte, so a UTF-8 name is left untouched
+        //an email local part is usually lowercase, and the page greets the
+        //student with this. Only the first byte, so a UTF-8 name is untouched
     }
     return word;
 }
@@ -104,14 +117,7 @@ std::string random_token(std::size_t bytes) {
         //never silently fall back to a weaker source: this value is the only
         //thing standing between a guess and somebody else's session
     }
-    std::string encoded =
-        crow::utility::base64encode_urlsafe(buffer.data(), buffer.size());
-    while (!encoded.empty() && encoded.back() == '=') {
-        encoded.pop_back();
-    }
-    return encoded;
-    //unpadded, like the PKCE challenge below. The '=' survives a URL only as
-    //%3D, and these values travel as query parameters and cookie values alike
+    return base64url_unpadded(buffer.data(), buffer.size());
 }
 
 std::string pkce_challenge(const std::string& verifier) {
@@ -119,13 +125,7 @@ std::string pkce_challenge(const std::string& verifier) {
     SHA256(reinterpret_cast<const unsigned char*>(verifier.data()),
            verifier.size(), digest);
 
-    std::string encoded =
-        crow::utility::base64encode_urlsafe(digest, sizeof(digest));
-    while (!encoded.empty() && encoded.back() == '=') {
-        encoded.pop_back();
-    }
-    //S256 challenges are unpadded base64url. Google rejects the padding
-    return encoded;
+    return base64url_unpadded(digest, sizeof(digest));
 }
 
 std::string redirect_uri(const Config& config) {
@@ -220,7 +220,8 @@ SignInResult exchange_code(const Config& config,
     }
 
     const crow::json::rvalue token = crow::json::load(response->body);
-    if (!token || !has_string(token, "id_token")) {
+    if (!token || token.t() != crow::json::type::Object ||
+        !has_string(token, "id_token")) {
         result.error = "Google's reply could not be read";
         std::cerr << "oauth: token reply had no id_token\n";
         return result;
@@ -277,14 +278,14 @@ SignInResult exchange_code(const Config& config,
     //keep it out of the database and out of every log is never to copy it off
     //the token in the first place
 
-    //a first name, not a full one: this is what the examiner calls the student
-    //out loud, and "Buongiorno, Lachlan Carlton" is not how a person is greeted.
+    //a first name, not a full one: this is what the page and the teacher's
+    //roster show, and a greeting does not use a full name. It never reaches the
+    //examiner - see the note on Message in protocol.hpp.
     //given_name first because Google has already worked out which part that is
     //- splitting "name" guesses wrong wherever the family name comes first
     if (has_string(claims, "given_name")) {
         result.profile.display_name = first_word(claims["given_name"].s());
-        //through first_word as well: a given_name is occasionally two words,
-        //and this is read out by the examiner
+        //through first_word as well: a given_name is occasionally two words
     } else if (has_string(claims, "name")) {
         result.profile.display_name = first_word(claims["name"].s());
     }

@@ -508,7 +508,6 @@ public:
 
 private:
     void exec(const char* sql);
-    void exec(const std::string& sql) { exec(sql.c_str()); }
     void migrate();
     void reconcile_crashed_attempts();
     std::string unused_join_code();

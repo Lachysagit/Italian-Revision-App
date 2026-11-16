@@ -269,7 +269,6 @@ add_executable(speaking-sim
     src/static_files.cpp
     src/store.cpp
     src/auth/google_oauth.cpp
-    src/auth/session_cookie.cpp
     src/text_clean.cpp
     src/topics.cpp
     src/translate.cpp

@@ -4,8 +4,10 @@
 #include <cctype>
 #include <cstdint>
 #include <fstream>
-#include <sstream>
 #include <string>
+#include <utility>
+
+#include "sim/text_util.hpp"
 
 namespace sim {
 
@@ -17,14 +19,21 @@ constexpr std::int64_t kMaxChunkBytes = 1024 * 1024;
 //browser simply asks for the next slice
 
 bool all_digits(const std::string& text) {
-    if (text.empty()) {
+    return !text.empty() &&
+           std::all_of(text.begin(), text.end(), [](unsigned char character) {
+               return std::isdigit(character) != 0;
+           });
+}
+
+// A byte offset out of a Range header. Capped at 18 digits, which is past any
+// file this serves and still inside an int64: std::stoll throws on a longer
+// run, and "bytes=99999999999999999999-" used to turn into a 500.
+bool parse_offset(const std::string& text, std::int64_t& out) {
+    constexpr std::size_t kMaxDigits = 18;
+    if (!all_digits(text) || text.size() > kMaxDigits) {
         return false;
     }
-    for (unsigned char character : text) {
-        if (!std::isdigit(character)) {
-            return false;
-        }
-    }
+    out = std::stoll(text);
     return true;
 }
 
@@ -53,11 +62,8 @@ bool parse_range_header(const std::string& header,
 
     if (first.empty()) {
         //suffix form: "bytes=-500" asks for the LAST 500 bytes, not the first
-        if (!all_digits(second)) {
-            return false;
-        }
-        const std::int64_t wanted = std::stoll(second);
-        if (wanted <= 0) {
+        std::int64_t wanted = 0;
+        if (!parse_offset(second, wanted) || wanted <= 0) {
             return false;
         }
         start = std::max<std::int64_t>(0, size - wanted);
@@ -65,32 +71,25 @@ bool parse_range_header(const std::string& header,
         return true;
     }
 
-    if (!all_digits(first)) {
+    if (!parse_offset(first, start)) {
         return false;
     }
-    start = std::stoll(first);
-
     if (second.empty()) {
         end = size - 1;
-    } else if (all_digits(second)) {
-        end = std::stoll(second);
-    } else {
-        return false;
+        return true;
     }
-    return true;
+    return parse_offset(second, end);
 }
 
 }  // namespace
 
 crow::response serve_static_file(const std::string& path, const char* content_type) {
-    std::ifstream file(path, std::ios::binary);
-    if (!file) {
+    auto body = read_file(path);
+    if (!body) {
         return crow::response(404, path + " not found");
     }
 
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    crow::response response(buffer.str());
+    crow::response response(std::move(*body));
     response.set_header("Content-Type", content_type);
     return response;
 }
@@ -149,13 +148,10 @@ crow::response serve_range_file(const crow::request& req,
     std::int64_t start = 0;
     std::int64_t end = 0;
     if (header.empty() || !parse_range_header(header, size, start, end)) {
-        file.seekg(0);
-        std::stringstream buffer;
-        buffer << file.rdbuf();
-        crow::response response(buffer.str());
-        response.set_header("Content-Type", content_type);
+        crow::response response = serve_static_file(path, content_type);
         response.set_header("Accept-Ranges", "bytes");
         return response;
+        //no Range, or one this server does not understand: the whole file
     }
 
     if (start >= size || start > end) {

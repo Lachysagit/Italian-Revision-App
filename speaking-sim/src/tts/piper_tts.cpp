@@ -3,14 +3,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <fstream>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "crow/json.h"
+
+#include "sim/text_util.hpp"
 
 #ifdef SIM_HAVE_PIPER
 #ifdef _WIN32
@@ -33,15 +33,12 @@ int read_voice_sample_rate(const std::string& model_path) {
         return kPiperDefaultRate;
     }
 
-    std::ifstream file(model_path + ".json");
-    if (!file) {
+    const auto text = read_file(model_path + ".json");
+    if (!text) {
         return kPiperDefaultRate;
     }
 
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-
-    const crow::json::rvalue parsed = crow::json::load(buffer.str());
+    const crow::json::rvalue parsed = crow::json::load(*text);
     if (!parsed || parsed.t() != crow::json::type::Object ||
         !parsed.has("audio")) {
         return kPiperDefaultRate;
@@ -204,6 +201,7 @@ std::string run_piper(const std::string& model_path, const std::string& text) {
 }
 #endif
 
+#ifdef SIM_HAVE_PIPER
 // piper --output_raw writes little-endian int16 with no container. The old
 // pcm_from_wav() skipped a 44-byte header, losing the first 22 samples.
 std::vector<std::int16_t> pcm_from_raw(const std::string& raw) {
@@ -216,6 +214,9 @@ std::vector<std::int16_t> pcm_from_raw(const std::string& raw) {
     }
     return samples;
 }
+#endif
+//only synthesize()'s piper branch calls it, so it is compiled only there: a
+//build without the submodule used to warn about an unused function
 
 }  // namespace
 

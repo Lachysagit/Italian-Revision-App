@@ -4,20 +4,9 @@
 #include <fstream>
 #include <utility>
 
+#include "sim/text_util.hpp"
+
 namespace sim {
-
-namespace {
-
-// \r included: the file is edited on Windows, so every line arrives with one.
-std::string trim(const std::string& text) {
-    const std::size_t begin = text.find_first_not_of(" \t\r\n");
-    if (begin == std::string::npos) {
-        return {};
-    }
-    return text.substr(begin, text.find_last_not_of(" \t\r\n") - begin + 1);
-}
-
-}  // namespace
 
 QuestionBank QuestionBank::load(const std::string& path) {
     QuestionBank bank;
