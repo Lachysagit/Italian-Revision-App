@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
+#include <utility>
 #include <vector>
 
 namespace sim {
@@ -84,24 +85,19 @@ std::vector<std::string> tags_for_groups(const std::vector<std::string>& groups)
 
 TopicMenu topic_menu(std::mt19937& rng, const std::vector<std::string>& allowed,
                      const std::string& first) {
-    std::vector<std::string_view> groups;
-    for (const TagGroup& entry : kTagGroups) {
-        if (std::find(groups.begin(), groups.end(), entry.group) !=
-            groups.end()) {
-            continue;
+    std::vector<std::string> groups = all_topic_groups();
+    if (!allowed.empty()) {
+        std::vector<std::string> offered;
+        for (std::string& group : groups) {
+            if (std::find(allowed.begin(), allowed.end(), group) != allowed.end()) {
+                offered.push_back(std::move(group));
+            }
         }
-        if (!allowed.empty() &&
-            std::find(allowed.begin(), allowed.end(), entry.group) == allowed.end()) {
-            continue;
-            //a plan that names its topics gets only those in the menu, so the
-            //examiner is never offered a topic the teacher left out
-        }
-        groups.push_back(entry.group);
-    }
-    if (groups.empty()) {
-        return topic_menu(rng, {}, first);
-        //a plan naming only unknown groups falls back to the whole syllabus
-        //rather than an exam with nothing to talk about
+        if (!offered.empty()) groups = std::move(offered);
+        //a plan that names its topics gets only those in the menu, so the
+        //examiner is never offered a topic the teacher left out. A plan
+        //naming only unknown groups keeps the whole syllabus rather than an
+        //exam with nothing to talk about
     }
 
     std::shuffle(groups.begin(), groups.end(), rng);
@@ -113,19 +109,17 @@ TopicMenu topic_menu(std::mt19937& rng, const std::vector<std::string>& allowed,
     }
 
     TopicMenu menu;
-    if (!groups.empty()) {
-        menu.first = std::string(groups.front());
-        //the group string as the bank keys it, uncapitalised: examples_for()
-        //and openers_for() match it exactly
-    }
-    for (const std::string_view group : groups) {
+    menu.first = groups.front();
+    //the group string as the bank keys it, uncapitalised: examples_for() and
+    //openers_for() match it exactly. Never empty: kTagGroups is a fixed table
+    for (const std::string& group : groups) {
         if (!menu.text.empty()) {
             menu.text += '\n';
         }
         menu.text += "- ";
         menu.text += static_cast<char>(std::toupper(
             static_cast<unsigned char>(group.front())));
-        menu.text.append(group.substr(1));
+        menu.text.append(group, 1, std::string::npos);
     }
     return menu;
     //capitalised to match the wording the prompt files carried before the list

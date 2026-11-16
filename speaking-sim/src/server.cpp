@@ -26,6 +26,7 @@
 #include "sim/question_bank.hpp"
 #include "sim/static_files.hpp"
 #include "sim/text_clean.hpp"
+#include "sim/text_util.hpp"
 #include "sim/topics.hpp"
 #include "sim/translate.hpp"
 #include "sim/session.hpp"
@@ -48,11 +49,52 @@ constexpr std::size_t kMaxTranslateChars = 1000;
 // The route only ever serves this app's two directions, so the language pair is
 // checked against a list rather than passed through. Without this the request
 // body could steer the outbound call at any language Google offers.
-bool is_supported_language(const std::string& code) {
-    return code == "it" || code == "en" || code == "de";
-    //de was missing while the listening page already offered German, so its
-    //translate box answered every lookup with an unsupported-pair error
-}
+constexpr const char* kTranslateEnglish = "en";
+//the other half of every pair. The exam-language half is checked against the
+//registry in serve_translate, so adding a language adds it here too
+
+// Every page asset served as-is from web(frontend)/. One table rather than a
+// route block per file: the blocks were identical apart from these three
+// strings, and adding a page meant copying one and editing it in two places.
+struct PageAsset {
+    const char* url;
+    const char* file;
+    const char* content_type;
+};
+
+constexpr const char* kWebRoot = "web(frontend)/";
+
+constexpr PageAsset kPageAssets[] = {
+    {"/", "index.html", "text/html"},
+    {"/client.js", "client.js", "application/javascript"},
+    {"/account.js", "account.js", "application/javascript"},
+    //the signed-in-as corner of the nav, shared by every page
+    {"/translate.js", "translate.js", "application/javascript"},
+    //the translate box, shared by the exam page and the listening page
+    {"/classes.js", "classes.js", "application/javascript"},
+    //the class picker and join box on the exam page
+    {"/styles.css", "styles.css", "text/css"},
+    {"/fonts.css", "fonts.css", "text/css"},
+    //the @font-face block, linked by every page
+
+    {"/teacher", "teacher.html", "text/html"},
+    //served to anyone, like every other page: the gate and the API decide what
+    //a visitor sees, and the page itself holds nothing but layout
+    {"/teacher.js", "teacher.js", "application/javascript"},
+    {"/teacher.css", "teacher.css", "text/css"},
+
+    {"/classes", "classes-page.html", "text/html"},
+    //the student's side of what /teacher is for a teacher: the classes they are
+    //in and the exams they have sat. A page rather than a box on the exam page,
+    //so it can be linked to and come back to
+    {"/classes-page.js", "classes-page.js", "application/javascript"},
+    //named apart from classes.js, which is the exam page's picker
+    {"/classes-page.css", "classes-page.css", "text/css"},
+
+    {"/listening", "listening.html", "text/html"},
+    {"/listening.js", "listening.js", "application/javascript"},
+    {"/listening.css", "listening.css", "text/css"},
+};
 
 constexpr const char* kSessionCookie = "sid";
 
@@ -82,28 +124,64 @@ struct SocketIdentity {
 //way to say who may create a class, and an env var needs no admin UI to go
 //with it. Case insensitive, because it is typed by a person.
 bool is_teacher_email(const Config& config, const std::string& email) {
-    if (config.teacher_emails.empty() || email.empty()) return false;
-
-    std::string lowered;
-    lowered.reserve(email.size());
-    for (char c : email) {
-        lowered.push_back(static_cast<char>(
-            std::tolower(static_cast<unsigned char>(c))));
-    }
     return std::find(config.teacher_emails.begin(), config.teacher_emails.end(),
-                     lowered) != config.teacher_emails.end();
+                     to_lower_ascii(email)) != config.teacher_emails.end();
+    //the list is lowercased once at load, so only the address is folded here.
+    //An empty address matches nothing: split_list never stores an empty entry
 }
 
 //the cohort a student may claim. Closed lists: subject_level picks which
 //Gemini key pool an exam spends, so it must not be free text from a browser.
-bool is_valid_subject_level(const std::string& level) {
-    return level == "beginners" || level == "continuers" ||
-           level == "advanced" || level == "extension";
+//One table each for the check and for /api/profile-options, which is where
+//every picker on the pages gets its options: the lists used to be written out
+//here and three more times in account.js, with nothing tying the four together
+struct ProfileOption {
+    const char* value;
+    const char* label;
+};
+
+constexpr ProfileOption kYearLevels[] = {
+    {"7", "Year 7"},   {"8", "Year 8"},   {"9", "Year 9"},
+    {"10", "Year 10"}, {"11", "Year 11"}, {"12", "Year 12"},
+};
+
+constexpr ProfileOption kSubjectLevels[] = {
+    {"beginners", "Beginners"},
+    {"continuers", "Continuers"},
+    {"advanced", "Advanced"},
+    {"extension", "Extension"},
+};
+
+template <std::size_t N>
+bool is_offered(const ProfileOption (&options)[N], const std::string& value) {
+    return std::any_of(std::begin(options), std::end(options),
+                       [&value](const ProfileOption& option) {
+                           return value == option.value;
+                       });
 }
 
-bool is_valid_year_level(const std::string& year) {
-    return year == "7" || year == "8" || year == "9" || year == "10" ||
-           year == "11" || year == "12";
+template <std::size_t N>
+std::vector<crow::json::wvalue> options_json(const ProfileOption (&options)[N]) {
+    std::vector<crow::json::wvalue> list;
+    for (const ProfileOption& option : options) {
+        crow::json::wvalue item;
+        item["value"] = option.value;
+        item["label"] = option.label;
+        list.push_back(std::move(item));
+    }
+    return list;
+}
+
+// What a free account is told about the translate box. Sent by the route that
+// refuses the lookup and by /api/me, so the page that shuts the box up front
+// shows the server's sentence instead of keeping a copy of its own.
+constexpr const char* kTranslatePaidNotice =
+    "Translation is part of paid access - a class licence from your "
+    "school, or your own. Speaking practice and every listening paper "
+    "stay free.";
+
+bool file_exists(const std::string& path) {
+    return std::ifstream(path).good();
 }
 
 crow::response auth_error_page(const std::string& message) {
@@ -135,6 +213,16 @@ void persist_quietly(const char* what, F&& write) {
 //cannot be written must never cost a student their turn. The same split the
 //examiner's own failures use: the detail goes to the operator's log and
 //nothing about it reaches the student
+
+// The examiner's tense labels, minus anything outside the closed key set: the
+// schema constrains the field, but a backend with no schema can send anything.
+std::vector<std::string> known_tenses(const std::vector<std::string>& labels) {
+    std::vector<std::string> keys;
+    for (const std::string& key : labels) {
+        if (is_tense_key(key)) keys.push_back(key);
+    }
+    return keys;
+}
 
 }  // namespace
 
@@ -244,61 +332,25 @@ void Server::run()
     //closed while it deletes them, and the records are no more overdue for
     //the few seconds it takes the socket to come up
 
-    CROW_ROUTE(app_, "/") //HTTP ROUTE -----------------------------------
-    ([] {
-        return serve_static_file("web(frontend)/index.html", "text/html");
-    });
-
-    CROW_ROUTE(app_, "/client.js") //HTTP ROUTE -----------------------------------
-    ([] {
-        return serve_static_file("web(frontend)/client.js", "application/javascript");
-    });
-
-    CROW_ROUTE(app_, "/account.js") //HTTP ROUTE -----------------------------------
-    ([] {
-        return serve_static_file("web(frontend)/account.js", "application/javascript");
-    });
-    //the signed-in-as corner of the nav, shared by both pages
-
-    CROW_ROUTE(app_, "/translate.js") //HTTP ROUTE -----------------------------------
-    ([] {
-        return serve_static_file("web(frontend)/translate.js", "application/javascript");
-    });
-    //the translate box, shared by both pages
-
-    CROW_ROUTE(app_, "/styles.css") //HTTP ROUTE -----------------------------------
-    ([] {
-        return serve_static_file("web(frontend)/styles.css", "text/css");
-    });
-
-    CROW_ROUTE(app_, "/fonts.css") //HTTP ROUTE -----------------------------------
-    ([] {
-        return serve_static_file("web(frontend)/fonts.css", "text/css");
-    });
-    //the @font-face block, linked by both pages
+    for (const PageAsset& asset : kPageAssets) {
+        app_.route_dynamic(asset.url)([asset] {
+            return serve_static_file(std::string(kWebRoot) + asset.file,
+                                     asset.content_type);
+        });
+    }
+    //route_dynamic rather than CROW_ROUTE: the macro needs the path as a
+    //literal it can check at compile time, and these come out of a table
 
     CROW_ROUTE(app_, "/fonts/<string>") //HTTP ROUTE -----------------------------------
     ([](const std::string& file) {
         if (!is_safe_font_name(file)) {
             return crow::response(404);
         }
-        return serve_static_file("web(frontend)/fonts/" + file, "font/woff2");
+        return serve_static_file(std::string(kWebRoot) + "fonts/" + file,
+                                 "font/woff2");
     });
     //crow's <string> stops at a /, and is_safe_font_name keeps the rest of the
     //folder from being readable through a name the stylesheet never asks for
-
-    CROW_ROUTE(app_, "/teacher") //HTTP ROUTE -----------------------------------
-    ([] {
-        return serve_static_file("web(frontend)/teacher.html", "text/html");
-    });
-    //served to anyone, like every other page: the gate and the API decide what
-    //a visitor sees, and the page itself holds nothing but layout
-
-    CROW_ROUTE(app_, "/classes.js") //HTTP ROUTE -----------------------------------
-    ([] {
-        return serve_static_file("web(frontend)/classes.js", "application/javascript");
-    });
-    //the class picker and join box on the exam page
 
     CROW_ROUTE(app_, "/join/<string>") //HTTP ROUTE -----------------------------------
     ([](const std::string& code) {
@@ -314,50 +366,6 @@ void Server::run()
         //a link a teacher can paste anywhere. The exam page does the joining,
         //after sign-in if need be; only letters, digits and hyphens are passed
         //on, so the redirect cannot be bent into anything but this site
-    });
-
-    CROW_ROUTE(app_, "/classes") //HTTP ROUTE -----------------------------------
-    ([] {
-        return serve_static_file("web(frontend)/classes-page.html", "text/html");
-    });
-    //the student's side of what /teacher is for a teacher: the classes they are
-    //in and the exams they have sat. A page rather than a box on the exam page,
-    //so it can be linked to and come back to
-
-    CROW_ROUTE(app_, "/classes-page.js") //HTTP ROUTE -----------------------------------
-    ([] {
-        return serve_static_file("web(frontend)/classes-page.js", "application/javascript");
-    });
-    //named apart from classes.js, which is the exam page's picker
-
-    CROW_ROUTE(app_, "/classes-page.css") //HTTP ROUTE -----------------------------------
-    ([] {
-        return serve_static_file("web(frontend)/classes-page.css", "text/css");
-    });
-
-    CROW_ROUTE(app_, "/teacher.js") //HTTP ROUTE -----------------------------------
-    ([] {
-        return serve_static_file("web(frontend)/teacher.js", "application/javascript");
-    });
-
-    CROW_ROUTE(app_, "/teacher.css") //HTTP ROUTE -----------------------------------
-    ([] {
-        return serve_static_file("web(frontend)/teacher.css", "text/css");
-    });
-
-    CROW_ROUTE(app_, "/listening") //HTTP ROUTE -----------------------------------
-    ([] {
-        return serve_static_file("web(frontend)/listening.html", "text/html");
-    });
-
-    CROW_ROUTE(app_, "/listening.js") //HTTP ROUTE -----------------------------------
-    ([] {
-        return serve_static_file("web(frontend)/listening.js", "application/javascript");
-    });
-
-    CROW_ROUTE(app_, "/listening.css") //HTTP ROUTE -----------------------------------
-    ([] {
-        return serve_static_file("web(frontend)/listening.css", "text/css");
     });
 
     CROW_ROUTE(app_, "/listening/<string>/manifest.json") //HTTP ROUTE -----------------------------------
@@ -385,6 +393,17 @@ void Server::run()
         return serve_languages();
     });
     //and this to populate the language picker beside it
+
+    CROW_ROUTE(app_, "/api/profile-options") //HTTP ROUTE -----------------------------------
+    ([] {
+        crow::json::wvalue json;
+        json["year_levels"] = options_json(kYearLevels);
+        json["subject_levels"] = options_json(kSubjectLevels);
+        return json_response(json);
+    });
+    //the year and subject level pickers on sign-up, class creation and the
+    //settings panel. Public, like /api/languages: the sign-up form needs it
+    //and it says nothing about anyone
 
     CROW_ROUTE(app_, "/signin") //HTTP ROUTE -----------------------------------
     ([] {
@@ -602,11 +621,8 @@ void Server::run()
                 //closed below, and that must not happen under the map mutex
             } //mutex is unlocked as the lock variable goes out of scope
 
-            if (closing_session && closing_session->attempt_id() != 0) {
-                persist_quietly("attempt end (disconnect)", [&] {
-                    store_->end_attempt(closing_session->attempt_id(),
-                                        "disconnect");
-                });
+            if (closing_session) {
+                end_exam(*closing_session, "disconnect");
             }
             //end_attempt only touches rows where ended_at IS NULL, so a socket
             //closing after the timer already ended the exam cannot relabel a
@@ -747,7 +763,7 @@ void Server::prewarm_examiner() {
 
 crow::response Server::serve_manifest(const std::string& language)
     {
-    if (!is_known_language(language)) {
+    if (languages_.find(language) == nullptr) {
         return crow::response(404);
     }
 
@@ -759,7 +775,7 @@ crow::response Server::serve_clip(const crow::request& req,
                                   const std::string& year,
                                   const std::string& file)
     {
-    if (!is_known_language(language) || !is_safe_clip_name(year, file)) {
+    if (languages_.find(language) == nullptr || !is_safe_clip_name(year, file)) {
         return crow::response(404);
     }
     //rejected before the path exists, so a rejected name is never opened
@@ -781,9 +797,7 @@ crow::response Server::serve_gemini_keys()
         //name only - the key itself never leaves the server
         ++index;
     }
-    crow::response response(json.dump());
-    response.set_header("Content-Type", "application/json");
-    return response;
+    return json_response(json);
 }
 
 crow::response Server::serve_languages()
@@ -797,11 +811,14 @@ crow::response Server::serve_languages()
         //objects rather than bare strings: the picker needs the wire value, the
         //text to show and the code the translate box switches to, and deriving
         //any of the three in JavaScript would be a second table to keep in step
+        json[index]["listening"] =
+            file_exists("listening/" + pack->id + "/manifest.json");
+        //whether this language has listening papers on disk. The listening
+        //page offers only those that do, so a language added for speaking
+        //exams does not show up there as a picker entry that cannot load
         ++index;
     }
-    crow::response response(json.dump());
-    response.set_header("Content-Type", "application/json");
-    return response;
+    return json_response(json);
 }
 
 crow::response Server::serve_translate(const crow::request& req)
@@ -813,10 +830,7 @@ crow::response Server::serve_translate(const crow::request& req)
     try {
         if (!allowance_for(user).paid) {
             crow::json::wvalue json;
-            json["error"] =
-                "Translation is part of paid access - a class licence from your "
-                "school, or your own. Speaking practice and every listening paper "
-                "stay free.";
+            json["error"] = kTranslatePaidNotice;
             json["reason"] = "paid_only";
             return json_response(json, 403);
             //403 with a reason rather than 402 Payment Required: Crow has no
@@ -841,32 +855,40 @@ crow::response Server::serve_translate(const crow::request& req)
         //back as an opaque 403 from Google and read like a broken feature
     }
 
-    crow::json::rvalue parsed = crow::json::load(req.body);
+    const crow::json::rvalue parsed = crow::json::load(req.body);
     if (!parsed) {
         return json_error(400, "Request body was not valid JSON.");
     }
 
-    if (!parsed.has("text") || parsed["text"].t() != crow::json::type::String ||
-        !parsed.has("source") || parsed["source"].t() != crow::json::type::String ||
-        !parsed.has("target") || parsed["target"].t() != crow::json::type::String) {
+    const std::string text = string_field(parsed, "text");
+    const std::string source = string_field(parsed, "source");
+    const std::string target = string_field(parsed, "target");
+    //empty for a missing key, a wrong type or a body that is not an object, so
+    //all three land on the checks below rather than throwing out of the route
+
+    if (source.empty() || target.empty()) {
         return json_error(400, "Expected text, source and target strings.");
-        //both the presence and the type are checked, same as protocol.cpp does:
-        //rvalue::operator[] throws on a missing key and .s() on a wrong type
     }
-
-    const std::string text(parsed["text"].s());
-    const std::string source(parsed["source"].s());
-    const std::string target(parsed["target"].s());
-
     if (text.empty()) {
         return json_error(400, "Nothing to translate.");
     }
     if (text.size() > kMaxTranslateChars) {
         return json_error(400, "That is too long - translate a sentence at a time.");
     }
-    if (!is_supported_language(source) || !is_supported_language(target) ||
-        source == target) {
+
+    const auto offered = [this](const std::string& code) {
+        if (code == kTranslateEnglish) return true;
+        const std::vector<const LanguagePack*> packs = languages_.all();
+        return std::any_of(packs.begin(), packs.end(),
+                           [&code](const LanguagePack* pack) {
+                               return pack->translate_code == code;
+                           });
+    };
+    if (!offered(source) || !offered(target) || source == target) {
         return json_error(400, "Unsupported language pair.");
+        //checked against the registry rather than a list written out here: the
+        //hand-written one had already fallen behind once, when German arrived
+        //on the listening page and every lookup there came back unsupported
     }
 
     try {
@@ -875,9 +897,7 @@ crow::response Server::serve_translate(const crow::request& req)
 
         crow::json::wvalue json;
         json["translation"] = translation;
-        crow::response response(json.dump());
-        response.set_header("Content-Type", "application/json");
-        return response;
+        return json_response(json);
     } catch (const std::exception& e) {
         std::cerr << "translate route: " << e.what() << std::endl;
         return json_error(502, "The translation service could not be reached.");
@@ -925,8 +945,7 @@ crow::response Server::serve_auth_login() {
 }
 
 crow::response Server::serve_auth_callback(const crow::request& req) {
-    const std::string error = req.url_params.get("error")
-                                  ? req.url_params.get("error") : "";
+    const std::string error = query_param(req, "error");
     if (!error.empty()) {
         std::cerr << "oauth: Google returned error " << error << '\n';
         return auth_error_page("Google did not complete the sign-in.");
@@ -934,10 +953,8 @@ crow::response Server::serve_auth_callback(const crow::request& req) {
         //pressed cancel - not something to show them a code for
     }
 
-    const std::string code = req.url_params.get("code")
-                                 ? req.url_params.get("code") : "";
-    const std::string state = req.url_params.get("state")
-                                  ? req.url_params.get("state") : "";
+    const std::string code = query_param(req, "code");
+    const std::string state = query_param(req, "state");
     if (code.empty() || state.empty()) {
         return auth_error_page("That sign-in link was incomplete.");
     }
@@ -975,7 +992,7 @@ crow::response Server::serve_auth_callback(const crow::request& req) {
 
         crow::response response(302);
         auto& ctx = app_.get_context<crow::CookieParser>(req);
-        ctx.set_cookie(kSessionCookie, token)
+        auto& cookie = ctx.set_cookie(kSessionCookie, token)
             .httponly()
             .path("/")
             .max_age(60 * 60 * 24 * 30)
@@ -984,16 +1001,14 @@ crow::response Server::serve_auth_callback(const crow::request& req) {
         //from accounts.google.com, and Strict would drop it on exactly that hop
 
         if (config_.public_origin.rfind("https://", 0) == 0) {
-            ctx.set_cookie(kSessionCookie, token)
-                .httponly()
-                .secure()
-                .path("/")
-                .max_age(60 * 60 * 24 * 30)
-                .same_site(crow::CookieParser::Cookie::SameSitePolicy::Lax);
+            cookie.secure();
         }
         //Secure is decided from PUBLIC_ORIGIN rather than from a forwarded
         //header: behind a proxy the header is whatever the proxy chose to send,
-        //and a Secure cookie on a plain-http dev origin never comes back at all
+        //and a Secure cookie on a plain-http dev origin never comes back at all.
+        //One cookie with the flag added, not a second set_cookie: each call
+        //appends its own Set-Cookie header, so an https deployment used to
+        //send the session token twice, one copy of it without Secure
 
         response.set_header("Location", "/");
         response.set_header("Cache-Control", "no-store");
@@ -1030,26 +1045,28 @@ crow::response Server::serve_auth_logout(const crow::request& req) {
 }
 
 crow::response Server::serve_me(const crow::request& req) {
-    const std::optional<User> user = user_for_request(req);
-    if (!user) {
-        return json_error(401, "not signed in");
+    User user;
+    if (auto refusal = refuse_unless_signed_in(req, user)) {
+        return std::move(*refusal);
+        //the shared check, so a database error on the session lookup is a
+        //logged 500 here as it is on every other route
     }
 
     crow::json::wvalue json;
-    json["id"] = user->id;
-    json["email"] = user->email;
-    json["name"] = user->display_name;
-    json["is_teacher"] = user->is_teacher;
-    json["year_level"] = user->year_level;
-    json["subject_level"] = user->subject_level;
-    json["preferred_language"] = user->preferred_language;
-    json["onboarded"] = user->onboarded;
+    json["id"] = user.id;
+    json["email"] = user.email;
+    json["name"] = user.display_name;
+    json["is_teacher"] = user.is_teacher;
+    json["year_level"] = user.year_level;
+    json["subject_level"] = user.subject_level;
+    json["preferred_language"] = user.preferred_language;
+    json["onboarded"] = user.onboarded;
 
     bool has_class = false;
     try {
-        has_class = store_->has_created_class(user->id);
+        has_class = store_->has_created_class(user.id);
     } catch (const std::exception& e) {
-        std::cerr << "classes: could not check ownership for user " << user->id
+        std::cerr << "classes: could not check ownership for user " << user.id
                   << ": " << e.what() << '\n';
         has_class = true;
         //on a read failure claim they already have one: the offer is a one-off
@@ -1058,17 +1075,21 @@ crow::response Server::serve_me(const crow::request& req) {
     json["has_created_class"] = has_class;
 
     try {
-        const Allowance allowance = allowance_for(*user);
+        const Allowance allowance = allowance_for(user);
         json["usage"]["speaking_limit"] = allowance.limit;
         json["usage"]["speaking_used"] = allowance.used;
         json["usage"]["paid"] = allowance.paid;
         json["usage"]["paid_source"] = allowance.source;
         json["usage"]["paid_until"] = allowance.paid_until;
         json["usage"]["translation"] = allowance.paid;
+        if (!allowance.paid) {
+            json["usage"]["translation_notice"] = kTranslatePaidNotice;
+            //why the box is shut, in the words the translate route would use
+        }
         //one place a page learns what this account may do today: how much
         //speaking is left, and whether the translate box is open to it
     } catch (const std::exception& e) {
-        std::cerr << "usage: could not read the allowance for user " << user->id
+        std::cerr << "usage: could not read the allowance for user " << user.id
                   << ": " << e.what() << '\n';
         //left out rather than guessed: the page shows no count, and the
         //server still enforces the real one at Start
@@ -1076,18 +1097,14 @@ crow::response Server::serve_me(const crow::request& req) {
     //the gate shows its create-a-class offer only to a teacher with no class,
     //which is what makes the offer first-time-only without a flag column
 
-    crow::response response(json.dump());
-    response.set_header("Content-Type", "application/json");
-    response.set_header("Cache-Control", "no-store");
-    return response;
+    return json_response(json);
 }
 
 crow::response Server::serve_set_profile(const crow::request& req) {
-    User signed_in;
-    if (auto refusal = refuse_unless_signed_in(req, signed_in)) {
+    User user;
+    if (auto refusal = refuse_unless_signed_in(req, user)) {
         return std::move(*refusal);
     }
-    const std::optional<User> user = std::move(signed_in);
     //through the shared check so this POST gets the same cross-origin refusal
     //as the class routes
 
@@ -1096,24 +1113,16 @@ crow::response Server::serve_set_profile(const crow::request& req) {
         return json_error(400, "expected a JSON body");
     }
 
-    const auto field = [&body](const char* key) -> std::string {
-        if (!body.has(key) || body[key].t() != crow::json::type::String) {
-            return std::string();
-        }
-        return body[key].s();
-    };
-    //presence and type both, the way serve_translate reads its body: this one
-    //writes to the database, so a number where a string belongs must be a 400
-    //rather than something that throws out of a socket thread
+    const std::string year = string_field(body, "year_level");
+    const std::string level = string_field(body, "subject_level");
+    const std::string language = string_field(body, "preferred_language");
+    //presence and type both: this writes to the database, so a number where a
+    //string belongs comes back empty and is refused below as a 400
 
-    const std::string year = field("year_level");
-    const std::string level = field("subject_level");
-    const std::string language = field("preferred_language");
-
-    if (!is_valid_year_level(year)) {
+    if (!is_offered(kYearLevels, year)) {
         return json_error(400, "pick a year level");
     }
-    if (!is_valid_subject_level(level)) {
+    if (!is_offered(kSubjectLevels, level)) {
         return json_error(400, "pick a subject level");
     }
     if (languages_.find(language) == nullptr) {
@@ -1122,27 +1131,20 @@ crow::response Server::serve_set_profile(const crow::request& req) {
         //adding a language cannot leave this endpoint behind
     }
 
-    if (user->onboarded && store_->is_in_any_class(user->id)) {
-        return json_error(403,
-            "ask your teacher to change your year or subject level");
-        //a student in a class may not move themselves between cohorts: the key
-        //pool a level selects is somebody else's quota. Onboarding itself is
-        //always allowed, which is why this only applies once onboarded
-    }
-
-    try {
-        store_->set_profile(user->id, year, level, language);
-    } catch (const std::exception& e) {
-        std::cerr << "profile: could not save for user " << user->id << ": "
-                  << e.what() << '\n';
-        return json_error(500, "could not save that");
-    }
-
-    crow::json::wvalue json;
-    json["ok"] = true;
-    crow::response response(json.dump());
-    response.set_header("Content-Type", "application/json");
-    return response;
+    return guarded("save profile", [&] {
+        if (user.onboarded && store_->is_in_any_class(user.id)) {
+            return json_error(403,
+                "ask your teacher to change your year or subject level");
+            //a student in a class may not move themselves between cohorts: the
+            //key pool a level selects is somebody else's quota. Onboarding
+            //itself is always allowed, which is why this only applies once
+            //onboarded
+        }
+        store_->set_profile(user.id, year, level, language);
+        return json_ok();
+    });
+    //both Store calls inside guarded(): the membership check used to sit
+    //outside any try, so a database error there left the route as an exception
 }
 
 std::shared_ptr<Session> Server::find_session(crow::websocket::connection* conn) 
@@ -1236,207 +1238,241 @@ void Server::handle_control(crow::websocket::connection& conn,
     const Message message = from_json(parsed); //runs function in protocol.cpp
     //convert the readable JSON into a Message object
 
-    if (message.type == MessageType::Start) {
-        std::shared_ptr<ConnHandle> handle = find_conn_handle(&conn);
-        if (!handle) {
+    switch (message.type) {
+        case MessageType::Start:
+            handle_start(conn, session, message);
             return;
-        } //the connection is already closing, so there is nowhere to send a reply
 
-        if (session->attempt_id() != 0) {
-            send_busy(handle);
+        case MessageType::Stop:
+            handle_stop(conn, session, message);
             return;
-            //one exam per socket. A second Start would open a second attempt
-            //and ask a second opening question inside an exam already running
+
+        case MessageType::Pause:
+            session->pause_clock(Session::Clock::now());
+            return;
+
+        case MessageType::Resume:
+            session->resume_clock(Session::Clock::now());
+            return;
+            //neither takes the job latch, for the reason End does not: the
+            //browser pauses on its own schedule and a "busy" refusal would
+            //leave the two clocks disagreeing about how much exam is left
+
+        case MessageType::End:
+            end_exam(*session, "student_end");
+            return;
+            //deliberately does not take the job latch: a student may press end
+            //while a turn is still in flight, and refusing that as "busy"
+            //would leave the attempt to be closed as a disconnect a moment
+            //later. The update is idempotent, so a turn finishing afterwards
+            //changes nothing
+
+        case MessageType::Status:
+        case MessageType::Transcript:
+        case MessageType::ExaminerText:
+        case MessageType::Error:
+            return;
+            //server-to-browser types, and Error is also what an unreadable
+            //message decodes to. None of them is a request
+    }
+}
+
+void Server::handle_start(crow::websocket::connection& conn,
+                          const std::shared_ptr<Session>& session,
+                          const Message& message) {
+    std::shared_ptr<ConnHandle> handle = find_conn_handle(&conn);
+    if (!handle) {
+        return;
+    } //the connection is already closing, so there is nowhere to send a reply
+
+    if (session->exam_started()) {
+        send_busy(handle);
+        return;
+        //one exam per socket. A second Start would open a second attempt
+        //and ask a second opening question inside an exam already running.
+        //Asked of the session rather than of attempt_id: an exam whose
+        //attempt row could not be written has id 0 and is still an exam
+    }
+
+    std::optional<User> user;
+    std::optional<ClassInfo> klass;
+    std::optional<ExamPlan> plan;
+    std::string refusal;
+    try {
+        if (const auto user_id = session->user_id()) {
+            user = store_->user_by_id(*user_id);
         }
+        if (message.class_id > 0 && user) {
+            klass = store_->class_by_id(message.class_id);
+            if (klass && (klass->archived ||
+                          !store_->class_role(klass->id, user->id))) {
+                klass.reset();
+            }
+        }
+        if (klass && message.plan_id > 0) {
+            plan = store_->plan_by_id(message.plan_id);
+            if (!plan || plan->class_id != klass->id || plan->archived ||
+                !(plan->visible || plan->is_default)) {
+                plan.reset();
+                refusal = "that exam is not available in this class any more";
+            }
+            //a plan from another class, or one the teacher has put away,
+            //is refused rather than quietly swapped for the default: the
+            //student chose it by name
+        } else if (klass) {
+            for (ExamPlan& candidate : store_->class_plans(klass->id, false)) {
+                if (candidate.is_default) plan = std::move(candidate);
+            }
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "start: account lookup failed: " << e.what() << '\n';
+        refusal = "could not check your account, please try again";
+    }
 
-        std::optional<User> user;
-        std::optional<ClassInfo> klass;
-        std::optional<ExamPlan> plan;
-        std::string refusal;
+    if (refusal.empty() && config_.safety_mode != SafetyMode::Off &&
+        !safety_->ready()) {
+        refusal = "practice is unavailable right now, please tell your "
+                  "teacher";
+        std::cerr << "start refused: safety chain not ready\n";
+        //checkpoint 0b. An exam that cannot be screened does not begin,
+        //and it does not begin in a reduced form either: there is no
+        //degraded mode here on purpose. The student-facing wording names
+        //no component, because which layer is down is an operator fact
+    } else if (refusal.empty() && config_.auth_required && !user) {
+        refusal = "sign in to start an exam";
+    } else if (refusal.empty() && user && !user->onboarded &&
+               !user->is_teacher) {
+        refusal = "finish signing up before starting an exam";
+        //the level chosen at sign-up is what decides which key an exam
+        //spends, so an account without one must not reach the examiner.
+        //Teachers are exempt: they try the exam out, they do not sit it
+    } else if (refusal.empty() && message.class_id > 0 && !klass) {
+        refusal = user ? "you are not in that class"
+                       : "sign in to sit an exam for a class";
+        //refused rather than quietly run as private practice: a student who
+        //thinks their teacher will see this exam must be told otherwise
+    }
+
+    int question_limit = -1;
+    if (refusal.empty() && user) {
         try {
-            if (const auto user_id = session->user_id()) {
-                user = store_->user_by_id(*user_id);
-            }
-            if (message.class_id > 0 && user) {
-                klass = store_->class_by_id(message.class_id);
-                if (klass && (klass->archived ||
-                              !store_->class_role(klass->id, user->id))) {
-                    klass.reset();
-                }
-            }
-            if (klass && message.plan_id > 0) {
-                plan = store_->plan_by_id(message.plan_id);
-                if (!plan || plan->class_id != klass->id || plan->archived ||
-                    !(plan->visible || plan->is_default)) {
-                    plan.reset();
-                    refusal = "that exam is not available in this class any more";
-                }
-                //a plan from another class, or one the teacher has put away,
-                //is refused rather than quietly swapped for the default: the
-                //student chose it by name
-            } else if (klass) {
-                for (ExamPlan& candidate : store_->class_plans(klass->id, false)) {
-                    if (candidate.is_default) plan = std::move(candidate);
-                }
+            const Allowance allowance = allowance_for(*user);
+            question_limit = allowance.limit;
+            if (allowance.used >= allowance.limit) {
+                refusal = allowance.paid
+                    ? "You have used all " + std::to_string(allowance.limit) +
+                          " of today's speaking questions. More are available "
+                          "from midnight."
+                    : "You have used your " + std::to_string(allowance.limit) +
+                          " free speaking questions for today. More are "
+                          "available from midnight, or ask your teacher about "
+                          "a class licence for unlimited practice.";
             }
         } catch (const std::exception& e) {
-            std::cerr << "start: account lookup failed: " << e.what() << '\n';
+            std::cerr << "start: allowance lookup failed: " << e.what() << '\n';
             refusal = "could not check your account, please try again";
         }
+    }
+    //checked at Start so a student with nothing left is told before the
+    //opening question rather than after it. The real guard is the
+    //reservation in the pipeline job, which two tabs cannot both win
 
-        if (refusal.empty() && config_.safety_mode != SafetyMode::Off &&
-            !safety_->ready()) {
-            refusal = "practice is unavailable right now, please tell your "
-                      "teacher";
-            std::cerr << "start refused: safety chain not ready\n";
-            //checkpoint 0b. An exam that cannot be screened does not begin,
-            //and it does not begin in a reduced form either: there is no
-            //degraded mode here on purpose. The student-facing wording names
-            //no component, because which layer is down is an operator fact
-        } else if (refusal.empty() && config_.auth_required && !user) {
-            refusal = "sign in to start an exam";
-        } else if (refusal.empty() && user && !user->onboarded &&
-                   !user->is_teacher) {
-            refusal = "finish signing up before starting an exam";
-            //the level chosen at sign-up is what decides which key an exam
-            //spends, so an account without one must not reach the examiner.
-            //Teachers are exempt: they try the exam out, they do not sit it
-        } else if (refusal.empty() && message.class_id > 0 && !klass) {
-            refusal = user ? "you are not in that class"
-                           : "sign in to sit an exam for a class";
-            //refused rather than quietly run as private practice: a student who
-            //thinks their teacher will see this exam must be told otherwise
-        }
-
-        int question_limit = -1;
-        if (refusal.empty() && user) {
-            try {
-                const Allowance allowance = allowance_for(*user);
-                question_limit = allowance.limit;
-                if (allowance.used >= allowance.limit) {
-                    refusal = allowance.paid
-                        ? "You have used all " + std::to_string(allowance.limit) +
-                              " of today's speaking questions. More are available "
-                              "from midnight."
-                        : "You have used your " + std::to_string(allowance.limit) +
-                              " free speaking questions for today. More are "
-                              "available from midnight, or ask your teacher about "
-                              "a class licence for unlimited practice.";
-                }
-            } catch (const std::exception& e) {
-                std::cerr << "start: allowance lookup failed: " << e.what() << '\n';
-                refusal = "could not check your account, please try again";
-            }
-        }
-        //checked at Start so a student with nothing left is told before the
-        //opening question rather than after it. The real guard is the
-        //reservation in the pipeline job, which two tabs cannot both win
-
-        if (!refusal.empty()) {
-            send_error(handle, refusal);
-            send_status(handle, "refused");
-            return;
-            //before try_begin_job, so a refused Start leaves nothing to release
-        }
-
-        if (!session->try_begin_job()) {
-            send_busy(handle);
-            return;
-        } //a job is already in flight on this session, so refuse this message
-
-        const LanguagePack* pack = nullptr;
-        session->set_question_limit(question_limit);
-        if (klass) {
-            pack = languages_.find(klass->language_id);
-            session->set_class_id(klass->id);
-            //the class decides the language: an Italian class's exam is an
-            //Italian exam whatever the picker was left on
-        }
-        if (pack == nullptr) {
-            pack = languages_.find(message.language);
-        }
-        if (pack != nullptr) {
-            session->set_language(pack);
-        }
-        if (plan) {
-            session->set_plan(*plan);
-            //after the language, though either order works: both rebuild the
-            //prompts from the pack and the plan together
-        }
-        //an unknown or absent language leaves the default set on open, rather
-        //than failing the Start: a stale client or a typo must still get an
-        //exam. Set before the job is enqueued, because build_examiner_input()
-        //reads the pack's prompts the moment the opening question is queued
-
-        session->set_gemini_key_name(
-            message.gemini_key.empty() && !config_.gemini_api_keys.empty()
-                ? config_.gemini_api_keys.front().name
-                : message.gemini_key);
-        //an absent name is resolved to the key the examiner would fall back to
-        //anyway, so the attempt and the usage counter name the key actually
-        //spent rather than recording an empty string against every default turn
-        //no name is set on the session, and none is read from the account
-        //either: display_name used to be the fallback here, which meant a
-        //signed-in student's identity reached the examiner even when they
-        //never typed anything. The page does the greeting now
-        //both picked once, before the first job, and reused by every later
-        //turn - Stop messages carry none of these fields of their own. Set
-        //before the job is enqueued, so even the opening question knows them
-
-        persist_quietly("attempt start", [&] {
-            session->set_attempt_id(store_->begin_attempt(
-                session->user_id(), session->class_id(), session->language().id,
-                session->gemini_key_name()));
-            if (plan && session->attempt_id() != 0) {
-                store_->attach_plan(session->attempt_id(), *plan,
-                                    plan_to_json(*plan, true).dump());
-            }
-        });
-        //opened here rather than on connect: the language and the class are not
-        //known until Start names them, and an attempt row that cannot say which
-        //exam it was is worth less than the turn it delays
-
-        std::shared_ptr<Session> claim(session.get(), [session](Session* s) { s->end_job(); });
-        //not an owner, just an RAII handle whose deleter releases the claim
-        //the deleter holds session, so the Session outlives the end_job() call
-
-        enqueue_pipeline_job(std::move(handle), session, {}, false, std::move(claim));
+    if (!refusal.empty()) {
+        send_error(handle, refusal);
+        send_status(handle, "refused");
         return;
+        //before try_begin_job, so a refused Start leaves nothing to release
     }
 
-    if (message.type == MessageType::Pause) {
-        session->pause_clock(Session::Clock::now());
+    if (!session->try_begin_job()) {
+        send_busy(handle);
         return;
-    }
-    if (message.type == MessageType::Resume) {
-        session->resume_clock(Session::Clock::now());
-        return;
-    }
-    //neither takes the job latch, for the reason End does not: the browser
-    //pauses on its own schedule and a "busy" refusal would leave the two clocks
-    //disagreeing about how much of the exam is left
+    } //a job is already in flight on this session, so refuse this message
 
-    if (message.type == MessageType::End) {
-        if (session->attempt_id() != 0) {
-            persist_quietly("attempt end (student)", [&] {
-                store_->end_attempt(session->attempt_id(), "student_end");
-            });
+    const LanguagePack* pack = nullptr;
+    session->set_question_limit(question_limit);
+    if (klass) {
+        pack = languages_.find(klass->language_id);
+        session->set_class_id(klass->id);
+        //the class decides the language: an Italian class's exam is an
+        //Italian exam whatever the picker was left on
+    }
+    if (pack == nullptr) {
+        pack = languages_.find(message.language);
+    }
+    if (pack != nullptr) {
+        session->set_language(pack);
+    }
+    if (plan) {
+        session->set_plan(*plan);
+        //after the language, though either order works: both rebuild the
+        //prompts from the pack and the plan together
+    }
+    //an unknown or absent language leaves the default set on open, rather
+    //than failing the Start: a stale client or a typo must still get an
+    //exam. Set before the job is enqueued, because build_examiner_input()
+    //reads the pack's prompts the moment the opening question is queued
+
+    session->set_gemini_key_name(
+        message.gemini_key.empty() && !config_.gemini_api_keys.empty()
+            ? config_.gemini_api_keys.front().name
+            : message.gemini_key);
+    //an absent name is resolved to the key the examiner would fall back to
+    //anyway, so the attempt and the usage counter name the key actually
+    //spent rather than recording an empty string against every default turn
+    //no name is set on the session, and none is read from the account
+    //either: display_name used to be the fallback here, which meant a
+    //signed-in student's identity reached the examiner even when they
+    //never typed anything. The page does the greeting now
+    //both picked once, before the first job, and reused by every later
+    //turn - Stop messages carry none of these fields of their own. Set
+    //before the job is enqueued, so even the opening question knows them
+
+    persist_quietly("attempt start", [&] {
+        session->set_attempt_id(store_->begin_attempt(
+            session->user_id(), session->class_id(), session->language().id,
+            session->gemini_key_name()));
+        if (plan && session->attempt_id() != 0) {
+            store_->attach_plan(session->attempt_id(), *plan,
+                                plan_to_json(*plan, true).dump());
         }
-        return;
-        //deliberately does not take the job latch: a student may press end
-        //while a turn is still in flight, and refusing that as "busy" would
-        //leave the attempt to be closed as a disconnect a moment later. The
-        //update is idempotent, so a turn finishing afterwards changes nothing
-    }
+    });
+    //opened here rather than on connect: the language and the class are not
+    //known until Start names them, and an attempt row that cannot say which
+    //exam it was is worth less than the turn it delays
 
-    if (message.type != MessageType::Stop) {
-        return;
-    } 
+    std::shared_ptr<Session> claim(session.get(), [session](Session* s) { s->end_job(); });
+    //not an owner, just an RAII handle whose deleter releases the claim
+    //the deleter holds session, so the Session outlives the end_job() call
 
+    session->mark_exam_started();
+    //only now, with every check above passed and the latch held: a refused
+    //Start leaves the session unstarted, so it cannot be answered into
+
+    enqueue_pipeline_job(std::move(handle), session, {}, false, std::move(claim));
+}
+
+void Server::handle_stop(crow::websocket::connection& conn,
+                         const std::shared_ptr<Session>& session,
+                         const Message& message) {
     std::shared_ptr<ConnHandle> handle = find_conn_handle(&conn);
     if (!handle) {
         return;
     } //resolved before try_begin_job(), so a connection that is already closing
+
+    if (!session->exam_started() || session->exam_over()) {
+        send_error(handle, session->exam_over()
+                               ? "this exam has ended - start a new one"
+                               : "start an exam before answering");
+        send_status(handle, "refused");
+        return;
+        //an answer only counts inside a running exam. Start is where sign-in,
+        //onboarding, class membership, today's allowance and the safety chain
+        //are checked, and where the allowance is attached to the session - so
+        //a Stop accepted without one ran an exam that skipped all of them,
+        //unmetered. The same door stayed open after an exam was over: a
+        //client could keep answering past an escalation or the End button
+    }
 
     if (!session->try_begin_job()) {
         send_busy(handle);
@@ -1570,11 +1606,7 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
         };
 
         if (quota_hit && !transcribe_first) {
-            if (session->attempt_id() != 0) {
-                persist_quietly("attempt end (quota)", [&] {
-                    store_->end_attempt(session->attempt_id(), "quota");
-                });
-            }
+            end_exam(*session, "quota");
             send_error(handle, quota_message(session->question_limit()));
             send_status(handle, "quota");
             return;
@@ -1600,6 +1632,51 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                                       config_.audio_input == AudioInput::Gemini &&
                                       !job_audio.empty();
 
+        // How a job that asks no question hands the turn back. When the clock
+        // or the allowance has run out this was the last job, so the exam is
+        // closed and the page told; otherwise an empty examiner_text re-arms
+        // the microphone, which is the only thing that does.
+        const auto finish_without_question = [&] {
+            if (stop_after_answer) {
+                end_exam(*session, end_reason);
+                send_status(handle, end_status);
+            } else {
+                send_examiner_text(handle, "", false, 0);
+            }
+        };
+
+        // Checkpoint 1, on every path that produces a transcript. True when
+        // the job has to return: the screening stopped the turn or the exam.
+        const auto stopped_by_screening = [&](std::string& transcript) {
+            switch (screen_student_speech(*session, handle, transcript, refund)) {
+                case ScreenOutcome::Continue:
+                    return false;
+                case ScreenOutcome::TurnStopped:
+                    finish_without_question();
+                    return true;
+                    //a halted answer used to end the job with nothing but the
+                    //notice. The page re-arms the microphone only on an
+                    //examiner_text or a status, so the student was left on a
+                    //dead mic in an exam the notice said was still running -
+                    //and a halt on the final answer skipped the timer close,
+                    //leaving the attempt to be filed as a disconnect
+                case ScreenOutcome::ExamStopped:
+                    return true;
+            }
+            return true;
+        };
+
+        const auto fail_turn = [&](const char* what) {
+            std::cerr << "turn failed, sending what we have: " << what << '\n';
+            if (!examiner_answered) refund();
+            //the examiner never produced a question, so none was spent. A
+            //failure after it did - piper, say - keeps the charge: the question
+            //reached the student as text
+            speech.clear();
+            send_error(handle, "something went wrong on that turn");
+            //a fixed student-facing string; the detail stays in the log above
+        };
+
         try {
             if (transcribe_first && !examiner_listens) {
                 const auto stt_started = clock::now();
@@ -1608,9 +1685,7 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                 stt_ms = ms_since(stt_started);
 
                 if (!transcript.empty()) {
-                    if (screen_student_speech(*session, handle, transcript,
-                                              refund) ==
-                        ScreenOutcome::TurnStopped) {
+                    if (stopped_by_screening(transcript)) {
                         return;
                     }
                     //checkpoint 1, before the transcript reaches the socket,
@@ -1633,7 +1708,9 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                 } else {
                     std::cerr << "turn skipped: empty transcript, no examiner "
                                  "request made (audio "
-                              << (job_audio.size() / 16000.0) << "s, stt "
+                              << (job_audio.size() /
+                                  static_cast<double>(Session::kCaptureSampleRate))
+                              << "s, stt "
                               << stt_ms << "ms)\n";
 
                     refund();
@@ -1644,35 +1721,16 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                     //nothing was heard, which is a microphone or a silence
                     //problem, and telling that student their content was
                     //rejected would be both wrong and alarming
-                    if (stop_after_answer) {
-                        if (session->attempt_id() != 0) {
-                            persist_quietly("attempt end", [&] {
-                                store_->end_attempt(session->attempt_id(),
-                                                    end_reason);
-                            });
-                        }
-                        //closed here as well as on the heard path below: an
-                        //unheard last answer still ended on the clock, and
-                        //without this the socket closing relabels it
-                        send_status(handle, end_status);
-                        //nothing to re-arm for: the clock or the allowance has
-                        //run out and this job was the last one, heard or not
-                    } else {
-                        send_examiner_text(handle, reply, false, 0);
-                    }
+                    finish_without_question();
                     return;
-                    //no audio promised, so the client re-arms off the text alone
-                    //an empty transcript never reaches the examiner: respond()
+                    //an empty transcript never reaches the examiner. An unheard
+                    //last answer still ended on the clock, so the attempt is
+                    //closed there as it is on the heard path below
                 }
             }
 
             if (stop_after_answer) {
-                if (session->attempt_id() != 0) {
-                    persist_quietly("attempt end", [&] {
-                        store_->end_attempt(session->attempt_id(), end_reason);
-                    });
-                }
-                send_status(handle, end_status);
+                finish_without_question();
                 return;
                 //the exam clock ran out before this answer was submitted. It
                 //has been transcribed, painted and recorded above, and the job
@@ -1711,10 +1769,7 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                 //the student still sees their own words, which is most of what
                 //the turn owed them. The reply is lost, and the catch below
                 //sends the fixed failure string in its place
-                if (!answer.transcript.empty() &&
-                    screen_student_speech(*session, handle, answer.transcript,
-                                          refund) ==
-                        ScreenOutcome::TurnStopped) {
+                if (stopped_by_screening(answer.transcript)) {
                     return;
                     //returns instead of rethrowing: the turn has already been
                     //closed out by the screening - refunded, the student told,
@@ -1745,10 +1800,7 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                     //the turn: the reply below is still good
                 }
 
-                if (!answer.transcript.empty() &&
-                    screen_student_speech(*session, handle, answer.transcript,
-                                          refund) ==
-                        ScreenOutcome::TurnStopped) {
+                if (stopped_by_screening(answer.transcript)) {
                     return;
                 }
                 //checkpoint 1 on this path is a post-hoc screen and cannot be
@@ -1845,23 +1897,17 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
                                         0, examiner_ms, tts_ms);
                     store_->note_examiner_call(attempt, session->gemini_key_name());
 
-                    std::vector<std::string> model_tenses;
-                    for (const std::string& key : answer.question_tenses) {
-                        if (is_tense_key(key)) model_tenses.push_back(key);
-                    }
                     store_->record_turn_features(attempt, examiner_turn, "tense",
-                                                 model_tenses, "model");
+                                                 known_tenses(answer.question_tenses),
+                                                 "model");
                     store_->record_turn_features(attempt, examiner_turn, "tense",
                                                  detect_tenses(language->id, reply),
                                                  "rules");
 
                     if (student_turn >= 0) {
-                        std::vector<std::string> answer_tenses;
-                        for (const std::string& key : answer.answer_tenses) {
-                            if (is_tense_key(key)) answer_tenses.push_back(key);
-                        }
                         store_->record_turn_features(attempt, student_turn, "tense",
-                                                     answer_tenses, "model");
+                                                     known_tenses(answer.answer_tenses),
+                                                     "model");
                         //the examiner's reading of the answer it just replied
                         //to, attached to that answer rather than to the reply
                     }
@@ -1917,20 +1963,9 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
             //16000 is the capture rate the client resamples to, and the rate
             //whisper requires it
         } catch (const std::exception& e) {
-            std::cerr << "turn failed, sending what we have: " << e.what() << '\n';
-            if (!examiner_answered) refund();
-            //the examiner never produced a question, so none was spent. A
-            //failure after it did - piper, say - keeps the charge: the question
-            //reached the student as text
-            speech.clear();
-            send_error(handle, "something went wrong on that turn");
-            //a fixed student-facing string, 
+            fail_turn(e.what());
         } catch (...) {
-            std::cerr << "turn failed with non-std exception, sending what we have\n";
-            if (!examiner_answered) refund();
-            speech.clear();
-            send_error(handle, "something went wrong on that turn");
-            //same recovery, and reply is preserved for the same reason as above
+            fail_turn("a non-std exception");
         }
 
         if (text_sent) {
@@ -1950,7 +1985,8 @@ void Server::enqueue_pipeline_job(std::shared_ptr<ConnHandle> handle,
 void Server::send_text_on_handle(const std::shared_ptr<ConnHandle>& handle,
                                  const std::string& json) {
     std::lock_guard<std::mutex> lock(handle->m);
-    //same discipline as send_speech: the null check and the send are
+    //same discipline as send_speech: the null check and the send are one
+    //critical section, so onclose cannot let ~Connection run between them
 
     crow::websocket::connection* conn_ptr = handle->conn;
     if (conn_ptr == nullptr) {
@@ -1959,14 +1995,20 @@ void Server::send_text_on_handle(const std::shared_ptr<ConnHandle>& handle,
     conn_ptr->send_text(json);
 }
 
+void Server::send_message(const std::shared_ptr<ConnHandle>& handle,
+                          MessageType type, const std::string& payload) {
+    Message message;
+    message.type = type;
+    message.payload = payload;
+    send_text_on_handle(handle, to_json(message).dump());
+    //a message of this shape carries no sample_rate, so the page never
+    //mistakes it for a turn with audio behind it
+}
+
 void Server::send_status(const std::shared_ptr<ConnHandle>& handle,
                          const std::string& text) {
-    Message message;
-    message.type = MessageType::Status;
-    message.payload = text;
-    send_text_on_handle(handle, to_json(message).dump());
-    //carries no sample_rate, so like send_error it paints nothing: the client
-    //reads the payload and acts on it
+    send_message(handle, MessageType::Status, text);
+    //paints nothing: the client reads the payload and acts on it
 }
 
 void Server::send_busy(const std::shared_ptr<ConnHandle>& handle) {
@@ -1975,12 +2017,9 @@ void Server::send_busy(const std::shared_ptr<ConnHandle>& handle) {
 
 void Server::send_error(const std::shared_ptr<ConnHandle>& handle,
                         const std::string& text) {
-    Message message;
-    message.type = MessageType::Error;
-    message.payload = text;
-    send_text_on_handle(handle, to_json(message).dump());
-    //carries no sample_rate, so it cannot be mistaken for a turn. It lands in
-    //client.js addLog rather than addTurn, painting nothing in #transcript
+    send_message(handle, MessageType::Error, text);
+    //lands in client.js addLog rather than addTurn, painting nothing in
+    //#transcript
 }
 
 void Server::send_transcript(const std::shared_ptr<ConnHandle>& handle,
@@ -1989,11 +2028,22 @@ void Server::send_transcript(const std::shared_ptr<ConnHandle>& handle,
         return;
         //an empty transcript is not a turn, so nothing is painted for it
     }
-    Message message;
-    message.type = MessageType::Transcript;
-    message.payload = text;
-    send_text_on_handle(handle, to_json(message).dump());
-    //MessageType::Transcript was never constructed, so the client branch was
+    send_message(handle, MessageType::Transcript, text);
+}
+
+void Server::end_exam(Session& session, const char* reason) {
+    session.mark_exam_over();
+    if (session.attempt_id() == 0) {
+        return;
+        //not being recorded, so there is no row to close
+    }
+    persist_quietly("attempt end", [&] {
+        store_->end_attempt(session.attempt_id(), reason);
+    });
+    //the one way an exam ends, whatever ended it: the clock, the allowance,
+    //the End button, an escalation or the socket closing. end_attempt only
+    //touches a row whose ended_at is still NULL, so the first reason to
+    //arrive is the one that is kept
 }
 
 Server::Allowance Server::allowance_for(const User& user) {
@@ -2102,19 +2152,17 @@ Server::ScreenOutcome Server::screen_student_speech(
 
     switch (verdict.action) {
         case SafetyAction::Allow:
+        case SafetyAction::Mask:
             transcript = verdict.text;
             return ScreenOutcome::Continue;
-            //assigned rather than left alone, which matters in exactly one
+            //ALLOW: assigned rather than left alone, which matters in exactly one
             //case: a mask applied by an earlier layer, on a turn a later layer
             //stopped and the reasoning pass then cleared. The chain carries
             //the masked copy in verdict.text, and without this line the
             //ORIGINAL unmasked transcript would continue to the socket, the
             //store and the examiner. On an ordinary Allow it is a no-op
-
-        case SafetyAction::Mask:
-            transcript = verdict.text;
-            return ScreenOutcome::Continue;
-            //the masked copy from here on, everywhere: the socket, the store
+            //
+            //MASK: the masked copy from here on, everywhere: the socket, the store
             //and the examiner's history all see the same words. Ending a
             //language exam over a swear word punishes the disfluent, and the
             //examiner reading it back would be worse
@@ -2130,22 +2178,19 @@ Server::ScreenOutcome Server::screen_student_speech(
             send_error(handle, safety_notice(verdict));
             //the examiner is never called, so the reserved question goes back
             //exactly as an examiner failure already refunds it. The exam
-            //continues: one stopped turn is not a stopped exam
+            //continues: one stopped turn is not a stopped exam, and the caller
+            //hands the turn back to the student
             return ScreenOutcome::TurnStopped;
 
         case SafetyAction::Escalate:
             refund();
-            if (session.attempt_id() != 0) {
-                persist_quietly("attempt end (escalated)", [&] {
-                    store_->end_attempt(session.attempt_id(), "escalated");
-                });
-            }
+            end_exam(session, "escalated");
             send_error(handle, safety_notice(verdict));
             send_status(handle, "ended");
             //never silent. An escalated turn that looked to the student like a
             //network error is the failure mode Child Safe Standard 8 exists to
             //prevent, so the status goes out and the page leaves the exam
-            return ScreenOutcome::TurnStopped;
+            return ScreenOutcome::ExamStopped;
     }
     return ScreenOutcome::Continue;
 }

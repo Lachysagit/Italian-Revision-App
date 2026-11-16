@@ -41,24 +41,24 @@ struct Message {
     //and a name is neither. The page now renders the name itself and nothing
     //leaves the browser. See docs/compliance/data-retention.md
     int exam_seconds = 0;
-    int questions_left = -1;
-    //from the server, on each examiner question: how many more today's
-    //allowance has room for. -1 is "not metered", and is left out of the JSON
     //from the server, on the opening question only: how long the exam runs.
     //The server's clock is the one that counts; the browser's countdown is a
     //display of it, so a page left on an old default still shows the truth
+    int questions_left = -1;
+    //from the server, on each examiner question: how many more today's
+    //allowance has room for. -1 is "not metered", and is left out of the JSON
     std::int64_t class_id = 0;
-    std::int64_t plan_id = 0;
-    //sent with Start only: a named exam plan of that class, picked by the
-    //student. Absent means the class's default plan, if it has one
     //sent with Start only: the class this exam is being sat for, or absent for
     //private practice. A claim the server checks against class_members before
     //it believes it, since it decides which teacher can read the transcript
+    std::int64_t plan_id = 0;
+    //sent with Start only: a named exam plan of that class, picked by the
+    //student. Absent means the class's default plan, if it has one
     bool final = false;
-    //sent with Stop only, and only once the exam clock has run out: transcribe
+    //sent with Stop only, once the browser's countdown has run out: transcribe
     //this answer and record it, but make no examiner request from it. The
-    //browser is the only thing that knows the time, so it is the browser that
-    //says so - the server keeps no clock of its own
+    //server also ends the exam on its own clock (Session::time_up), so this
+    //flag can only end an exam early, never keep one running
 };
 
 crow::json::wvalue to_json(const Message& message);

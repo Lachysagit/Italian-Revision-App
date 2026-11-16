@@ -18,6 +18,17 @@ namespace sim {
 // who is asking, check the body, one Store call inside guarded() - and the
 // same rule that a class which is not the caller's answers 404.
 
+namespace {
+
+// {"plan": {...}} in full, which every route that saves or reads one answers.
+crow::response plan_response(const ExamPlan& plan, int status = 200) {
+    crow::json::wvalue json;
+    json["plan"] = plan_to_json(plan, true);
+    return json_response(json, status);
+}
+
+}  // namespace
+
 void Server::register_plan_routes() {
     CROW_ROUTE(app_, "/api/classes/<int>/plans").methods("GET"_method, "POST"_method) //HTTP ROUTE ---
     ([this](const crow::request& req, std::int64_t class_id) {
@@ -93,30 +104,36 @@ crow::response Server::serve_class_plans(const crow::request& req,
         return std::move(*refusal);
     }
 
-    std::string error;
-    auto plan = plan_from_json(crow::json::load(req.body),
-                               config_.exam_duration_seconds, error);
-    if (!plan) {
-        return json_error(400, error);
-    }
-    plan->class_id = class_id;
-
-    const bool make_default = [&] {
-        const crow::json::rvalue body = crow::json::load(req.body);
-        return body && body.has("is_default") &&
-               body["is_default"].t() == crow::json::type::True;
-    }();
-
     return guarded("create plan", [&] {
+        const crow::json::rvalue body = crow::json::load(req.body);
+        std::string error;
+        auto plan = plan_from_json(body, config_.exam_duration_seconds, error);
+        if (!plan) {
+            return json_error(400, error);
+        }
+        plan->class_id = class_id;
+
         ExamPlan saved = store_->save_plan(*plan, user.id);
-        if (make_default) {
+        if (bool_field(body, "is_default").value_or(false)) {
             store_->set_default_plan(class_id, saved.id);
             saved.is_default = true;
         }
-        crow::json::wvalue json;
-        json["plan"] = plan_to_json(saved, true);
-        return json_response(json, 201);
+        return plan_response(saved, 201);
     });
+    //the body is parsed once and read inside guarded(), like the PUT below: the
+    //parse used to run twice, and outside any try
+}
+
+std::optional<ExamPlan> Server::plan_taught_by(std::int64_t plan_id,
+                                               const User& user) {
+    auto plan = store_->plan_by_id(plan_id);
+    if (!plan ||
+        store_->class_role(plan->class_id, user.id) != ClassRole::Teacher) {
+        return std::nullopt;
+        //a student never reads a plan by id: it would hand them the set
+        //questions. The class list gives them what they need to pick one
+    }
+    return plan;
 }
 
 crow::response Server::serve_plan(const crow::request& req, std::int64_t plan_id) {
@@ -126,47 +143,40 @@ crow::response Server::serve_plan(const crow::request& req, std::int64_t plan_id
     }
 
     return guarded("plan", [&] {
-        const auto existing = store_->plan_by_id(plan_id);
-        if (!existing ||
-            store_->class_role(existing->class_id, user.id) != ClassRole::Teacher) {
+        const auto existing = plan_taught_by(plan_id, user);
+        if (!existing) {
             return json_error(404, "no such exam");
-            //a student never reads a plan by id: it would hand them the set
-            //questions. The class list gives them what they need to pick one
         }
 
         if (req.method == crow::HTTPMethod::Get) {
-            crow::json::wvalue json;
-            json["plan"] = plan_to_json(*existing, true);
-            return json_response(json);
+            return plan_response(*existing);
         }
         if (auto refusal = refuse_if_rate_limited(
                 "plan:" + std::to_string(user.id), 60, 60)) {
             return std::move(*refusal);
         }
 
+        const crow::json::rvalue body = crow::json::load(req.body);
         std::string error;
-        auto plan = plan_from_json(crow::json::load(req.body),
-                                   config_.exam_duration_seconds, error);
+        auto plan = plan_from_json(body, config_.exam_duration_seconds, error);
         if (!plan) {
             return json_error(400, error);
         }
         plan->id = plan_id;
         plan->class_id = existing->class_id;
 
-        const crow::json::rvalue body = crow::json::load(req.body);
         ExamPlan saved = store_->save_plan(*plan, user.id);
-        if (body && body.has("is_default")) {
-            const bool wanted = body["is_default"].t() == crow::json::type::True;
-            if (wanted && !saved.archived) {
+        if (const auto wanted = bool_field(body, "is_default")) {
+            if (*wanted && !saved.archived) {
                 store_->set_default_plan(saved.class_id, saved.id);
-            } else if (!wanted && saved.is_default) {
+            } else if (!*wanted && saved.is_default) {
                 store_->set_default_plan(saved.class_id, std::nullopt);
             }
-            saved = *store_->plan_by_id(plan_id);
+            if (auto reread = store_->plan_by_id(plan_id)) {
+                saved = std::move(*reread);
+            }
         }
-        crow::json::wvalue json;
-        json["plan"] = plan_to_json(saved, true);
-        return json_response(json);
+        return plan_response(saved);
         //saving never touches an exam already sat: each attempt keeps its own
         //frozen copy, so this changes the next exam and none of the last
     });
@@ -179,15 +189,11 @@ crow::response Server::serve_archive_plan(const crow::request& req,
         return std::move(*refusal);
     }
     return guarded("archive plan", [&] {
-        const auto existing = store_->plan_by_id(plan_id);
-        if (!existing ||
-            store_->class_role(existing->class_id, user.id) != ClassRole::Teacher) {
+        if (!plan_taught_by(plan_id, user)) {
             return json_error(404, "no such exam");
         }
         store_->archive_plan(plan_id);
-        crow::json::wvalue json;
-        json["ok"] = true;
-        return json_response(json);
+        return json_ok();
     });
 }
 
@@ -223,9 +229,7 @@ crow::response Server::serve_exam_options(const crow::request& req) {
         return std::move(*refusal);
     }
 
-    const char* requested = req.url_params.get("language");
-    const LanguagePack* pack =
-        requested ? languages_.find(requested) : nullptr;
+    const LanguagePack* pack = languages_.find(query_param(req, "language"));
     if (pack == nullptr) {
         pack = &languages_.default_pack();
     }
@@ -238,11 +242,7 @@ crow::response Server::serve_exam_options(const crow::request& req) {
     for (const std::string_view key : kTenseKeys) {
         crow::json::wvalue item;
         item["key"] = std::string(key);
-        std::string label(key);
-        for (const auto& [id, name] : pack->tense_labels) {
-            if (id == key) label = name;
-        }
-        item["label"] = label;
+        item["label"] = pack->tense_label(std::string(key));
         tenses.push_back(std::move(item));
     }
     json["tenses"] = std::move(tenses);

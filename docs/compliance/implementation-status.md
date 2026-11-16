@@ -247,10 +247,12 @@ Listed rather than left for a reviewer to find.
    the transcript the student can see, so a notice would add only a reprimand
    mid-exam, and it would advertise the filter's contents to anyone probing it.
    The `safety_events` row is still written.
-4. **An escalation on the very last turn of an exam** leaves the attempt
-   closed as `escalated`, but a halt on that turn returns before the
-   timer/quota path closes the attempt, so it is closed as `disconnect` when
-   the socket drops. The event row is still written and still correct.
+4. ~~**A halt on the very last turn of an exam** returned before the
+   timer/quota path closed the attempt, so it was closed as `disconnect` when
+   the socket dropped.~~ Fixed: a halted turn now ends through the same path as
+   an unheard one, so a final answer that is halted closes the attempt as
+   `timer` or `quota`. A halted turn mid-exam also re-arms the microphone,
+   which it did not before. See `docs/backend-review-log.md`, 1.3.
 5. **The reasoning pass has never run against a real model.** Its policy is
    fully tested against stub backends, and `ExaminerAdjudicator` compiles and
    is wired, but nothing here has exercised it against Gemini or Azure OpenAI.

@@ -66,6 +66,12 @@ struct LanguagePack {
     //canonical key -> a question opening that invites an answer in that tense,
     //quoted to the examiner when a plan's tense target is falling behind
 
+    std::string tense_label(const std::string& key) const;
+    //this language's name for a canonical tense key, or the key itself when
+    //the pack has no name for it
+    std::string tense_example(const std::string& key) const;
+    //the question opening for that tense, or empty
+
     // Filled by load(), not by the built-in table.
     std::string first_prompt;
     std::string ongoing_prompt;

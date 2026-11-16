@@ -1,10 +1,10 @@
 #include "sim/config.hpp"
 
 #include <algorithm>
-#include <cctype>
 #include <charconv>
 #include <cstddef>
 #include <cstdlib>
+#include <initializer_list>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -12,6 +12,7 @@
 #include <thread>
 
 #include "sim/exam_plan.hpp"
+#include "sim/text_util.hpp"
 //for kMinExamSeconds and kMaxExamSeconds, which a plan's own length is held to
 //as well: one set of bounds, so the server default can never be a length a
 //teacher is refused
@@ -61,25 +62,20 @@ constexpr int kMaxWorkerThreads = 64;
 std::vector<std::pair<std::string, std::string>> parse_named_pairs(
     const std::string& text) {
     std::vector<std::pair<std::string, std::string>> pairs;
-    std::size_t start = 0;
-    while (start <= text.size()) {
-        std::size_t comma = text.find(',', start);
-        const std::string pair = text.substr(
-            start, comma == std::string::npos ? std::string::npos : comma - start);
-
+    for (const std::string& pair : split_list(text, ',')) {
         const std::size_t equals = pair.find('=');
-        if (equals != std::string::npos) {
-            std::string name = pair.substr(0, equals);
-            std::string value = pair.substr(equals + 1);
-            if (!name.empty() && !value.empty()) {
-                pairs.emplace_back(std::move(name), std::move(value));
-            }
-        }
+        if (equals == std::string::npos) continue;
 
-        if (comma == std::string::npos) break;
-        start = comma + 1;
+        std::string name = trim(pair.substr(0, equals));
+        std::string value = trim(pair.substr(equals + 1));
+        if (!name.empty() && !value.empty()) {
+            pairs.emplace_back(std::move(name), std::move(value));
+        }
     }
     return pairs;
+    //trimmed on both sides of the "=" as well as around the comma: a list
+    //typed with a space after each comma used to produce the name " german",
+    //which matched no language and silently dropped that voice
 }
 
 //GEMINI_API_KEYS="Personal=AIza...,Backup=AIza..." lets a settings picker
@@ -98,15 +94,28 @@ std::vector<GeminiKeyOption> parse_gemini_keys(const std::string& text) {
 //on the first student's opening question.
 constexpr const char* kDefaultThinkingLevel = "low";
 
-std::string checked_thinking_level(const char* name) {
-    const std::string level = get_env(name, kDefaultThinkingLevel);
-    if (level == "low" || level == "medium" || level == "high") {
-        return level;
+//One of a closed set of spellings, or the fallback with a line on stderr. The
+//settings read through this used to accept anything: EXAMINER_BACKEND=Hailo,
+//AUDIO_INPUT=wisper and AUDIO_CODEC=mp3 each fell through to the default
+//without a word, and for AUDIO_INPUT the default is the mode that sends the
+//recording to the model unscreened.
+std::string checked_choice(const char* name, const char* fallback,
+                           std::initializer_list<const char*> allowed) {
+    const std::string value = get_env(name, fallback);
+    std::string listed;
+    for (const char* option : allowed) {
+        if (value == option) return value;
+        if (!listed.empty()) listed += ", ";
+        listed += option;
     }
-    std::cerr << name << " " << level
-              << " is not low, medium or high, using " << kDefaultThinkingLevel
-              << " (3.8 rejects the \"minimal\" that 3.5 took)\n";
-    return kDefaultThinkingLevel;
+    std::cerr << name << " " << value << " is not one of " << listed
+              << ", using " << fallback << "\n";
+    return fallback;
+}
+
+std::string checked_thinking_level(const char* name) {
+    return checked_choice(name, kDefaultThinkingLevel, {"low", "medium", "high"});
+    //3.8 rejects the "minimal" that 3.5 took, so it is not in the set
 }
 
 //SAFETY_MODE decides which layers the chain is built from, and an unrecognised
@@ -152,31 +161,15 @@ AdjudicatorMode checked_adjudicator_mode() {
 //for the one setting where a typo would widen what a model may overrule.
 std::vector<std::string> parse_adjudicate_categories(const std::string& text) {
     std::vector<std::string> out;
-    std::size_t start = 0;
-    while (start <= text.size()) {
-        const std::size_t comma = text.find(',', start);
-        const std::size_t end = comma == std::string::npos ? text.size() : comma;
-
-        std::string item = text.substr(start, end - start);
-        const std::size_t first = item.find_first_not_of(" \t");
-        const std::size_t last = item.find_last_not_of(" \t");
-        if (first != std::string::npos) {
-            item = item.substr(first, last - first + 1);
-        } else {
-            item.clear();
-        }
-
+    for (std::string& item : split_list(text, ',')) {
         if (item == "sexual" || item == "violence" || item == "hate") {
-            out.push_back(item);
-        } else if (!item.empty()) {
+            out.push_back(std::move(item));
+        } else {
             std::cerr << "SAFETY_ADJUDICATE_CATEGORIES: ignoring \"" << item
                       << "\" - only sexual, violence and hate may be reviewed "
                          "(self-harm has its own flag, and jailbreak and "
                          "profanity are never reviewable)\n";
         }
-
-        if (comma == std::string::npos) break;
-        start = comma + 1;
     }
     return out;
 }
@@ -195,8 +188,8 @@ Config load_config() {
     }
     if (!config.gemini_api_keys.empty()) {
         config.gemini_api_key = config.gemini_api_keys.front().key;
-        //keep the singular field in step: it is what main.cpp hands to the
-        //constructor default, so it must name a key that is actually in the pool
+        //keep the singular field in step with the pool: the startup check at
+        //the bottom of this function reads it to say whether any key exists
     }
     config.translate_api_key = get_env("TRANSLATE_API_KEY", "");
     //empty is allowed: the translate box is optional, and /api/translate says so
@@ -218,23 +211,8 @@ Config load_config() {
     config.public_origin = get_env("PUBLIC_ORIGIN", "http://localhost:8080");
     config.auth_required = parse_bool(get_env("AUTH_REQUIRED", ""), false);
 
-    const std::string teachers = get_env("TEACHER_EMAILS", "");
-    std::size_t start = 0;
-    while (start <= teachers.size() && !teachers.empty()) {
-        const std::size_t comma = teachers.find(',', start);
-        std::string entry = teachers.substr(
-            start, comma == std::string::npos ? std::string::npos : comma - start);
-
-        entry.erase(0, entry.find_first_not_of(" 	"));
-        const std::size_t last = entry.find_last_not_of(" 	");
-        if (last != std::string::npos) entry.erase(last + 1);
-
-        std::transform(entry.begin(), entry.end(), entry.begin(),
-                       [](unsigned char c) { return std::tolower(c); });
-        if (!entry.empty()) config.teacher_emails.push_back(std::move(entry));
-
-        if (comma == std::string::npos) break;
-        start = comma + 1;
+    for (std::string& entry : split_list(get_env("TEACHER_EMAILS", ""), ',')) {
+        config.teacher_emails.push_back(to_lower_ascii(std::move(entry)));
     }
     //lowercased once here rather than at every comparison, and trimmed because
     //a list typed by hand has spaces after the commas
@@ -246,9 +224,10 @@ Config load_config() {
     //compares the redirect_uri as a literal string: one stray character is a
     //redirect_uri_mismatch with nothing in the error naming the slash
 
-    const std::string backend = get_env("EXAMINER_BACKEND", "gemini");
     config.examiner_backend =
-        (backend == "hailo") ? ExaminerBackend::Hailo : ExaminerBackend::Gemini;
+        checked_choice("EXAMINER_BACKEND", "gemini", {"gemini", "hailo"}) == "hailo"
+            ? ExaminerBackend::Hailo
+            : ExaminerBackend::Gemini;
 
     config.gemini_model = get_env("GEMINI_MODEL", "gemini-3.8-flash");
     config.gemini_thinking_level = checked_thinking_level("GEMINI_THINKING_LEVEL");
@@ -257,9 +236,10 @@ Config load_config() {
     //the opening turn gets its own level: it has no answer to reason about, and
     //thinking collapses the sampling distribution onto one canonical question
 
-    const std::string audio_input = get_env("AUDIO_INPUT", "gemini");
-    config.audio_input = (audio_input == "whisper") ? AudioInput::Whisper
-                                                    : AudioInput::Gemini;
+    config.audio_input =
+        checked_choice("AUDIO_INPUT", "gemini", {"gemini", "whisper"}) == "whisper"
+            ? AudioInput::Whisper
+            : AudioInput::Gemini;
 
     config.safety_mode = checked_safety_mode();
     config.safety_wordlist_dir =
@@ -278,9 +258,10 @@ Config load_config() {
     config.adjudicate_self_harm =
         parse_bool(get_env("SAFETY_ADJUDICATE_SELF_HARM", ""), false);
 
-    const std::string audio_codec = get_env("AUDIO_CODEC", "flac");
     config.audio_codec =
-        (audio_codec == "wav") ? AudioCodec::Wav : AudioCodec::Flac;
+        checked_choice("AUDIO_CODEC", "flac", {"flac", "wav"}) == "wav"
+            ? AudioCodec::Wav
+            : AudioCodec::Flac;
 
     const std::string port_text = get_env("PORT", "8080");
     config.port = 8080;

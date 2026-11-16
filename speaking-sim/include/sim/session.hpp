@@ -73,6 +73,19 @@ public:
     //the class the Start message named, once Server has checked the user is in
     //it. nullopt is private practice
 
+    void mark_exam_started();
+    bool exam_started() const;
+    void mark_exam_over();
+    bool exam_over() const;
+    //the exam's lifecycle, as the server sees it. Started is set once, when a
+    //Start has passed every check - sign-in, onboarding, class membership,
+    //today's allowance, the safety chain being ready. Over is set by whatever
+    //ended it: the clock, the allowance, the End button, an escalation.
+    //Server refuses an answer outside that window. Without these a client
+    //could skip Start, and every check it makes, by sending audio and a Stop
+    //on a fresh socket, and could go on answering after an exam was stopped.
+    //Atomic because a worker ends an exam while the socket thread reads this
+
     void set_attempt_id(std::int64_t id);
     std::int64_t attempt_id() const;
     //the exam_attempts row this session's turns are written against, opened by
@@ -182,7 +195,6 @@ public:
 private:
     std::string change_topic_directive() const;
     std::string opinion_directive() const;
-    std::string required_directive(const PlanQuestion& question, bool opening) const;
     std::string tense_directive(const std::string& tense) const;
     void rebuild_prompts();
     //fills both prompt files from the language pack and the plan together, so
@@ -199,7 +211,13 @@ private:
     };
     static constexpr int kMaxOrders = 3;
 
-    bool pending(const RequiredState& state) const;
+    std::string required_directive(const RequiredState& state, bool opening) const;
+
+    std::vector<std::string> plan_topics() const;
+    //the syllabus groups the plan names, unknown ones dropped. Empty when
+    //there is no plan or it names none, which means every group
+    bool topic_covered(const std::string& group) const;
+
     std::optional<std::size_t> pick_required(bool changing_topic, bool urgent) const;
     std::optional<std::string> tense_due(int remaining) const;
     int remaining_turns(Clock::time_point now) const;
@@ -207,6 +225,8 @@ private:
     //has started
 
     std::atomic<bool> job_in_flight_{false};
+    std::atomic<bool> exam_started_{false};
+    std::atomic<bool> exam_over_{false};
 
 
     const LanguagePack* language_ = nullptr;
@@ -244,16 +264,15 @@ private:
     int opinion_target_;
     bool opinion_done_ = false;
     //every exam owes the student one question asking for an opinion. The turn
-    //it falls on is drawn per session, so it is not the same beat every time
-    //drawn per topic, so the examiner does not move on to a predictable rhythm
+    //it falls on (opinion_target_) is drawn per session, so it is not the same
+    //beat every time; topic_budget_ above is drawn per topic for the same reason
     bool opinion_required_ = true;
     //whether this exam owes one at all: a plan can switch it off. Kept apart
     //from opinion_done_, which it would be easier to pre-set, because that
     //would also switch the detection off - and then a plan wanting no opinion
     //question and an exam that asked one anyway would leave the same record
-    mutable std::mt19937 rng_;
-    //mutable because build_examiner_input() is const and draws its sample from
-    //it. One job at a time holds a session, so the draws cannot race
+    std::mt19937 rng_;
+    //one job at a time holds a session, so the draws cannot race
  
 
     std::vector<std::int16_t> audio_buffer_;
@@ -261,6 +280,9 @@ private:
 
 
     mutable std::mutex clock_mutex_;
+    //guards the five clock members below, with its own mutex rather than the
+    //job latch: Pause and Resume, like End, are handled without taking the
+    //latch, so they can land while a job is starting the clock on a worker
     std::optional<Clock::time_point> deadline_;
     std::optional<Clock::duration> paused_left_;
     Clock::time_point clock_started_at_;
@@ -277,13 +299,10 @@ private:
     int last_tense_order_ = -10;
     //the question count at which a tense was last ordered, so the orders are
     //spread across the exam rather than stacked on consecutive turns
-    //set while paused. Guarded by its own mutex rather than the job latch:
-    //Pause and Resume, like End, are handled without taking the latch, so they
-    //can land while the opening job is starting the clock on a worker
     std::int64_t user_id_ = 0;
     std::int64_t class_id_ = 0;
-    int question_limit_ = -1;
     //zero for "none": row ids start at 1, so zero is never a real one
+    int question_limit_ = -1;
     std::int64_t attempt_id_ = 0;
     int turn_index_ = 0;
     //plain data, deliberately: Session holds no pointer to the Store. The

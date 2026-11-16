@@ -1,17 +1,17 @@
 #include "sim/http_util.hpp"
 
-#include <cctype>
 #include <cstddef>
+
+#include "sim/text_util.hpp"
 
 namespace sim {
 
 namespace {
 
-std::string lowered(std::string text) {
-    for (char& ch : text) {
-        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-    }
-    return text;
+// rvalue::has throws on anything that is not a container, and operator[] on a
+// missing key, so every reader below starts here.
+bool has_field(const crow::json::rvalue& body, const char* key) {
+    return body && body.t() == crow::json::type::Object && body.has(key);
 }
 
 }  // namespace
@@ -29,9 +29,14 @@ crow::response json_error(int status, const std::string& message) {
     return json_response(json, status);
 }
 
+crow::response json_ok() {
+    crow::json::wvalue json;
+    json["ok"] = true;
+    return json_response(json);
+}
+
 std::string string_field(const crow::json::rvalue& body, const char* key) {
-    if (!body || body.t() != crow::json::type::Object || !body.has(key) ||
-        body[key].t() != crow::json::type::String) {
+    if (!has_field(body, key) || body[key].t() != crow::json::type::String) {
         return std::string();
     }
     return std::string(body[key].s());
@@ -39,11 +44,22 @@ std::string string_field(const crow::json::rvalue& body, const char* key) {
 
 std::optional<std::int64_t> int_field(const crow::json::rvalue& body,
                                       const char* key) {
-    if (!body || body.t() != crow::json::type::Object || !body.has(key) ||
-        body[key].t() != crow::json::type::Number) {
+    if (!has_field(body, key) || body[key].t() != crow::json::type::Number) {
         return std::nullopt;
     }
     return body[key].i();
+}
+
+std::optional<bool> bool_field(const crow::json::rvalue& body, const char* key) {
+    if (!has_field(body, key)) return std::nullopt;
+    if (body[key].t() == crow::json::type::True) return true;
+    if (body[key].t() == crow::json::type::False) return false;
+    return std::nullopt;
+}
+
+std::string query_param(const crow::request& req, const char* name) {
+    const char* value = req.url_params.get(name);
+    return value ? std::string(value) : std::string();
 }
 
 std::string cookie_value(const std::string& header, const std::string& name) {
@@ -80,11 +96,11 @@ bool origin_allowed(const std::string& origin,
                     const std::string& host,
                     const std::string& public_origin) {
     if (origin.empty()) return false;
-    if (lowered(origin) == lowered(public_origin)) return true;
+    if (to_lower_ascii(origin) == to_lower_ascii(public_origin)) return true;
 
     const std::size_t scheme_end = origin.find("://");
     if (scheme_end == std::string::npos || host.empty()) return false;
-    return lowered(origin.substr(scheme_end + 3)) == lowered(host);
+    return to_lower_ascii(origin.substr(scheme_end + 3)) == to_lower_ascii(host);
     //Origin is scheme://host[:port] with no path, and Host is host[:port], so
     //the part after the scheme compares directly. A page on another site can
     //set neither: the browser writes Origin and the address bar decides Host

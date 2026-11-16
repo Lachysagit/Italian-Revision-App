@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "sim/http_util.hpp"
+#include "sim/text_util.hpp"
 #include "sim/topics.hpp"
 
 namespace sim {
@@ -26,12 +27,6 @@ constexpr std::size_t kMaxClassNameBytes = 80;
 constexpr std::size_t kMaxInvitesPerRequest = 300;
 constexpr std::size_t kMaxEmailBytes = 254;
 constexpr int kAttemptListLimit = 200;
-
-std::string trimmed(const std::string& text) {
-    const std::size_t begin = text.find_first_not_of(" \t\r\n");
-    if (begin == std::string::npos) return std::string();
-    return text.substr(begin, text.find_last_not_of(" \t\r\n") - begin + 1);
-}
 
 // Deliberately loose: one @, something before it, a dot somewhere after it, no
 // spaces. The real check is Google's, when that person signs in; this only
@@ -60,18 +55,17 @@ std::vector<std::string> split_emails(const std::string& text) {
             current.clear();
         }
     };
-    for (const char ch : text) {
+    for (const char ch : to_lower_ascii(text)) {
+        //lowercased so the dedupe in serve_invites and the invite table agree;
+        //the column is COLLATE NOCASE anyway, this keeps the stored copy tidy
         if (ch == ',' || ch == ';' || std::isspace(static_cast<unsigned char>(ch))) {
             flush();
         } else {
-            current.push_back(static_cast<char>(
-                std::tolower(static_cast<unsigned char>(ch))));
+            current.push_back(ch);
         }
     }
     flush();
     return out;
-    //lowercased here so the dedupe below and the invite table agree; the
-    //column is COLLATE NOCASE anyway, this only keeps the stored copy tidy
 }
 
 crow::json::wvalue class_json(const ClassInfo& klass,
@@ -97,7 +91,8 @@ crow::json::wvalue class_json(const ClassInfo& klass,
     return json;
 }
 
-crow::json::wvalue attempt_json(const AttemptSummary& attempt) {
+crow::json::wvalue attempt_json(const AttemptSummary& attempt,
+                                const LanguageRegistry& languages) {
     crow::json::wvalue json;
     json["id"] = attempt.id;
     json["user_id"] = attempt.user_id;
@@ -105,12 +100,30 @@ crow::json::wvalue attempt_json(const AttemptSummary& attempt) {
     json["student_name"] = attempt.student_name;
     json["student_email"] = attempt.student_email;
     json["language"] = attempt.language_id;
+    const LanguagePack* pack = languages.find(attempt.language_id);
+    json["language_label"] = pack ? pack->display_name : attempt.language_id;
+    //the display name beside the id, as class_json sends it, so a page does
+    //not have to work one out by capitalising a folder name
     json["started_at"] = attempt.started_at;
     json["ended_at"] = attempt.ended_at;
     json["end_reason"] = attempt.end_reason;
     json["turn_count"] = attempt.turn_count;
     json["plan_name"] = attempt.plan_name;
     return json;
+}
+
+// A list of attempts as {"attempts": [...]}, the shape the class history and
+// the student's own history share.
+crow::response attempts_response(const std::vector<AttemptSummary>& attempts,
+                                 const LanguageRegistry& languages) {
+    std::vector<crow::json::wvalue> list;
+    list.reserve(attempts.size());
+    for (const AttemptSummary& attempt : attempts) {
+        list.push_back(attempt_json(attempt, languages));
+    }
+    crow::json::wvalue json;
+    json["attempts"] = std::move(list);
+    return json_response(json);
 }
 
 }  // namespace
@@ -253,7 +266,7 @@ crow::response Server::serve_classes(const crow::request& req) {
     }
 
     const crow::json::rvalue body = crow::json::load(req.body);
-    std::string name = trimmed(string_field(body, "name"));
+    std::string name = trim(string_field(body, "name"));
     std::string language = string_field(body, "language");
     if (language.empty()) {
         language = string_field(body, "language_id");
@@ -269,7 +282,7 @@ crow::response Server::serve_classes(const crow::request& req) {
     }
 
     if (name.empty()) {
-        const std::string year = trimmed(string_field(body, "year_level"));
+        const std::string year = trim(string_field(body, "year_level"));
         if (!year.empty()) {
             name = pack->display_name + " Year " + year;
             //the gate asks for a cohort rather than a name, so the three
@@ -431,9 +444,7 @@ crow::response Server::serve_revoke_invite(const crow::request& req,
         if (!store_->revoke_invite(class_id, invite_id)) {
             return json_error(404, "no such invite");
         }
-        crow::json::wvalue json;
-        json["ok"] = true;
-        return json_response(json);
+        return json_ok();
     });
 }
 
@@ -457,9 +468,7 @@ crow::response Server::serve_remove_member(const crow::request& req,
             //accident and leave it with nobody able to manage it
         }
         store_->remove_member(class_id, user_id);
-        crow::json::wvalue json;
-        json["ok"] = true;
-        return json_response(json);
+        return json_ok();
     });
 }
 
@@ -471,18 +480,16 @@ crow::response Server::serve_archive(const crow::request& req,
         return std::move(*refusal);
     }
 
-    const crow::json::rvalue body = crow::json::load(req.body);
-    if (!body || body.t() != crow::json::type::Object || !body.has("archived") ||
-        (body["archived"].t() != crow::json::type::True &&
-         body["archived"].t() != crow::json::type::False)) {
+    const std::optional<bool> archived =
+        bool_field(crow::json::load(req.body), "archived");
+    if (!archived) {
         return json_error(400, "archived must be true or false");
     }
-    const bool archived = body["archived"].t() == crow::json::type::True;
 
     return guarded("archive class", [&] {
-        store_->set_archived(class_id, archived);
+        store_->set_archived(class_id, *archived);
         crow::json::wvalue json;
-        json["archived"] = archived;
+        json["archived"] = *archived;
         return json_response(json);
     });
     //archiving keeps everything - members, codes, history - and only hides the
@@ -498,14 +505,8 @@ crow::response Server::serve_class_attempts(const crow::request& req,
     }
 
     return guarded("class attempts", [&] {
-        std::vector<crow::json::wvalue> list;
-        for (const AttemptSummary& attempt :
-             store_->class_attempts(class_id, kAttemptListLimit)) {
-            list.push_back(attempt_json(attempt));
-        }
-        crow::json::wvalue json;
-        json["attempts"] = std::move(list);
-        return json_response(json);
+        return attempts_response(
+            store_->class_attempts(class_id, kAttemptListLimit), languages_);
     });
 }
 
@@ -516,14 +517,8 @@ crow::response Server::serve_my_attempts(const crow::request& req) {
     }
 
     return guarded("my attempts", [&] {
-        std::vector<crow::json::wvalue> list;
-        for (const AttemptSummary& attempt :
-             store_->user_attempts(user.id, kAttemptListLimit)) {
-            list.push_back(attempt_json(attempt));
-        }
-        crow::json::wvalue json;
-        json["attempts"] = std::move(list);
-        return json_response(json);
+        return attempts_response(
+            store_->user_attempts(user.id, kAttemptListLimit), languages_);
         //the caller's own id, never one from the request: a student cannot ask
         //for somebody else's history by changing a number in the URL
     });
@@ -549,7 +544,10 @@ crow::response Server::serve_attempt(const crow::request& req,
         if (!allowed) {
             return json_error(404, "no such exam");
         }
-        const bool is_owner = attempt->user_id == user.id;
+        const bool show_progress = attempt->user_id != user.id || attempt->ended_at > 0;
+        //the set questions and the opinion question are shown to a teacher at
+        //any time, and to the student only once the exam is over: a student
+        //watching their own exam would otherwise be told what is still coming
 
         const std::vector<TurnFeature> features = store_->attempt_features(attempt_id);
         const std::vector<AttemptTurn> all_turns = store_->attempt_turns(attempt_id);
@@ -582,7 +580,7 @@ crow::response Server::serve_attempt(const crow::request& req,
         }
 
         crow::json::wvalue json;
-        json["attempt"] = attempt_json(*attempt);
+        json["attempt"] = attempt_json(*attempt, languages_);
         json["turns"] = std::move(turns);
 
         // The student turn that answered the examiner turn at `asked_at`, or
@@ -601,9 +599,14 @@ crow::response Server::serve_attempt(const crow::request& req,
         };
         //turn_count is small - a few dozen at most - and this runs once per set
         //question, so the scan is cheaper than an index would be
+        const auto add_answer = [](crow::json::wvalue& item, const AttemptTurn* answer) {
+            if (answer == nullptr) return;
+            item["answer"]["turn_index"] = answer->turn_index;
+            item["answer"]["text"] = answer->text;
+        };
 
         std::vector<crow::json::wvalue> required;
-        if (!is_owner || attempt->ended_at > 0) {
+        if (show_progress) {
             const std::vector<QuestionEvidence> evidence =
                 store_->question_evidence(attempt_id);
 
@@ -631,11 +634,8 @@ crow::response Server::serve_attempt(const crow::request& req,
                 }
                 item["evidence"] = std::move(weighed);
 
-                if (const AttemptTurn* answer =
-                        row.status == "asked" ? answer_to(row.turn_index) : nullptr) {
-                    item["answer"]["turn_index"] = answer->turn_index;
-                    item["answer"]["text"] = answer->text;
-                }
+                add_answer(item, row.status == "asked" ? answer_to(row.turn_index)
+                                                       : nullptr);
                 //only for a question that was asked: on a missed one turn_index
                 //is the turn the examiner was given up on, and the student's
                 //next words answered something else entirely
@@ -644,7 +644,7 @@ crow::response Server::serve_attempt(const crow::request& req,
         }
         json["required"] = std::move(required);
 
-        if (!is_owner || attempt->ended_at > 0) {
+        if (show_progress) {
             const char* status = "not_required";
             if (attempt->opinion_required) {
                 status = attempt->opinion_turn_index >= 0 ? "asked"
@@ -659,17 +659,12 @@ crow::response Server::serve_attempt(const crow::request& req,
             opinion["turn_index"] = attempt->opinion_turn_index;
             opinion["source"] = attempt->opinion_source;
             opinion["status"] = status;
-            if (const AttemptTurn* answer = answer_to(attempt->opinion_turn_index)) {
-                opinion["answer"]["turn_index"] = answer->turn_index;
-                opinion["answer"]["text"] = answer->text;
-            }
+            add_answer(opinion, answer_to(attempt->opinion_turn_index));
             json["opinion"] = std::move(opinion);
         }
         //derived here rather than in each page, so the dashboard and anything
         //later cannot disagree about what a missed opinion question looks like.
-        //Behind the same guard as the set questions and for the same reason: a
-        //student watching their own exam would otherwise be told an opinion
-        //question is still coming
+        //Behind the same guard as the set questions, and for the same reason
         return json_response(json);
     });
 }

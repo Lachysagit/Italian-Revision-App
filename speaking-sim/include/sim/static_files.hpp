@@ -16,10 +16,6 @@ crow::response serve_range_file(const crow::request& req,
 //adds the Range/206 handling crow does not implement. Without it a browser
 //refuses to seek inside an mp3 and the listening page's scrub bar goes dead
 
-bool is_known_language(const std::string& language);
-//the listening page carries one folder per language, so the segment naming it is
-//held to a fixed list rather than a shape
-
 bool is_safe_clip_name(const std::string& year, const std::string& file);
 //year and file arrive from the URL, so they are checked against an allowlist
 //before they are ever pasted into a filesystem path

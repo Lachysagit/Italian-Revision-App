@@ -4,6 +4,8 @@
 #include <cstddef>
 #include <string>
 
+#include "sim/text_util.hpp"
+
 namespace sim {
 
 namespace {
@@ -111,12 +113,7 @@ std::string topic_tag(const std::string& text) {
 
     static const std::string kMarker = "[topic:";
 
-    std::string lowered;
-    lowered.reserve(text.size());
-    for (const char ch : text) {
-        lowered.push_back(static_cast<char>(
-            std::tolower(static_cast<unsigned char>(ch))));
-    }
+    const std::string lowered = to_lower_ascii(text);
     //the model writes [Topic:] and [TOPIC:] often enough to matter
 
     const std::size_t marker = lowered.find(kMarker);
@@ -131,15 +128,8 @@ std::string topic_tag(const std::string& text) {
         //no tag, so the turn counts against the topic already running
     }
 
-    std::string topic = lowered.substr(open, close - open);
-
-    const std::size_t first = topic.find_first_not_of(" \t");
-    if (first == std::string::npos) {
-        return {};
-        //"[topic: ]", opened and never filled in
-    }
-    const std::size_t last = topic.find_last_not_of(" \t");
-    return topic.substr(first, last - first + 1);
+    return trim(lowered.substr(open, close - open), " \t");
+    //empty for "[topic: ]", opened and never filled in
 }
 
 std::string clean_transcript(const std::string& text) {

@@ -1,6 +1,7 @@
 #include "sim/session.hpp"
 
 #include "sim/tenses.hpp"
+#include "sim/text_util.hpp"
 #include "sim/topics.hpp"
 
 #include <algorithm>
@@ -38,19 +39,11 @@ int draw_opinion_target(std::mt19937& rng) {
 
 bool asks_opinion(const std::string& reply,
                   const std::vector<std::string>& openers) {
-    std::string lowered;
-    lowered.reserve(reply.size());
-    for (const char ch : reply) {
-        lowered.push_back(static_cast<char>(
-            std::tolower(static_cast<unsigned char>(ch))));
-    }
-
-    for (const std::string& opener : openers) {
-        if (lowered.find(opener) != std::string::npos) {
-            return true;
-        }
-    }
-    return false;
+    const std::string lowered = to_lower_ascii(reply);
+    return std::any_of(openers.begin(), openers.end(),
+                       [&lowered](const std::string& opener) {
+                           return lowered.find(opener) != std::string::npos;
+                       });
     //ASCII substrings only, so accented text folds past untouched. The openers
     //each language ships are chosen to be ASCII for exactly that reason: a
     //German "was haeltst du" written with its real umlaut would never match
@@ -109,19 +102,11 @@ constexpr auto kMaxTurnPace = std::chrono::seconds(90);
 //one question and its answer, before any have been timed, and the bounds on
 //the measured pace so one very quick or very slow turn cannot swing it
 
-// The filled prompt, and the group the draw put first. Both prompts are filled
-// from one draw per session, so the opening turn's samples and the menu the
-// examiner reads name the same topic.
-struct FilledPrompt {
-    std::string text;
-    std::string first_topic;
-};
-
-FilledPrompt fill_topics(std::string text, const TopicMenu& menu,
-                         const std::string& tags) {
+std::string fill_topics(std::string text, const TopicMenu& menu,
+                        const std::string& tags) {
     replace_all(text, kTopicMarker, menu.text);
     replace_all(text, kTagMarker, tags);
-    return FilledPrompt{std::move(text), menu.first};
+    return text;
     //a file with no marker comes back untouched, so an out-of-date prompt on
     //disk still runs an exam rather than stopping the server
 }
@@ -154,39 +139,28 @@ void Session::rebuild_prompts() {
         //set_plan before any language: the prompts are built once one arrives
     }
 
-    std::vector<std::string> allowed;
+    const std::vector<std::string> allowed = plan_topics();
     std::string first;
-    if (plan_) {
-        for (const std::string& group : plan_->topics) {
-            if (is_topic_group(group)) allowed.push_back(group);
-        }
-        for (const RequiredState& state : required_) {
-            if (state.question.placement == "opening" &&
-                is_topic_group(state.question.topic_group)) {
-                first = state.question.topic_group;
-                break;
-            }
+    for (const RequiredState& state : required_) {
+        if (state.question.placement == "opening" &&
+            is_topic_group(state.question.topic_group)) {
+            first = state.question.topic_group;
+            break;
         }
     }
+    //required_ is empty without a plan, so this needs no plan check of its own
 
     const TopicMenu menu = topic_menu(rng_, allowed, first);
-    std::string tags;
-    for (const std::string& tag : tags_for_groups(allowed)) {
-        if (!tags.empty()) tags += ", ";
-        tags += tag;
-    }
+    const std::string tags = join(tags_for_groups(allowed), ", ");
 
-    first_prompt_ = fill_topics(language_->first_prompt, menu, tags).text;
-    ongoing_prompt_ = fill_topics(language_->ongoing_prompt, menu, tags).text;
+    first_prompt_ = fill_topics(language_->first_prompt, menu, tags);
+    ongoing_prompt_ = fill_topics(language_->ongoing_prompt, menu, tags);
     opening_topic_ = menu.first;
-    //one draw for both files, so the menu the opening turn reads and the menu
-    //every later turn reads are the same list in the same order
-    //the examiner only sees build_examiner_input(), so a prompt has to lead
-    //the snapshot. The snapshot is rebuilt per call, so prompts cannot stack
-    //the topic list is drawn here rather than per turn: the order holds for the
-    //whole exam, so the examiner never sees the topics reshuffle under it
-    //filled from the pack's copy into this session's own, so the draw is per
-    //session while the file on disk is read once for the whole run
+    //one draw for both files, and drawn here rather than per turn: the menu the
+    //opening turn reads and the menu every later turn reads are the same list
+    //in the same order, so the examiner never sees the topics reshuffle under
+    //it. Filled from the pack's shared copy into this session's own, so the
+    //draw is per session while the file on disk is read once for the whole run
 }
 
 void Session::set_plan(ExamPlan plan) {
@@ -325,6 +299,37 @@ std::int64_t Session::attempt_id() const {
     return attempt_id_;
 }
 
+void Session::mark_exam_started() {
+    exam_started_.store(true);
+}
+
+bool Session::exam_started() const {
+    return exam_started_.load();
+}
+
+void Session::mark_exam_over() {
+    exam_over_.store(true);
+}
+
+bool Session::exam_over() const {
+    return exam_over_.load();
+}
+
+std::vector<std::string> Session::plan_topics() const {
+    std::vector<std::string> groups;
+    if (plan_) {
+        for (const std::string& group : plan_->topics) {
+            if (is_topic_group(group)) groups.push_back(group);
+        }
+    }
+    return groups;
+}
+
+bool Session::topic_covered(const std::string& group) const {
+    return std::find(covered_topics_.begin(), covered_topics_.end(), group) !=
+           covered_topics_.end();
+}
+
 int Session::next_turn_index() {
     return turn_index_++;
 }
@@ -348,11 +353,7 @@ void Session::note_question_topic(const std::string& topic) {
     const std::string group = topic_group(topic);
     //the tag names a corner of a syllabus topic; the count runs on the topic
 
-    const bool returning =
-        std::find(covered_topics_.begin(), covered_topics_.end(), group) !=
-        covered_topics_.end();
-
-    if (group.empty() || group == current_topic_ || returning) {
+    if (group.empty() || group == current_topic_ || topic_covered(group)) {
         ++topic_questions_;
         return;
         //an untagged reply, or one still inside the running topic, sits on the
@@ -393,49 +394,34 @@ std::string Session::change_topic_directive() const {
         "preamble and no linking sentence, and tag it with the new topic.";
 
     if (!covered_topics_.empty()) {
-        directive += " Topics already covered, which you must not return to: ";
-        for (std::size_t i = 0; i < covered_topics_.size(); ++i) {
-            if (i != 0) {
-                directive += ", ";
-            }
-            directive += covered_topics_[i];
-        }
-        directive += ".";
+        directive += " Topics already covered, which you must not return to: " +
+                     join(covered_topics_, ", ") + ".";
         //naming them is what stops the exam circling back once it runs dry
     }
 
     return directive;
 }
 
-bool Session::pending(const RequiredState& state) const {
-    return !state.done;
-}
-
 std::optional<std::size_t> Session::pick_required(bool changing_topic,
                                                   bool urgent) const {
     const auto find = [this](auto&& wanted) -> std::optional<std::size_t> {
         for (std::size_t i = 0; i < required_.size(); ++i) {
-            if (pending(required_[i]) && wanted(required_[i].question)) return i;
+            if (!required_[i].done && wanted(required_[i].question)) return i;
         }
         return std::nullopt;
     };
     const auto on_current = [this](const PlanQuestion& q) {
         return !q.topic_group.empty() && q.topic_group == current_topic_;
     };
-    const auto covered = [this](const std::string& group) {
-        return std::find(covered_topics_.begin(), covered_topics_.end(), group) !=
-               covered_topics_.end();
-    };
-
     if (urgent) {
         if (auto here = find(on_current)) return here;
         return find([](const PlanQuestion&) { return true; });
     }
 
     if (changing_topic) {
-        if (auto fresh = find([&](const PlanQuestion& q) {
+        if (auto fresh = find([this](const PlanQuestion& q) {
                 return !q.topic_group.empty() && q.topic_group != current_topic_ &&
-                       !covered(q.topic_group);
+                       !topic_covered(q.topic_group);
             })) {
             return fresh;
             //the best moment for a set question on another topic: the program
@@ -465,10 +451,10 @@ std::optional<std::string> Session::tense_due(int remaining) const {
     std::string most;
     int most_deficit = 0;
     for (const TenseTarget& target : plan_->tenses) {
-        int asked = 0;
-        for (const auto& [key, count] : tenses_asked_) {
-            if (key == target.tense) asked = count;
-        }
+        const auto counted = std::find_if(
+            tenses_asked_.begin(), tenses_asked_.end(),
+            [&target](const auto& entry) { return entry.first == target.tense; });
+        const int asked = counted == tenses_asked_.end() ? 0 : counted->second;
         const int deficit = std::max(0, target.min_count - asked);
         total += deficit;
         if (deficit > most_deficit) {
@@ -486,9 +472,9 @@ std::optional<std::string> Session::tense_due(int remaining) const {
     return most;
 }
 
-std::string Session::required_directive(const PlanQuestion& question,
+std::string Session::required_directive(const RequiredState& state,
                                         bool opening) const {
-    const std::string id = "q" + std::to_string(question.id);
+    const PlanQuestion& question = state.question;
     const bool paraphrase = plan_ && plan_->paraphrase_ok;
     std::string directive;
 
@@ -512,21 +498,16 @@ std::string Session::required_directive(const PlanQuestion& question,
         directive += " It is about \"" + question.topic_group +
                      "\": tag it with a topic from that group.";
     }
-    directive += " Set required_question to \"" + id + "\".";
+    directive += " Set required_question to \"" + state.key + "\".";
+    //the same key reply_schema() offers as an answer, built once in set_plan
     return directive;
     //the question is quoted between guillemets so the examiner can see exactly
     //where the teacher's words start and stop, whatever punctuation they carry
 }
 
 std::string Session::tense_directive(const std::string& tense) const {
-    std::string label = tense;
-    std::string example;
-    for (const auto& [key, name] : language_->tense_labels) {
-        if (key == tense) label = name;
-    }
-    for (const auto& [key, opening] : language_->tense_examples) {
-        if (key == tense) example = opening;
-    }
+    const std::string label = language_->tense_label(tense);
+    const std::string example = language_->tense_example(tense);
 
     std::string directive =
         "The student's teacher wants the " + label + " practised. Phrase this "
@@ -542,20 +523,15 @@ std::string Session::tense_directive(const std::string& tense) const {
 
 ReplySchema Session::reply_schema() const {
     ReplySchema schema;
-    if (plan_) {
-        std::vector<std::string> groups;
-        for (const std::string& group : plan_->topics) {
-            if (is_topic_group(group)) groups.push_back(group);
-        }
-        if (!groups.empty()) schema.topic_tags = tags_for_groups(groups);
-    }
+    const std::vector<std::string> groups = plan_topics();
+    if (!groups.empty()) schema.topic_tags = tags_for_groups(groups);
     if (language_ != nullptr) {
         schema.tenses = language_->tense_labels;
         //asked on every exam, plan or not: a student's own history is worth
         //having whether or not a teacher set anything
     }
     for (const RequiredState& state : required_) {
-        if (pending(state)) schema.required_ids.push_back(state.key);
+        if (!state.done) schema.required_ids.push_back(state.key);
     }
     return schema;
 }
@@ -601,11 +577,11 @@ Session::ReplyOutcome Session::note_examiner_reply(const std::string& question,
     //the rules miss different things, and a missed count only means the order
     //is issued once more than it needed to be
 
+    const bool paraphrase = plan_ && plan_->paraphrase_ok;
     for (RequiredState& state : required_) {
-        if (!pending(state)) continue;
+        if (state.done) continue;
         const double score = overlap(state.question.text, question);
         const bool named = reply.required_question == state.key;
-        const bool paraphrase = plan_ && plan_->paraphrase_ok;
         const bool asked = score >= kVerbatimMatch ||
                            (named && (paraphrase || score >= kConfirmedMatch));
         if (asked) {
@@ -679,26 +655,19 @@ std::vector<Turn> Session::build_examiner_input() {
     //for the model, and the model is stopped from eliciting what it was not
     //given - an examiner that asks "come ti chiami?" would put the name into
     //the transcript by the back door, which is the same disclosure one hop
-    //later. A second System turn rather than an edit to system_prompt_,
-    //because the prompt file on disk is shared by every session
+    //later. A second System turn rather than an edit to the prompt, because
+    //the prompt text in the language pack is shared by every session
 
     ordered_required_.reset();
     const bool changing_topic =
         !opening_turn && topic_questions_ >= topic_budget_;
 
     if (changing_topic) {
-        std::vector<std::string> allowed;
-        if (plan_) {
-            for (const std::string& group : plan_->topics) {
-                if (is_topic_group(group)) allowed.push_back(group);
-            }
-        }
+        std::vector<std::string> allowed = plan_topics();
         if (allowed.empty()) allowed = all_topic_groups();
         const bool any_left = std::any_of(
             allowed.begin(), allowed.end(), [this](const std::string& group) {
-                return group != current_topic_ &&
-                       std::find(covered_topics_.begin(), covered_topics_.end(),
-                                 group) == covered_topics_.end();
+                return group != current_topic_ && !topic_covered(group);
             });
         if (!any_left) {
             covered_topics_.clear();
@@ -713,7 +682,7 @@ std::vector<Turn> Session::build_examiner_input() {
     std::optional<std::size_t> required;
     if (opening_turn) {
         for (std::size_t i = 0; i < required_.size(); ++i) {
-            if (pending(required_[i]) && required_[i].question.placement == "opening") {
+            if (!required_[i].done && required_[i].question.placement == "opening") {
                 required = i;
                 break;
             }
@@ -721,7 +690,7 @@ std::vector<Turn> Session::build_examiner_input() {
     } else {
         const std::size_t open = static_cast<std::size_t>(std::count_if(
             required_.begin(), required_.end(),
-            [this](const RequiredState& state) { return pending(state); }));
+            [](const RequiredState& state) { return !state.done; }));
         const bool urgent = open > 0 && remaining >= 0 &&
                             static_cast<std::size_t>(remaining) <= open;
         //as many set questions left as turns: from here every turn asks one
@@ -744,7 +713,7 @@ std::vector<Turn> Session::build_examiner_input() {
         ordered_required_ = required;
         ++required_[*required].orders;
         input.push_back(Turn{Role::System,
-                             required_directive(required_[*required].question,
+                             required_directive(required_[*required],
                                                 opening_turn)});
         //the teacher's question outranks everything the program would
         //otherwise say this turn, a topic change included: a set question that
@@ -825,8 +794,7 @@ bool Session::audio_full() const {
 }
 
 std::vector<std::int16_t> Session::take_audio() {
-    std::vector<std::int16_t> result = std::move(audio_buffer_);
-    audio_buffer_.clear();
+    std::vector<std::int16_t> result = std::exchange(audio_buffer_, {});
     partial_byte_.clear();
     //the utterance is over, so a half sample left from its last frame belongs
     //to nothing and must not be glued onto the start of the next utterance
@@ -838,9 +806,7 @@ void Session::stash_partial_byte(std::string byte) {
 }
 
 std::string Session::take_partial_byte() {
-    std::string result = std::move(partial_byte_);
-    partial_byte_.clear();
-    return result;
+    return std::exchange(partial_byte_, {});
 }
 
 
