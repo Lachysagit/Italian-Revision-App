@@ -10,12 +10,18 @@ const TRANSLATE_MAX_CHARS = 1000;
 //mirrors kMaxTranslateChars in server.cpp; the server still enforces it, since
 //maxlength is only a courtesy to whoever is typing
 
-const TRANSLATE_LANGUAGES = {
-    it: { label: "IT" },
-    de: { label: "DE" }
-};
-//the non-English side of the pair. English is always the other half, so only this
-//end varies
+const TRANSLATE_FALLBACK_CODE = "it";
+//the non-English side of the pair until the page names one. English is always
+//the other half, so only this end varies. There is no table of languages here:
+//the code comes from /api/languages through whichever page hosts the box, and
+//the server checks the pair against the same list, so a language added there
+//works here without this file being edited
+
+function isTranslateCode(code) {
+    return typeof code === "string" && /^[a-z]{2,3}$/.test(code);
+    //the shape of a language code and nothing more. Whether the server offers
+    //it is the server's answer to give
+}
 
 let setTranslateLanguage = () => {};
 //replaced by initTranslate on a page that has the box; the listening page calls it
@@ -26,9 +32,9 @@ let setTranslateLocked = () => {};
 //account has paid access: translation is part of it, and a free account sees
 //the box shut rather than a failure on every lookup
 
-const TRANSLATE_LOCKED_TEXT =
-    "Translation is part of paid access - a class licence from your school, or " +
-    "your own. Speaking practice and every listening paper stay free.";
+const TRANSLATE_LOCKED_FALLBACK = "Translation is not available on this account.";
+//shown only if the server gave no reason of its own. The real sentence arrives
+//with /api/me as usage.translation_notice, so it is worded in one place
 
 function initTranslate(options) {
     const translateInput = document.getElementById("translateInput");
@@ -48,7 +54,9 @@ function initTranslate(options) {
     const addLog = settings.log || (() => {});
     //the exam page routes these to its console log; the listening page has none
 
-    let language = TRANSLATE_LANGUAGES[settings.language] ? settings.language : "it";
+    let language = isTranslateCode(settings.language)
+        ? settings.language
+        : TRANSLATE_FALLBACK_CODE;
 
     let translateBusy = false;
     let translateLocked = false;
@@ -65,7 +73,7 @@ function initTranslate(options) {
     }
 
     function paintTranslateDirection() {
-        const label = TRANSLATE_LANGUAGES[language].label;
+        const label = language.toUpperCase();
         const toEnglish = translateDirection.dataset.direction !== "en-foreign";
         translateDirection.textContent = toEnglish ? `${label} → EN` : `EN → ${label}`;
         //the label states what the button will do to your text, not what pressing
@@ -127,7 +135,7 @@ function initTranslate(options) {
     paintTranslateDirection();
 
     setTranslateLanguage = (code) => {
-        if (!TRANSLATE_LANGUAGES[code] || code === language) {
+        if (!isTranslateCode(code) || code === language) {
             return;
         }
         language = code;
@@ -146,13 +154,13 @@ function initTranslate(options) {
         //itself with a heading it no longer matches
     };
 
-    setTranslateLocked = (locked) => {
+    setTranslateLocked = (locked, notice) => {
         translateLocked = Boolean(locked);
         translateInput.disabled = translateLocked;
         translateGo.disabled = translateLocked;
         document.getElementById("translateBox").classList.toggle("locked", translateLocked);
         if (translateLocked) {
-            showTranslateResult(TRANSLATE_LOCKED_TEXT, false);
+            showTranslateResult(notice || TRANSLATE_LOCKED_FALLBACK, false);
         } else {
             translateResult.hidden = true;
         }

@@ -164,10 +164,11 @@ function paintHistory(attempts) {
     attempts.forEach((attempt) => {
         const row = document.createElement("tr");
         row.dataset.classId = String(attempt.class_id || 0);
-        row.dataset.language = attempt.language || "";
         addCell(row, formatStarted(attempt.started_at));
         addCell(row, classNameFor(attempt.class_id));
-        addCell(row, languageLabelFor(attempt));
+        addCell(row, attempt.language_label || attempt.language || "");
+        // the display name comes with the attempt, so this column no longer
+        // waits on the class list or guesses a name from the language id
         addCell(row, String(attempt.turn_count || 0));
         addCell(row, attempt.ended_at
             ? (END_REASONS[attempt.end_reason] || attempt.end_reason || "Ended")
@@ -192,25 +193,14 @@ function classNameFor(classId) {
     // has landed the honest answer is neither, so the row just says "A class"
 }
 
-// The two loads run in parallel and history usually wins, so the two columns
-// that read the class list are filled in again once it has landed.
+// The two loads run in parallel and history usually wins, so the class column,
+// which reads the class list, is filled in again once it has landed.
 function paintHistoryClassNames() {
     const rows = document.querySelectorAll("#historyTable tbody tr");
     rows.forEach((row) => {
         if (row.dataset.classId === undefined) return;
         row.children[1].textContent = classNameFor(Number(row.dataset.classId));
-        row.children[2].textContent =
-            languageLabelFor({ language: row.dataset.language || "" });
     });
-}
-
-function languageLabelFor(attempt) {
-    const klass = myClasses.find((item) => item.language === attempt.language);
-    if (klass && klass.language_label) return klass.language_label;
-    if (!attempt.language) return "";
-    return attempt.language.charAt(0).toUpperCase() + attempt.language.slice(1);
-    // the display name if any class on this page examines that language, and
-    // the id title-cased otherwise: language_id is a lowercase folder name
 }
 
 function formatStarted(seconds) {

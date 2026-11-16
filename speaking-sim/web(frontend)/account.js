@@ -32,6 +32,7 @@ function initAccount(options) {
     buildAccountBox();
     buildSettings();
     loadGateLanguages();
+    loadProfileOptions();
     // fetched up front rather than when the sign-up step opens: it is a small
     // request, it shares the connection with everything else the page is
     // already asking for, and the picker is then never waiting on it
@@ -42,7 +43,8 @@ function initAccount(options) {
             currentUser = user;
             paintAccountBox(user);
             if (typeof setTranslateLocked === "function") {
-                setTranslateLocked(!(user && user.usage && user.usage.translation));
+                const usage = (user && user.usage) || {};
+                setTranslateLocked(!usage.translation, usage.translation_notice);
             }
             // here rather than in each page, so every page with the translate
             // box opens it or shuts it from the same answer
@@ -230,21 +232,11 @@ function buildGate() {
                 <label for="authClassYear">Year level</label>
                 <select id="authClassYear" required>
                     <option value="">Choose...</option>
-                    <option value="7">Year 7</option>
-                    <option value="8">Year 8</option>
-                    <option value="9">Year 9</option>
-                    <option value="10">Year 10</option>
-                    <option value="11">Year 11</option>
-                    <option value="12">Year 12</option>
                 </select>
 
                 <label for="authClassLevel">Subject level</label>
                 <select id="authClassLevel" required>
                     <option value="">Choose...</option>
-                    <option value="beginners">Beginners</option>
-                    <option value="continuers">Continuers</option>
-                    <option value="advanced">Advanced</option>
-                    <option value="extension">Extension</option>
                 </select>
 
                 <label for="authClassLanguage">Language</label>
@@ -276,21 +268,11 @@ function buildGate() {
                 <label for="authYear">Year level</label>
                 <select id="authYear" required>
                     <option value="">Choose...</option>
-                    <option value="7">Year 7</option>
-                    <option value="8">Year 8</option>
-                    <option value="9">Year 9</option>
-                    <option value="10">Year 10</option>
-                    <option value="11">Year 11</option>
-                    <option value="12">Year 12</option>
                 </select>
 
                 <label for="authLevel">Subject level</label>
                 <select id="authLevel" required>
                     <option value="">Choose...</option>
-                    <option value="beginners">Beginners</option>
-                    <option value="continuers">Continuers</option>
-                    <option value="advanced">Advanced</option>
-                    <option value="extension">Extension</option>
                 </select>
 
                 <button type="submit" id="authNext">Next</button>
@@ -480,6 +462,57 @@ function loadGateLanguages() {
             // said out loud rather than left as an empty picker: a form that
             // cannot be completed must explain itself
         });
+}
+
+// The year and subject level pickers - three of each, on sign-up, on the
+// create-a-class step and in the settings panel - are filled from
+// /api/profile-options. The server holds the lists because it is the one that
+// checks them, so a level added there appears in all six pickers at once.
+const LEVEL_SELECTS = {
+    year_levels: ["authYear", "authClassYear", "acctYear"],
+    subject_levels: ["authLevel", "authClassLevel", "acctLevel"],
+};
+
+function loadProfileOptions() {
+    return fetch("/api/profile-options", { credentials: "same-origin" })
+        .then((response) => (response.ok ? response.json() : Promise.reject()))
+        .then((options) => {
+            Object.keys(LEVEL_SELECTS).forEach((key) => {
+                const offered = Array.isArray(options[key]) ? options[key] : [];
+                LEVEL_SELECTS[key].forEach((id) => fillLevelSelect(id, offered));
+            });
+            restoreDraft();
+            // for the reason loadGateLanguages re-applies it: the draft may
+            // have been restored before the options it names existed
+            if (currentUser) {
+                SETTINGS_FIELDS.forEach((field) => {
+                    setSelectValue(field.id, currentUser[field.key]);
+                });
+                // and the settings panel may have been opened already
+            }
+        })
+        .catch(() => {
+            showGateError(
+                "Could not load the year and level lists. Please refresh the page.");
+        });
+}
+
+function fillLevelSelect(id, offered) {
+    const select = document.getElementById(id);
+    if (!select) return;
+
+    const chosen = select.value;
+    while (select.options.length > 1) {
+        select.remove(1);
+        // everything after "Choose...", so a second load cannot double the list
+    }
+    offered.forEach((entry) => {
+        const option = document.createElement("option");
+        option.value = entry.value;
+        option.textContent = entry.label;
+        select.appendChild(option);
+    });
+    setSelectValue(id, chosen);
 }
 
 // The answers survive the trip to Google in sessionStorage: it is per-tab and
@@ -815,21 +848,11 @@ function buildSettings() {
                 <label for="acctYear">Year level</label>
                 <select id="acctYear" required>
                     <option value="">Choose...</option>
-                    <option value="7">Year 7</option>
-                    <option value="8">Year 8</option>
-                    <option value="9">Year 9</option>
-                    <option value="10">Year 10</option>
-                    <option value="11">Year 11</option>
-                    <option value="12">Year 12</option>
                 </select>
 
                 <label for="acctLevel">Subject level</label>
                 <select id="acctLevel" required>
                     <option value="">Choose...</option>
-                    <option value="beginners">Beginners</option>
-                    <option value="continuers">Continuers</option>
-                    <option value="advanced">Advanced</option>
-                    <option value="extension">Extension</option>
                 </select>
 
                 <p id="acctError" hidden></p>

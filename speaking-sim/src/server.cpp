@@ -132,14 +132,56 @@ bool is_teacher_email(const Config& config, const std::string& email) {
 
 //the cohort a student may claim. Closed lists: subject_level picks which
 //Gemini key pool an exam spends, so it must not be free text from a browser.
-bool is_valid_subject_level(const std::string& level) {
-    return level == "beginners" || level == "continuers" ||
-           level == "advanced" || level == "extension";
+//One table each for the check and for /api/profile-options, which is where
+//every picker on the pages gets its options: the lists used to be written out
+//here and three more times in account.js, with nothing tying the four together
+struct ProfileOption {
+    const char* value;
+    const char* label;
+};
+
+constexpr ProfileOption kYearLevels[] = {
+    {"7", "Year 7"},   {"8", "Year 8"},   {"9", "Year 9"},
+    {"10", "Year 10"}, {"11", "Year 11"}, {"12", "Year 12"},
+};
+
+constexpr ProfileOption kSubjectLevels[] = {
+    {"beginners", "Beginners"},
+    {"continuers", "Continuers"},
+    {"advanced", "Advanced"},
+    {"extension", "Extension"},
+};
+
+template <std::size_t N>
+bool is_offered(const ProfileOption (&options)[N], const std::string& value) {
+    return std::any_of(std::begin(options), std::end(options),
+                       [&value](const ProfileOption& option) {
+                           return value == option.value;
+                       });
 }
 
-bool is_valid_year_level(const std::string& year) {
-    return year == "7" || year == "8" || year == "9" || year == "10" ||
-           year == "11" || year == "12";
+template <std::size_t N>
+std::vector<crow::json::wvalue> options_json(const ProfileOption (&options)[N]) {
+    std::vector<crow::json::wvalue> list;
+    for (const ProfileOption& option : options) {
+        crow::json::wvalue item;
+        item["value"] = option.value;
+        item["label"] = option.label;
+        list.push_back(std::move(item));
+    }
+    return list;
+}
+
+// What a free account is told about the translate box. Sent by the route that
+// refuses the lookup and by /api/me, so the page that shuts the box up front
+// shows the server's sentence instead of keeping a copy of its own.
+constexpr const char* kTranslatePaidNotice =
+    "Translation is part of paid access - a class licence from your "
+    "school, or your own. Speaking practice and every listening paper "
+    "stay free.";
+
+bool file_exists(const std::string& path) {
+    return std::ifstream(path).good();
 }
 
 crow::response auth_error_page(const std::string& message) {
@@ -351,6 +393,17 @@ void Server::run()
         return serve_languages();
     });
     //and this to populate the language picker beside it
+
+    CROW_ROUTE(app_, "/api/profile-options") //HTTP ROUTE -----------------------------------
+    ([] {
+        crow::json::wvalue json;
+        json["year_levels"] = options_json(kYearLevels);
+        json["subject_levels"] = options_json(kSubjectLevels);
+        return json_response(json);
+    });
+    //the year and subject level pickers on sign-up, class creation and the
+    //settings panel. Public, like /api/languages: the sign-up form needs it
+    //and it says nothing about anyone
 
     CROW_ROUTE(app_, "/signin") //HTTP ROUTE -----------------------------------
     ([] {
@@ -710,7 +763,7 @@ void Server::prewarm_examiner() {
 
 crow::response Server::serve_manifest(const std::string& language)
     {
-    if (!is_known_language(language)) {
+    if (languages_.find(language) == nullptr) {
         return crow::response(404);
     }
 
@@ -722,7 +775,7 @@ crow::response Server::serve_clip(const crow::request& req,
                                   const std::string& year,
                                   const std::string& file)
     {
-    if (!is_known_language(language) || !is_safe_clip_name(year, file)) {
+    if (languages_.find(language) == nullptr || !is_safe_clip_name(year, file)) {
         return crow::response(404);
     }
     //rejected before the path exists, so a rejected name is never opened
@@ -758,6 +811,11 @@ crow::response Server::serve_languages()
         //objects rather than bare strings: the picker needs the wire value, the
         //text to show and the code the translate box switches to, and deriving
         //any of the three in JavaScript would be a second table to keep in step
+        json[index]["listening"] =
+            file_exists("listening/" + pack->id + "/manifest.json");
+        //whether this language has listening papers on disk. The listening
+        //page offers only those that do, so a language added for speaking
+        //exams does not show up there as a picker entry that cannot load
         ++index;
     }
     return json_response(json);
@@ -772,10 +830,7 @@ crow::response Server::serve_translate(const crow::request& req)
     try {
         if (!allowance_for(user).paid) {
             crow::json::wvalue json;
-            json["error"] =
-                "Translation is part of paid access - a class licence from your "
-                "school, or your own. Speaking practice and every listening paper "
-                "stay free.";
+            json["error"] = kTranslatePaidNotice;
             json["reason"] = "paid_only";
             return json_response(json, 403);
             //403 with a reason rather than 402 Payment Required: Crow has no
@@ -1027,6 +1082,10 @@ crow::response Server::serve_me(const crow::request& req) {
         json["usage"]["paid_source"] = allowance.source;
         json["usage"]["paid_until"] = allowance.paid_until;
         json["usage"]["translation"] = allowance.paid;
+        if (!allowance.paid) {
+            json["usage"]["translation_notice"] = kTranslatePaidNotice;
+            //why the box is shut, in the words the translate route would use
+        }
         //one place a page learns what this account may do today: how much
         //speaking is left, and whether the translate box is open to it
     } catch (const std::exception& e) {
@@ -1060,10 +1119,10 @@ crow::response Server::serve_set_profile(const crow::request& req) {
     //presence and type both: this writes to the database, so a number where a
     //string belongs comes back empty and is refused below as a 400
 
-    if (!is_valid_year_level(year)) {
+    if (!is_offered(kYearLevels, year)) {
         return json_error(400, "pick a year level");
     }
-    if (!is_valid_subject_level(level)) {
+    if (!is_offered(kSubjectLevels, level)) {
         return json_error(400, "pick a subject level");
     }
     if (languages_.find(language) == nullptr) {

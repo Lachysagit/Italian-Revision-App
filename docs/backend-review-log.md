@@ -321,23 +321,40 @@ all of Crow.
 
 ## 4. The same thing held in both C++ and JavaScript
 
-"JS" is `web(frontend)/`. Only the first row was changed, because it could be
-fixed inside the backend. The rest are listed so they can be decided on;
-changing them means editing the pages.
+"JS" is `web(frontend)/`. The first four rows were fixed in a follow-up commit,
+by making the server the one place each fact lives and having the pages ask for
+it. The rest are listed so they can be decided on.
 
-| What | C++ | JavaScript | State |
+### 4.1 Fixed
+
+| What | Before | Now |
+|---|---|---|
+| The list of languages | Written out in `language.cpp` (the source), `static_files.cpp` (`is_known_language`), `listening.js`, the `<option>`s in `listening.html`, and twice more for translation (`server.cpp`, `translate.js`). | `/api/languages` is the only list. It gained a `listening` flag (true when `listening/<id>/manifest.json` exists), so the listening page offers only languages that have papers. `listening.js` builds its picker from it, the manifest and clip routes check the registry, and `translate.js` takes whatever code its page hands it and labels the button from the code. |
+| Year levels and subject levels | Two validators in `server.cpp` and three hand-written `<option>` lists in `account.js`. | One table each in `server.cpp`, used by the check and served by the new `GET /api/profile-options`. `account.js` fills all six pickers from it. |
+| A language's display name on an attempt | Classes carried `language_label`, attempts did not, so `classes-page.js` looked it up from the class list or capitalised the id. | Attempts carry `language_label` too and the page shows it. |
+| The "translation is part of paid access" sentence | In `server.cpp` and word for word in `translate.js`. | One constant in `server.cpp`, sent by the translate route and by `/api/me` as `usage.translation_notice`. The page shows what it is sent. |
+
+### 4.2 A page bug found while doing this
+
+`web(frontend)/client.js` did not parse. Commit `f8df462` ("Keep the student's
+name and photo out of the model and the database") removed the `student_name`
+line from the Start message and took the closing `}));` of that
+`socket.send(...)` call with it. A script with a syntax error does not run at
+all, so the exam page's own script was dead: no Start button handler, no
+socket, no microphone. The line is restored and every script now passes
+`node --check`.
+
+### 4.3 Left as they are
+
+| What | C++ | JavaScript | Why left |
 |---|---|---|---|
-| Which languages can be translated | `server.cpp` had its own `it`/`en`/`de` list | `translate.js` `TRANSLATE_LANGUAGES` | **C++ side fixed:** now read from the language registry, so a new language cannot be forgotten there. The JS list is still separate. |
-| The list of exam languages | `language.cpp` (the source), served by `/api/languages`; `static_files.cpp` `is_known_language` holds a second copy for the listening page | `listening.js` `LANGUAGES`, `<option>`s in `listening.html`, `DEFAULT_LANGUAGE` in `client.js` | Four copies. `client.js` already reads `/api/languages`; `listening.js` could do the same. |
-| Year levels and subject levels | `server.cpp` `is_valid_year_level`, `is_valid_subject_level` | `<option>` lists written out three times in `account.js` | No route serves them. A comment in `store.hpp` said years were `'9'..'12'` while both sides accept 7 to 12; the comment is corrected. |
-| How many set questions fit in an exam | `plan_json.cpp` `questions_that_fit`, and the refusal sentence | `teacher.js` `paintFit` redoes the sum and words the same sentence | The page's copy is a live preview; the server's is the rule. They agree today. |
-| The "translation is paid" sentence | `server.cpp` `serve_translate` | `translate.js` `TRANSLATE_LOCKED_TEXT`, word for word | The server already sends it with `reason: paid_only`. |
+| How many set questions fit in an exam | `plan_json.cpp` `questions_that_fit`, and the refusal sentence | `teacher.js` `paintFit` redoes the sum and words the same sentence | The page's copy is a live preview; the server's is the rule. They agree for every length the server accepts. |
 | Capitalising a topic group | `topics.cpp` `topic_menu` | `teacher.js` `capitaliseTopic` | Harmless. |
 | Join code formatting | `store.cpp` `normalise_join_code`, and the `/join/<code>` filter in `server.cpp` | `teacher.js` `formatCode` adds the hyphen | Intended: the server ignores the hyphen. |
-| Length limits (80, 300, 1000 characters) | `class_api.cpp`, `plan_json.cpp`, `server.cpp` | `maxlength` in the HTML and `teacher.js` | Commented as mirrors on both sides. |
+| Length limits (80, 300, 1000 characters) | `class_api.cpp`, `plan_json.cpp`, `server.cpp` | `maxlength` in the HTML and `teacher.js` | Commented as mirrors on both sides; the server enforces them. |
 | Capture sample rate 16000 | `Session::kCaptureSampleRate` | `client.js` `CAPTURE_SAMPLE_RATE` | Must match; nothing enforces it. |
 | The exam countdown | `Session` clock | `client.js` timer | By design: the server's is the one that counts. |
-| A language's display name on an attempt | `class_json` sends `language_label`; `attempt_json` does not | `classes-page.js` works it out by capitalising the id | The server knows the label and could send it. |
+| A default language of Italian before the list loads | `language.cpp` `kDefaultLanguageId` | `client.js` `DEFAULT_LANGUAGE`, `translate.js` `TRANSLATE_FALLBACK_CODE` | Only used until `/api/languages` answers. |
 
 Fields the backend sends that no page reads: `usage.paid_until`, member
 `added_at`, plan `updated_at`.
@@ -401,6 +418,12 @@ set-question and usage rows were read back afterwards.
 
 **Command line:** every licence, export, purge and delete command, including the
 refusal to delete a teacher who still owns a class.
+
+**Pages, after the section 4 changes:** the exam, listening, classes and teacher
+pages were loaded in headless Chromium as a student, a not-yet-onboarded account
+and a teacher. The language picker, all six level pickers, the locked translate
+box and the attempt history filled from the server, switching language on the
+listening page reloaded it, and no page logged a script error.
 
 **Not verified:**
 

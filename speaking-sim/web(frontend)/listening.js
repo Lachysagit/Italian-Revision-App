@@ -5,10 +5,13 @@
   function base(){ return '/listening/' + language + '/'; }
 
   var LANG_STORAGE = 'listeningLanguage';
-  var LANGUAGES = {
-    italian: {label: 'Italian', code: 'it'},
-    german:  {label: 'German',  code: 'de'}
-  };
+  var LANGUAGES = {};
+  // id -> {label, code}, filled from /api/languages before anything else runs:
+  // the languages this server has listening papers for. The table used to be
+  // written out here, beside a second copy in listening.html and a third in
+  // the server, and a language added to one of them was missing from the rest.
+  var pendingAccountLanguage = null;
+  // the account's language, if account.js reported it before the list landed
 
   var audio   = document.getElementById('audio');
   var langSel = document.getElementById('language');
@@ -17,7 +20,7 @@
   var title   = document.getElementById('pageTitle');
 
   var language = localStorage.getItem(LANG_STORAGE);
-  if (!LANGUAGES[language]) language = 'italian';
+  // checked against the list once it has loaded, in start() below
 
   var data = null;
   var current = null;   // row element currently loaded
@@ -467,13 +470,9 @@
       });
   }
 
-  initTranslate({language: LANGUAGES[language].code});
-  //no log callback: the console log belongs to the exam page. Called before the
-  //picker is wired, since it is what defines setTranslateLanguage
-
-  langSel.value = language;
   langSel.addEventListener('change', function(){
-    language = LANGUAGES[langSel.value] ? langSel.value : 'italian';
+    if (!LANGUAGES[langSel.value]) return;
+    language = langSel.value;
     localStorage.setItem(LANG_STORAGE, language);
     if (typeof savePreferredLanguage === 'function') savePreferredLanguage(language);
     //to the account as well as this browser, so the exam page and the next
@@ -486,6 +485,9 @@
   // way it does on the exam page. Ignored when the account names a language this
   // page has no clips for, which leaves the picker where localStorage put it.
   window.applyListeningLanguage = function(id){
+    pendingAccountLanguage = id;
+    // kept as well as applied: if the list has not loaded yet the check below
+    // fails for every id, and start() applies this one when it has
     if (!LANGUAGES[id] || id === language) return;
     language = id;
     localStorage.setItem(LANG_STORAGE, language);
@@ -494,5 +496,47 @@
     loadLanguage();
   };
 
-  loadLanguage();
+  // Runs once the language list has arrived. Everything above only declares;
+  // this is where the page first paints.
+  function start(list){
+    var first = null;
+    list.forEach(function(entry){
+      if (!entry.listening) return;
+      // a language the server examines but has no listening papers for
+      LANGUAGES[entry.id] = {label: entry.label, code: entry.translate_code};
+      if (!first) first = entry.id;
+
+      var o = document.createElement('option');
+      o.value = entry.id;
+      o.textContent = entry.label;
+      langSel.appendChild(o);
+    });
+
+    if (!first) {
+      out.innerHTML = '<p class="msg">This server has no listening papers.</p>';
+      return;
+    }
+
+    if (LANGUAGES[pendingAccountLanguage]) language = pendingAccountLanguage;
+    if (!LANGUAGES[language]) language = first;
+    // the account's language, then the one this browser last used, then the
+    // first the server offers
+    langSel.value = language;
+
+    initTranslate({language: LANGUAGES[language].code});
+    //no log callback: the console log belongs to the exam page
+
+    loadLanguage();
+  }
+
+  fetch('/api/languages')
+    .then(function(r){
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(list){ start(Array.isArray(list) ? list : []); })
+    .catch(function(err){
+      out.innerHTML = '<p class="msg">Could not load the language list (' +
+        err.message + '). Please refresh the page.</p>';
+    });
 })();

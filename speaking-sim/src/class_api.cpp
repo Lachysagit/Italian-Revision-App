@@ -91,7 +91,8 @@ crow::json::wvalue class_json(const ClassInfo& klass,
     return json;
 }
 
-crow::json::wvalue attempt_json(const AttemptSummary& attempt) {
+crow::json::wvalue attempt_json(const AttemptSummary& attempt,
+                                const LanguageRegistry& languages) {
     crow::json::wvalue json;
     json["id"] = attempt.id;
     json["user_id"] = attempt.user_id;
@@ -99,6 +100,10 @@ crow::json::wvalue attempt_json(const AttemptSummary& attempt) {
     json["student_name"] = attempt.student_name;
     json["student_email"] = attempt.student_email;
     json["language"] = attempt.language_id;
+    const LanguagePack* pack = languages.find(attempt.language_id);
+    json["language_label"] = pack ? pack->display_name : attempt.language_id;
+    //the display name beside the id, as class_json sends it, so a page does
+    //not have to work one out by capitalising a folder name
     json["started_at"] = attempt.started_at;
     json["ended_at"] = attempt.ended_at;
     json["end_reason"] = attempt.end_reason;
@@ -109,11 +114,12 @@ crow::json::wvalue attempt_json(const AttemptSummary& attempt) {
 
 // A list of attempts as {"attempts": [...]}, the shape the class history and
 // the student's own history share.
-crow::response attempts_response(const std::vector<AttemptSummary>& attempts) {
+crow::response attempts_response(const std::vector<AttemptSummary>& attempts,
+                                 const LanguageRegistry& languages) {
     std::vector<crow::json::wvalue> list;
     list.reserve(attempts.size());
     for (const AttemptSummary& attempt : attempts) {
-        list.push_back(attempt_json(attempt));
+        list.push_back(attempt_json(attempt, languages));
     }
     crow::json::wvalue json;
     json["attempts"] = std::move(list);
@@ -500,7 +506,7 @@ crow::response Server::serve_class_attempts(const crow::request& req,
 
     return guarded("class attempts", [&] {
         return attempts_response(
-            store_->class_attempts(class_id, kAttemptListLimit));
+            store_->class_attempts(class_id, kAttemptListLimit), languages_);
     });
 }
 
@@ -512,7 +518,7 @@ crow::response Server::serve_my_attempts(const crow::request& req) {
 
     return guarded("my attempts", [&] {
         return attempts_response(
-            store_->user_attempts(user.id, kAttemptListLimit));
+            store_->user_attempts(user.id, kAttemptListLimit), languages_);
         //the caller's own id, never one from the request: a student cannot ask
         //for somebody else's history by changing a number in the URL
     });
@@ -574,7 +580,7 @@ crow::response Server::serve_attempt(const crow::request& req,
         }
 
         crow::json::wvalue json;
-        json["attempt"] = attempt_json(*attempt);
+        json["attempt"] = attempt_json(*attempt, languages_);
         json["turns"] = std::move(turns);
 
         // The student turn that answered the examiner turn at `asked_at`, or

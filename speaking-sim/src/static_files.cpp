@@ -94,12 +94,6 @@ crow::response serve_static_file(const std::string& path, const char* content_ty
     return response;
 }
 
-bool is_known_language(const std::string& language) {
-    return language == "italian" || language == "german";
-    //a closed list, so adding a language is a deliberate edit here rather than
-    //whatever happens to sit in the listening folder
-}
-
 bool is_safe_clip_name(const std::string& year, const std::string& file) {
     if (year.size() != 4 || !all_digits(year)) {
         return false;

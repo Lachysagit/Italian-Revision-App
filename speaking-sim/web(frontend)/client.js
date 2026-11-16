@@ -1014,6 +1014,7 @@ startButton.onclick = async () => {
             //NO student_name. The name is rendered in this page and nowhere
             //else: it is never posted, never stored server side and never
             //reaches the examiner. See docs/compliance/data-retention.md
+        }));
         //ask the examiner for the opening question. Without this nothing is
         //sent until the student ends a turn, so the exam begins in silence.
         //gemini_key carries the settings picker's choice for this whole session
