@@ -37,7 +37,7 @@ struct User {
     std::string display_name;
     bool is_teacher = false;
     std::string year_level;
-    //'9'..'12', for class grouping and reporting. Does not route keys
+    //'7'..'12', for class grouping and reporting. Does not route keys
     std::string subject_level;
     //beginners|continuers|advanced|extension - this is what selects the key pool
     std::string preferred_language;

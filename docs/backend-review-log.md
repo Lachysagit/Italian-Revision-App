@@ -197,8 +197,8 @@ Paths are relative to `speaking-sim/` unless they start with `docs/`.
 
 ## 2. Repeated code folded into one place
 
-None of these change behaviour. Net effect across the backend: about 240 fewer
-lines.
+None of these change behaviour. Net effect across the backend: about 180 fewer
+lines, after counting the new shared header and the added checks.
 
 ### 2.1 String helpers: new `include/sim/text_util.hpp`
 
@@ -285,6 +285,25 @@ Header-only, no dependencies.
   comment said it would be filled in "at the OAuth phase"; that code lives in
   `store.cpp`.
 
+### 2.7 The code-simplifier pass
+
+After the changes above, the modified files were given to a review agent
+running the instructions of the official `code-simplifier` plugin. The plugin
+was installed in the session but its own agent type could not be loaded
+mid-session, so its instructions were handed to a standard agent instead. It
+made three small edits and left the rest alone:
+
+- `src/protocol.cpp`: `from_json` reads its text fields with the shared
+  `string_field` instead of a local copy of it.
+- `src/store.cpp`: two anonymous namespaces that had ended up side by side were
+  merged.
+- `src/store.cpp`: four SQL strings left split across lines by the timestamp
+  change were rejoined.
+
+It noted, and did not change, that `plan_json.cpp` still reads its fields by
+hand rather than through `http_util`; that file deliberately avoids including
+all of Crow.
+
 ## 3. Comments and documents that disagreed with the code
 
 | Where | What it said | What is true |
@@ -310,7 +329,7 @@ changing them means editing the pages.
 |---|---|---|---|
 | Which languages can be translated | `server.cpp` had its own `it`/`en`/`de` list | `translate.js` `TRANSLATE_LANGUAGES` | **C++ side fixed:** now read from the language registry, so a new language cannot be forgotten there. The JS list is still separate. |
 | The list of exam languages | `language.cpp` (the source), served by `/api/languages`; `static_files.cpp` `is_known_language` holds a second copy for the listening page | `listening.js` `LANGUAGES`, `<option>`s in `listening.html`, `DEFAULT_LANGUAGE` in `client.js` | Four copies. `client.js` already reads `/api/languages`; `listening.js` could do the same. |
-| Year levels and subject levels | `server.cpp` `is_valid_year_level`, `is_valid_subject_level` | `<option>` lists written out three times in `account.js` | No route serves them. `store.hpp` also says years are `'9'..'12'` while both sides accept 7 to 12. |
+| Year levels and subject levels | `server.cpp` `is_valid_year_level`, `is_valid_subject_level` | `<option>` lists written out three times in `account.js` | No route serves them. A comment in `store.hpp` said years were `'9'..'12'` while both sides accept 7 to 12; the comment is corrected. |
 | How many set questions fit in an exam | `plan_json.cpp` `questions_that_fit`, and the refusal sentence | `teacher.js` `paintFit` redoes the sum and words the same sentence | The page's copy is a live preview; the server's is the rule. They agree today. |
 | The "translation is paid" sentence | `server.cpp` `serve_translate` | `translate.js` `TRANSLATE_LOCKED_TEXT`, word for word | The server already sends it with `reason: paid_only`. |
 | Capitalising a topic group | `topics.cpp` `topic_menu` | `teacher.js` `capitaliseTopic` | Harmless. |
